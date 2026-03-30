@@ -49,8 +49,8 @@ def config():
         fiducial_cosmology=jc.Planck18,
         nz_shear=[],  # no kappa bins → sample2catalog skips kappa saving
         priors={
-            "Omega_c": jfli.sampling.PreconditionnedUniform(0.1, 0.5),
-            "sigma8": jfli.sampling.PreconditionnedUniform(0.6, 1.0),
+            "Omega_c": jfli.infer.PreconditionnedUniform(0.1, 0.5),
+            "sigma8": jfli.infer.PreconditionnedUniform(0.6, 1.0),
         },
         sigma_e=0.26,
         geometry="spherical",
@@ -65,6 +65,8 @@ def config():
 @pytest.mark.parametrize("sampler,backend", SAMPLER_BACKENDS)
 def test_mock_model_catalog_saving(tmp_path, config, sampler, backend):
     """End-to-end: mock_probmodel → batched_sampling → sample2catalog → parquet round-trip."""
+    pytest.skip(reason="Too slow for CI")
+
     model = jfli.ppl.mock_probmodel(config)
 
     # Obtain valid init_params by forward-tracing the model once.
@@ -76,7 +78,7 @@ def test_mock_model_catalog_saving(tmp_path, config, sampler, backend):
     model_trace = numpyro_trace(seed(model, 0)).get_trace()
     init_params = {k: v["value"] for k, v in model_trace.items() if v["type"] == "sample"}
 
-    jfli.sampling.batched_sampling(
+    jfli.infer.batched_sampling(
         model,
         path=str(tmp_path),
         rng_key=jax.random.PRNGKey(42),

@@ -18,7 +18,7 @@ import jax_fli as jfli
 from jax_fli._src.base._enums import ConvergenceUnit
 from jax_fli.io.catalog import Catalog
 
-jax.config.update("jax_enable_x64", False)  # Use float64 for better precision in tests
+jax.config.update("jax_enable_x64", True)  # Use float64 for better precision in tests
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -114,7 +114,7 @@ def make_field(field_type: str, batched: bool, seed: int = 42):
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         nside=nside,
         flatsky_npix=flatsky_npix,
@@ -212,7 +212,7 @@ def test_spherical_density_ndim_validation():
             mesh_size=MESH_SIZE,
             box_size=BOX_SIZE,
             observer_position=(0.5, 0.5, 0.5),
-            sharding=None,
+            field_sharding=None,
             halo_size=(0, 0),
             nside=NSIDE,
             flatsky_npix=None,
@@ -236,7 +236,7 @@ def test_spherical_density_wrong_npix_validation():
             mesh_size=MESH_SIZE,
             box_size=BOX_SIZE,
             observer_position=(0.5, 0.5, 0.5),
-            sharding=None,
+            field_sharding=None,
             halo_size=(0, 0),
             nside=NSIDE,
             flatsky_npix=None,
@@ -284,7 +284,7 @@ def _make_multi_batched_density(N: int, S: int, seed: int = 0) -> jfli.DensityFi
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         nside=None,
         flatsky_npix=None,
@@ -352,7 +352,7 @@ def test_multi_batched_field_shapes(field_type):
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         nside=nside,
         flatsky_npix=flatsky_npix,
@@ -376,7 +376,7 @@ def test_stack_snapshot_to_multi_batched():
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         z_sources=jnp.array(1.0),
         scale_factors=jnp.array(0.8),
@@ -390,7 +390,7 @@ def test_stack_snapshot_to_multi_batched():
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         z_sources=jnp.array(1.2),
         scale_factors=jnp.array(0.75),
@@ -431,7 +431,7 @@ def test_concat_snapshot_raises():
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         z_sources=jnp.array(1.0),
         scale_factors=jnp.array(0.8),
@@ -471,7 +471,7 @@ def test_catalog_auto_expand_snapshot():
         mesh_size=MESH_SIZE,
         box_size=BOX_SIZE,
         observer_position=(0.5, 0.5, 0.5),
-        sharding=None,
+        field_sharding=None,
         halo_size=(0, 0),
         z_sources=z_sources,
         scale_factors=scale_factors,

@@ -89,7 +89,7 @@ def _build_singlechain_dir(tmp_path: Path) -> Path:
 def test_extract_cosmo_shape(tmp_path):
     """Cosmo dict has shape (n_chains, n_samples) for multi-chain layout."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS)
 
     assert isinstance(result, CatalogExtract)
     assert result.mean_field is None
@@ -109,7 +109,7 @@ def test_extract_cosmo_shape(tmp_path):
 def test_extract_field_statistic_shapes(tmp_path):
     """mean_field and std_field have shape (n_chains, X, Y, Z) with float64 dtype."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     mean_field = result.mean_field
     std_field = result.std_field
@@ -128,7 +128,7 @@ def test_extract_field_statistic_shapes(tmp_path):
 def test_extract_field_statistic_false_gives_none(tmp_path):
     """When field_statistic=False, mean_field and std_field are None."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS, field_statistic=False)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=False)
 
     assert result.mean_field is None
     assert result.std_field is None
@@ -138,10 +138,13 @@ def test_extract_power_statistic_shapes(tmp_path):
     """Power spectra tuple has 4 elements; each has n_chains as leading dim."""
     root = _build_multichain_dir(tmp_path)
     true_ic = _make_field(seed=99)
+    true_cosmo = _make_cosmo()
+    truth = Catalog(field=[true_ic], cosmology=[true_cosmo])
     result = extract_catalog(
-        str(root),
+        "test_run",
         cosmo_keys=COSMO_KEYS,
-        true_ic=true_ic,
+        path=str(root),
+        truth=truth,
         field_statistic=True,
         power_statistic=True,
     )
@@ -156,14 +159,14 @@ def test_extract_power_statistic_shapes(tmp_path):
 def test_extract_power_statistic_requires_true_ic(tmp_path):
     """extract_catalog raises ValueError when power_statistic=True but true_ic=None."""
     root = _build_multichain_dir(tmp_path)
-    with pytest.raises(ValueError, match="true_ic"):
-        extract_catalog(str(root), cosmo_keys=COSMO_KEYS, power_statistic=True)
+    with pytest.raises(ValueError, match="power_statistic=True requires 'truth' to be provided."):
+        extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, power_statistic=True)
 
 
 def test_extract_singlechain_layout(tmp_path):
     """Single-chain layout (path/samples/*.parquet) returns cosmo with shape (1, n_samples)."""
     root = _build_singlechain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     for key in COSMO_KEYS:
         assert result.cosmo[key].shape == (1, N_SAMPLES_PER_CHAIN), f"cosmo['{key}'].shape = {result.cosmo[key].shape}"
@@ -175,7 +178,7 @@ def test_extract_singlechain_layout(tmp_path):
 def test_extract_field_metadata_preserved(tmp_path):
     """mean_field carries the correct mesh_size and box_size metadata."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     mean_field = result.mean_field
     assert mean_field.mesh_size == MESH_SIZE
@@ -185,7 +188,7 @@ def test_extract_field_metadata_preserved(tmp_path):
 def test_catalog_extract_getitem_integer(tmp_path):
     """Integer index returns a 1-chain CatalogExtract with 2-D cosmo arrays."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS)
 
     chain0 = result[0]
     assert chain0.n_chains == 1
@@ -196,7 +199,7 @@ def test_catalog_extract_getitem_integer(tmp_path):
 def test_catalog_extract_getitem_slice(tmp_path):
     """Slice index preserves 2-D shape on cosmo and field arrays."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog(str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     sub = result[0:1]
     assert sub.n_chains == 1
