@@ -7,7 +7,7 @@ runs that share the same static shapes.
 Range notation
 --------------
 Scalar griddable parameters (--Omega-c, --sigma8, --seed, --nb-shells,
---dt0, --nb-steps) accept either explicit values or a compact
+--nside) accept either explicit values or a compact
 ``start:stop:step`` range token (stop is inclusive).  Both styles can be
 mixed freely in the same argument.
 
@@ -25,7 +25,7 @@ Example
         --seed 0:2:1 \\
         --nb-shells 10 \\
         --nb-steps 18 \\
-        --nside 16 --output-dir /tmp/grid_out --dry-run
+        --nside 16 32 --output-dir /tmp/grid_out --dry-run
 """
 
 from __future__ import annotations
@@ -87,14 +87,14 @@ def _parse_groups(values: list, group_size: int) -> list[tuple]:
 
 
 def _make_stem(
-    subcommand: str, mesh, box, omega_c, sigma8, seed, nb_shells, dt0_or_steps, is_steps: bool, density_widths=None
+    subcommand: str, mesh, box, omega_c, sigma8, seed, nb_shells, nb_steps, nside, density_widths=None
 ) -> str:
     """Build a descriptive filename stem for a single grid combination."""
     mesh_str = "x".join(str(m) for m in mesh)
     box_str = "x".join(str(int(b)) if b == int(b) else str(b) for b in box)
-    step_tag = f"Nst{dt0_or_steps}" if is_steps else f"dt{dt0_or_steps}"
+    nside_tag = f"_nside{nside}" if nside is not None else ""
     dw_tag = f"_dw{density_widths}" if density_widths is not None else ""
-    return f"{subcommand}_M{mesh_str}_B{box_str}_Oc{omega_c}_S8{sigma8}_s{seed}_Ns{nb_shells}_{step_tag}{dw_tag}"
+    return f"{subcommand}_M{mesh_str}_B{box_str}_Oc{omega_c}_S8{sigma8}_s{seed}_Ns{nb_shells}_Nst{nb_steps}{nside_tag}{dw_tag}"
 
 
 # ---------------------------------------------------------------------------
@@ -170,24 +170,30 @@ def parser() -> ArgumentParser:
         help="Number of lightcone shells values; supports start:stop:step range notation",
     )
 
-    # --- Griddable: time-stepping (mutually exclusive) ---
-    dt_group = grid_parent.add_mutually_exclusive_group()
-    dt_group.add_argument(
-        "--dt0",
+    # --- Griddable: nside ---
+    grid_parent.add_argument(
+        "--nside",
         type=str,
         nargs="+",
         default=None,
-        metavar="DT",
-        help="Integration time step(s); supports start:stop:step range notation",
+        metavar="NS",
+        help="HEALPix NSIDE value(s) for spherical painting; supports start:stop:step range notation",
     )
-    dt_group.add_argument(
+
+    # --- Fixed: alternative painting targets (mutually exclusive with each other, not with nside) ---
+    paint_group = grid_parent.add_mutually_exclusive_group()
+    paint_group.add_argument("--flatsky-npix", type=int, nargs=2, default=None, metavar=("H", "W"))
+    paint_group.add_argument("--field-size", type=int, nargs=2, default=None, metavar=("H", "W"))
+    paint_group.add_argument("--density", action="store_true", default=False)
+
+    # --- Fixed: time-stepping ---
+    grid_parent.add_argument(
         "--nb-steps",
-        type=str,
-        nargs="+",
-        default=None,
+        type=int,
+        default=19,
         dest="nb_steps",
         metavar="N",
-        help="Number of integration steps (mutually exclusive with --dt0); supports start:stop:step range notation",
+        help="Number of integration steps (fixed, not griddable); dt0 = (t1 - t0) / (nb_steps - 1). (default: 19)",
     )
 
     # --- Fixed: other cosmology ---
@@ -205,12 +211,65 @@ def parser() -> ArgumentParser:
     grid_parent.add_argument("--t1", type=float, default=1.0)
 
     # --- Fixed: LPT / solver ---
-    grid_parent.add_argument("--order", type=int, default=2, choices=[1, 2])
+    grid_parent.add_argument("--lpt-order", type=int, default=2, choices=[1, 2])
+    grid_parent.add_argument(
+        "--gradient-order",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        dest="gradient_order",
+        help="Force gradient order (0=exact ik, 1=finite-difference) (default: 1)",
+    )
+    grid_parent.add_argument(
+        "--laplace-fd",
+        action="store_true",
+        default=False,
+        dest="laplace_fd",
+        help="Use finite-difference Laplacian (default: False)",
+    )
+    grid_parent.add_argument(
+        "--dealiased",
+        action="store_true",
+        default=False,
+        help="Enable dealiased mode (default: False)",
+    )
+    grid_parent.add_argument(
+        "--exact-growth",
+        action="store_true",
+        default=False,
+        dest="exact_growth",
+        help="Use exact growth factor computation (default: False)",
+    )
     grid_parent.add_argument("--interp", choices=["none", "onion", "telephoto"], default="none")
+    grid_parent.add_argument(
+        "--scheme",
+        choices=["ngp", "bilinear", "rbf_neighbor"],
+        default="bilinear",
+        help="Spherical painting interpolation scheme (default: bilinear)",
+    )
+    grid_parent.add_argument(
+        "--paint-nside",
+        type=int,
+        default=None,
+        dest="paint_nside",
+        help="Override nside for spherical painting (default: same as --nside)",
+    )
     grid_parent.add_argument("--drift-on-lightcone", action="store_true")
 
     # --- Fixed: lightcone geometry ---
-    grid_parent.add_argument("--equal-vol", action="store_true", default=False)
+    grid_parent.add_argument(
+        "--shell-spacing",
+        choices=["comoving", "equal_vol", "a", "growth"],
+        default="comoving",
+        dest="shell_spacing",
+        help="Shell spacing mode (default: comoving)",
+    )
+    grid_parent.add_argument(
+        "--solver",
+        choices=["kdk", "dkd", "bf"],
+        default="kdk",
+        help="N-body integrator: kdk=DoubleKickDrift, dkd=DriftKickDrift, bf=BullFrog (default: kdk)",
+    )
     grid_parent.add_argument("--min-width", type=float, default=50.0, dest="min_width")
     grid_parent.add_argument("--density-widths", type=float, nargs="+", default=None, metavar="W")
     ts_group = grid_parent.add_mutually_exclusive_group()
@@ -218,17 +277,16 @@ def parser() -> ArgumentParser:
     ts_group.add_argument("--ts-near", type=float, nargs="+", default=None, metavar="A_NEAR")
     grid_parent.add_argument("--ts-far", type=float, nargs="+", default=None, metavar="A_FAR")
 
-    # --- Fixed: painting target ---
-    paint_group = grid_parent.add_mutually_exclusive_group()
-    paint_group.add_argument("--nside", type=int, default=None)
-    paint_group.add_argument("--flatsky-npix", type=int, nargs=2, default=None, metavar=("H", "W"))
-    paint_group.add_argument("--field-size", type=int, nargs=2, default=None, metavar=("H", "W"))
-    paint_group.add_argument("--density", action="store_true", default=False)
-
     # --- Fixed: distributed / sharding ---
     grid_parent.add_argument("--pdim", type=int, nargs=2, default=[1, 1], metavar=("PX", "PY"))
     grid_parent.add_argument("--nodes", type=int, default=1)
-    grid_parent.add_argument("--halo-size", type=int, nargs=2, default=[0, 0], metavar=("H0", "H1"))
+    grid_parent.add_argument(
+        "--halo-fraction",
+        type=int,
+        default=8,
+        metavar="F",
+        help="Halo size as mesh // fraction for distributed painting (default: 8)",
+    )
     grid_parent.add_argument(
         "--observer-position", type=float, nargs=3, default=[0.5, 0.5, 0.5], metavar=("OX", "OY", "OZ")
     )
@@ -246,14 +304,31 @@ def parser() -> ArgumentParser:
 
     # --- lensing subcommand ---
     lensing_p = subparsers.add_parser("lensing", parents=[grid_parent], help="Grid over full lensing pipeline runs")
-    lensing_p.add_argument("--nz-shear", nargs="+", required=True, metavar="Z")
-    lensing_p.add_argument("--lensing", choices=["born", "raytrace", "both"], default="born")
-    lensing_p.add_argument("--min-z", type=float, default=0.01)
-    lensing_p.add_argument("--max-z", type=float, default=1.5)
-    lensing_p.add_argument("--n-integrate", type=int, default=32)
-    lensing_p.add_argument("--rt-interp", choices=["bilinear", "ngp", "nufft"], default="bilinear")
-    lensing_p.add_argument("--no-parallel-transport", action="store_true")
-
+    lensing_p.add_argument(
+        "--nz-shear",
+        nargs="+",
+        required=True,
+        metavar="Z",
+        help="Source redshifts or 's3'/'s3[i]' for Stage-3 bins",
+    )
+    lensing_p.add_argument(
+        "--min-z",
+        type=float,
+        default=0.01,
+        help="Minimum redshift for n(z) integration (default: 0.01)",
+    )
+    lensing_p.add_argument(
+        "--max-z",
+        type=float,
+        default=1.5,
+        help="Maximum redshift for n(z) integration (default: 1.5)",
+    )
+    lensing_p.add_argument(
+        "--n-integrate",
+        type=int,
+        default=32,
+        help="Number of Simpson quadrature points for n(z) distributions (default: 32)",
+    )
     return p
 
 
@@ -267,15 +342,14 @@ def main() -> None:
     import jax
     import jax.numpy as jnp
 
+    from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
     from jax_fli.scripts.fli_simulate import (
         _build_cosmo,
         _build_painting,
-        _build_sharding,
         _build_solver,
-        _resolve_dt0,
-        _resolve_nz_shear,
         _resolve_ts,
         _save_result,
+        run_lpt,
         run_simulations,
     )
 
@@ -288,24 +362,21 @@ def main() -> None:
     args.sigma8 = _expand_range_values(args.sigma8, float)
     args.seed = _expand_range_values(args.seed, int)
     args.nb_shells = _expand_range_values(args.nb_shells, int)
-    if args.dt0 is not None:
-        args.dt0 = _expand_range_values(args.dt0, float)
-    if args.nb_steps is not None:
-        args.nb_steps = _expand_range_values(args.nb_steps, int)
+
+    # Expand nside if provided
+    if args.nside is not None:
+        nside_values = _expand_range_values(args.nside, int)
+    else:
+        nside_values = [None]
+
+    # Validate: cannot use both nside and flatsky-npix/field-size/density
+    if nside_values != [None]:
+        if args.flatsky_npix is not None or args.field_size is not None or args.density:
+            p.error("--nside cannot be combined with --flatsky-npix, --field-size, or --density")
 
     # --- Expand griddable parameters ---
     mesh_configs = _parse_groups(args.mesh_size, 3)
     box_configs = _parse_groups(args.box_size, 3)
-
-    # Resolve dt0 values: either a list from --dt0, from --nb-steps, or the default
-    if args.nb_steps is not None:
-        # Store as negative sentinel so we can distinguish nb_steps vs dt0 later
-        dt_values = [("nb_steps", n) for n in args.nb_steps]
-    elif args.dt0 is not None:
-        dt_values = [("dt0", d) for d in args.dt0]
-    else:
-        # Default: dt0=0.05
-        dt_values = [("dt0", None)]  # None triggers _resolve_dt0 default
 
     # Each --density-widths value is a scalar broadcast to all shells; None = use defaults
     density_width_values = args.density_widths if args.density_widths is not None else [None]
@@ -318,7 +389,7 @@ def main() -> None:
         * len(args.sigma8)
         * len(args.seed)
         * len(args.nb_shells)
-        * len(dt_values)
+        * len(nside_values)
         * len(density_width_values)
     )
     grid = product(
@@ -328,7 +399,7 @@ def main() -> None:
         args.sigma8,
         args.seed,
         args.nb_shells,
-        dt_values,
+        nside_values,
         density_width_values,
     )
     print(f"Grid: {total} combination(s) — subcommand={args.subcommand}")
@@ -347,7 +418,7 @@ def main() -> None:
 
     import jax_fli as jfli
 
-    for idx, (mesh, box, omega_c, sigma8, seed, nb_shells, (dt_kind, dt_val), density_width_val) in enumerate(grid):
+    for idx, (mesh, box, omega_c, sigma8, seed, nb_shells, nside_val, density_width_val) in enumerate(grid):
         # Build combo Namespace by shallow-copying fixed args and overriding grid dims
         combo = copy.copy(args)
         combo.mesh_size = list(mesh)
@@ -356,23 +427,11 @@ def main() -> None:
         combo.sigma8 = sigma8
         combo.seed = seed
         combo.nb_shells = nb_shells
-
-        # Resolve dt0 for this combo
-        if dt_kind == "nb_steps":
-            combo.dt0 = None
-            combo.nb_steps = dt_val
-            dt0 = _resolve_dt0(combo, combo.t1)
-            is_steps = True
-            step_label = dt_val
-        else:
-            combo.dt0 = dt_val  # None triggers default 0.05 inside _resolve_dt0
-            combo.nb_steps = None
-            dt0 = _resolve_dt0(combo, combo.t1)
-            is_steps = False
-            step_label = dt0
+        # Set nside for this combo (used by _build_painting)
+        combo.nside = nside_val
 
         stem = _make_stem(
-            args.subcommand, mesh, box, omega_c, sigma8, seed, nb_shells, step_label, is_steps, density_width_val
+            args.subcommand, mesh, box, omega_c, sigma8, seed, nb_shells, args.nb_steps, nside_val, density_width_val
         )
 
         print(f"[{idx + 1}/{total}] {stem}")
@@ -385,7 +444,7 @@ def main() -> None:
         ts = _resolve_ts(combo)
         solver = _build_solver(combo, painting)
 
-        halo_size = (mesh[0] // 8, mesh[1] // 8)
+        halo_size = (mesh[0] // args.halo_fraction, mesh[1] // args.halo_fraction)
 
         key = jax.random.key(seed)
         initial_field = jfli.gaussian_initial_conditions(
@@ -397,46 +456,59 @@ def main() -> None:
             nside=combo.nside,
             flatsky_npix=tuple(combo.flatsky_npix) if combo.flatsky_npix is not None else None,
             field_size=tuple(combo.field_size) if combo.field_size is not None else None,
-            sharding=sharding,
+            field_sharding=sharding,
             halo_size=halo_size,
         )
 
-        sim_type = args.subcommand
-        lpt_order = combo.order
-        if args.subcommand == "lensing":
-            sim_type = combo.lensing
+        lpt_order = combo.lpt_order
+        shell_spacing = getattr(combo, "shell_spacing", "comoving")
+        density_widths_val = jnp.array(density_width_val) if density_width_val is not None else None
+        # ts and nb_shells are mutually exclusive in resolve_geometry
+        effective_nb_shells = nb_shells if ts is None else None
 
-        run_kwargs = {
-            "cosmo": cosmo,
-            "initial_conditions": initial_field,
-            "solver": solver,
-            "t0": combo.t0,
-            "t1": combo.t1,
-            "dt0": dt0,
-            "ts": ts,
-            "nb_shells": nb_shells,
-            "painting": painting,
-            "interp_kernel": solver.interp_kernel,
-            "lpt_order": lpt_order,
-            "nz_shear": nz_shear,
-            "sim_type": sim_type,
-            "equal_vol": combo.equal_vol,
-            "min_width": combo.min_width,
-            "density_widths": jnp.array(density_width_val) if density_width_val is not None else None,
-        }
+        if args.subcommand == "lpt":
+            # LPT mode: use run_lpt with geometry params
+            lpt_ts = ts if ts is not None else (combo.t0 if effective_nb_shells is None else None)
+            run_fn = run_lpt
+            run_kwargs = {
+                "cosmo": cosmo,
+                "initial_conditions": initial_field,
+                "ts": lpt_ts,
+                "lpt_order": lpt_order,
+                "painting": painting,
+                "nb_shells": effective_nb_shells,
+                "shell_spacing": shell_spacing,
+                "min_width": getattr(combo, "min_width", 50.0),
+                "density_widths": density_widths_val,
+                "gradient_order": getattr(combo, "gradient_order", 1),
+                "laplace_fd": getattr(combo, "laplace_fd", False),
+                "dealiased": getattr(combo, "dealiased", False),
+                "exact_growth": getattr(combo, "exact_growth", False),
+            }
+        else:
+            sim_type = "born" if args.subcommand == "lensing" else args.subcommand
+            run_fn = run_simulations
+            run_kwargs = {
+                "cosmo": cosmo,
+                "initial_conditions": initial_field,
+                "solver": solver,
+                "lpt_order": lpt_order,
+                "sim_type": sim_type,
+                "nz_shear": nz_shear,
+                "ts": ts,
+                "nb_shells": effective_nb_shells,
+                "density_widths": density_widths_val,
+                "gradient_order": getattr(combo, "gradient_order", 1),
+                "laplace_fd": getattr(combo, "laplace_fd", False),
+                "dealiased": getattr(combo, "dealiased", False),
+                "exact_growth": getattr(combo, "exact_growth", False),
+            }
 
-        result = jax.block_until_ready(run_simulations(**run_kwargs))
+        result = jax.block_until_ready(run_fn(**run_kwargs))
 
         out_path = output_dir / f"{stem}.parquet"
-        if sim_type == "both":
-            result_rt, result_born = result
-            base = str(out_path.with_suffix(""))
-            _save_result(result_rt, cosmo, combo, output=base + "_raytraced.parquet")
-            _save_result(result_born, cosmo, combo, output=base + "_born.parquet")
-            del result_rt, result_born
-        else:
-            _save_result(result, cosmo, combo, output=str(out_path))
-            del result
+        _save_result(result, cosmo, combo, output=str(out_path))
+        del result
 
         del cosmo, initial_field, solver, painting, ts
 

@@ -48,9 +48,7 @@ def _compute_equal_vol_shells(R_last: float, N_total: int, min_width: float) -> 
     """
     R_start = 0.0
     if N_total * min_width > R_last - R_start:
-        raise ValueError(
-            f"Cannot fit {N_total} shells of min_width={min_width} Mpc/h " f"in max_radius={R_last:.2f} Mpc/h"
-        )
+        raise ValueError(f"Cannot fit {N_total} shells of min_width={min_width} Mpc/h in max_radius={R_last:.2f} Mpc/h")
 
     for M in range(N_total):
         R_split = R_last - M * min_width
@@ -282,15 +280,23 @@ def edges(centers, r_left=None):
 
 
 @jax.jit
-def distances(centers, r_left=None):
+def distances(centers, max_comoving):
     """
-    Computes absolute cell widths from centers.
-    Output order perfectly matches the input centers.
-    """
-    e = edges(centers, r_left)
+    Voronoi shell widths from centers.
 
-    # Edges guarantees Row 1 is always the right edge, Row 0 is the left.
-    return e[1] - e[0]
+    Each shell extends halfway to its neighbours; the innermost shell extends
+    to 0 and the outermost extends to ``max_comoving``.  Works for both
+    ascending and descending ``centers``.
+    """
+    is_descending = centers[0] > centers[-1]
+    c = jnp.where(is_descending, centers[::-1], centers)  # work ascending
+
+    inner_edges = 0.5 * (c[:-1] + c[1:])
+    lower = jnp.concatenate([jnp.zeros(1), inner_edges])
+    upper = jnp.concatenate([inner_edges, jnp.atleast_1d(jnp.asarray(max_comoving))])
+    widths_asc = upper - lower  # all positive (ascending order guarantees this)
+
+    return jnp.where(is_descending, widths_asc[::-1], widths_asc)
 
 
 @jax.jit
