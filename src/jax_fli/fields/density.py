@@ -118,7 +118,7 @@ class DensityField(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=volume_element,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
 
         return self.replace(array=new_array, unit=unit)

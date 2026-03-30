@@ -29,7 +29,7 @@ def convert_units(
     omega_m: float | None = None,  # Matter density parameter, needed for MSUN conversions
     mean_density: float | None = None,  # Mean density for overdensity conversions
     volume_element: float | None = None,  # Volume per voxel/pixel for density conversions
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
 ) -> Array:
     """
     Convert array between units of the same physical quantity.
@@ -66,7 +66,7 @@ def convert_units(
 
     # Dispatch to specific converter
     if isinstance(origin, PositionUnit):
-        return _convert_position(array, origin, destination, mesh_size, box_size, sharding)
+        return _convert_position(array, origin, destination, mesh_size, box_size, field_sharding)
     elif isinstance(origin, DensityUnit):
         return _convert_density(array, origin, destination, volume_element, omega_m, h, mean_density)
     elif isinstance(origin, ConvergenceUnit):
@@ -81,7 +81,7 @@ def _convert_position(
     destination: PositionUnit,
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
 ) -> Array:
     """
     Convert position units via GRID_ABSOLUTE as the canonical hub.
@@ -98,7 +98,7 @@ def _convert_position(
         Grid dimensions (nx, ny, nz)
     box_size : tuple of float
         Box size in Mpc/h
-    sharding : optional
+    field_sharding : optional
         JAX sharding for distributed computation
 
     Returns
@@ -113,7 +113,7 @@ def _convert_position(
     if origin == PositionUnit.GRID_ABSOLUTE:
         grid_coords = array
     elif origin == PositionUnit.GRID_RELATIVE:
-        grid_coords = array + uniform_particles(mesh_size, sharding=sharding)
+        grid_coords = array + uniform_particles(mesh_size, sharding=field_sharding)
     elif origin == PositionUnit.MPC_H:
         grid_coords = (array / box_size_arr) * mesh_size_arr
     else:
@@ -123,7 +123,7 @@ def _convert_position(
     if destination == PositionUnit.GRID_ABSOLUTE:
         return grid_coords
     elif destination == PositionUnit.GRID_RELATIVE:
-        return grid_coords - uniform_particles(mesh_size, sharding=sharding)
+        return grid_coords - uniform_particles(mesh_size, sharding=field_sharding)
     elif destination == PositionUnit.MPC_H:
         return (grid_coords / mesh_size_arr) * box_size_arr
     else:

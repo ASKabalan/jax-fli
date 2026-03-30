@@ -94,7 +94,7 @@ class FlatDensity(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=volume_element,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -110,7 +110,7 @@ class FlatDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
     ):
         """
         Visualize one or more flat-sky maps using matplotlib.
@@ -163,7 +163,7 @@ class FlatDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
     ) -> None:
         """Plot and display flat maps using matplotlib."""
         import matplotlib.pyplot as plt
@@ -528,7 +528,7 @@ class SphericalDensity(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=shell_volume_per_pixel,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -544,10 +544,13 @@ class SphericalDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
+        projection_type: str = "mollweide",
+        fontsize: dict | int | None = None,
+        border_linewidth: float = 3.0,
     ):
         """
-        Visualize one or more spherical maps using ``healpy.mollview``.
+        Visualize one or more spherical maps using ``healpy.projview``.
         """
         if not jax.core.is_concrete(self.array):
             raise ValueError("Cannot plot/show traced arrays. Use outside of jit context.")
@@ -582,6 +585,9 @@ class SphericalDensity(AbstractField):
                     show_colorbar=colorbar,
                     show_ticks=show_ticks,
                     title=title,
+                    projection_type=projection_type,
+                    fontsize=fontsize,
+                    border_linewidth=border_linewidth,
                 )
             else:
                 ax_i.axis("off")
@@ -599,7 +605,10 @@ class SphericalDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
+        projection_type: str = "mollweide",
+        fontsize: dict | int | None = None,
+        border_linewidth: float = 3.0,
     ) -> None:
         """
         Plot and display spherical maps using healpy.
@@ -619,6 +628,9 @@ class SphericalDensity(AbstractField):
             vmax=vmax,
             colorbar=colorbar,
             show_ticks=show_ticks,
+            projection_type=projection_type,
+            fontsize=fontsize,
+            border_linewidth=border_linewidth,
         )
         plt.show()
 
