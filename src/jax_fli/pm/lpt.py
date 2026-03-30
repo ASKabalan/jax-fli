@@ -11,12 +11,25 @@ from jaxtyping import Array
 
 from ..fields import DensityField, FieldStatus, PaintingOptions, ParticleField, PositionUnit
 from ..utils import compute_particle_scale_factors
-from ._resolve_geometry import resolve_ts_geometry
+from ._resolve_geometry import resolve_geometry
 
 __all__ = ["lpt"]
 
 
-@partial(jax.jit, static_argnames=["order", "nb_shells", "painting", "equal_vol", "min_width"])
+@partial(
+    jax.jit,
+    static_argnames=[
+        "order",
+        "nb_shells",
+        "painting",
+        "shell_spacing",
+        "min_width",
+        "gradient_order",
+        "laplace_fd",
+        "dealiased",
+        "exact_growth",
+    ],
+)
 def lpt(
     cosmo: Any,
     initial_field: DensityField,
@@ -27,8 +40,12 @@ def lpt(
     order: int = 1,
     initial_particles: Array = None,
     painting: PaintingOptions = PaintingOptions(target="particles"),
-    equal_vol: bool = False,
+    shell_spacing: str = "comoving",
     min_width: float = 50.0,
+    gradient_order: int = 1,
+    laplace_fd: bool = False,
+    dealiased: bool = False,
+    exact_growth: bool = False,
 ) -> tuple[Any, ParticleField]:
     """
     Compute LPT displacements/momenta for a DensityField.
@@ -85,7 +102,7 @@ def lpt(
         raise ValueError("initial_field must have status FieldStatus.INITIAL_FIELD.")
 
     if initial_particles is None:
-        initial_particles = uniform_particles(initial_field.mesh_size, sharding=initial_field.sharding)
+        initial_particles = uniform_particles(initial_field.mesh_size, sharding=initial_field.field_sharding)
         user_defined_particles = False
     else:
         user_defined_particles = True
@@ -96,17 +113,17 @@ def lpt(
         unit=PositionUnit.GRID_ABSOLUTE,
     )
 
-    ts_resolved, r_centers, density_widths, is_lightcone = resolve_ts_geometry(
+    ts_resolved, r_centers, density_widths = resolve_geometry(
         cosmo,
-        initial_field,
-        painting=painting,
+        initial_field.max_comoving_radius,
         ts=ts,
         nb_shells=nb_shells,
         density_widths=density_widths,
-        equal_vol=equal_vol,
+        shell_spacing=shell_spacing,
         min_width=min_width,
     )
 
+    is_lightcone = ts_resolved.size > 1
     if is_lightcone:
         a = compute_particle_scale_factors(cosmo, initial_particles)[..., None]
         snapshot_r = r_centers
@@ -122,8 +139,12 @@ def lpt(
         particles=initial_particles.array if user_defined_particles else None,
         a=a,
         halo_size=initial_field.halo_size,
-        sharding=initial_field.sharding,
+        sharding=initial_field.field_sharding,
         order=order,
+        gradient_order=gradient_order,
+        laplace_fd=laplace_fd,
+        dealiased=dealiased,
+        exact_growth=exact_growth,
     )
 
     status = FieldStatus.LPT1 if order == 1 else FieldStatus.LPT2
@@ -131,7 +152,7 @@ def lpt(
         status = FieldStatus.LIGHTCONE
 
     z_sources = jc.utils.a2z(a)
-    comoving_centers = jc.background.radial_comoving_distance(cosmo, a.flatten()).reshape(a.shape)
+    comoving_centers = jc.background.radial_comoving_distance(cosmo, a)
 
     dx_field = ParticleField.FromDensityMetadata(
         array=dx,
@@ -155,6 +176,9 @@ def lpt(
     if snapshot_r is not None:
         target = painting.target if painting is not None else "particles"
 
+        a_snapshot = jc.background.a_of_chi(cosmo, snapshot_r)
+        z_snapshot = jc.utils.a2z(a_snapshot)
+
         if target == "flat":
             dx_field = dx_field.paint_2d(
                 center=snapshot_r,
@@ -162,8 +186,6 @@ def lpt(
                 weights=painting.weights,
                 batch_size=painting.batch_size,
             )
-            a_snapshot = jc.background.a_of_chi(cosmo, snapshot_r)
-            z_snapshot = jc.utils.a2z(a_snapshot)
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
@@ -185,8 +207,6 @@ def lpt(
                 ud_grade_pess=painting.ud_grade_pess,
                 batch_size=painting.batch_size,
             )
-            a_snapshot = jc.background.a_of_chi(cosmo, snapshot_r)
-            z_snapshot = jc.utils.a2z(a_snapshot)
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
