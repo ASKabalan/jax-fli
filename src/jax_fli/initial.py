@@ -27,7 +27,7 @@ from .fields import DensityField, DensityUnit, FieldStatus
         "nside",
         "field_size",
         "halo_size",
-        "sharding",
+        "field_sharding",
     ],
 )
 def gaussian_initial_conditions(
@@ -42,7 +42,7 @@ def gaussian_initial_conditions(
     nside: int | None = None,
     field_size: tuple[int, int] | None = None,
     halo_size: int | tuple[int, int] = (0, 0),
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
 ) -> DensityField:
     """
     Sample Gaussian initial conditions and package them as a Field PyTree.
@@ -90,7 +90,7 @@ def gaussian_initial_conditions(
     if not is_prng_key(key):
         raise ValueError("key must be a jax.random.PRNGKey")
 
-    field = normal_field(seed=key, shape=mesh_size, sharding=sharding)
+    field = normal_field(seed=key, shape=mesh_size, sharding=field_sharding)
     return interpolate_initial_conditions(
         initial_field=field,
         mesh_size=mesh_size,
@@ -102,7 +102,7 @@ def gaussian_initial_conditions(
         nside=nside,
         field_size=field_size,
         halo_size=halo_size,
-        sharding=sharding,
+        field_sharding=field_sharding,
     )
 
 
@@ -118,7 +118,7 @@ def gaussian_initial_conditions(
         "nside",
         "field_size",
         "halo_size",
-        "sharding",
+        "field_sharding",
     ],
 )
 def interpolate_initial_conditions(
@@ -133,7 +133,7 @@ def interpolate_initial_conditions(
     nside: int | None = None,
     field_size: tuple[int, int] | None = None,
     halo_size: int | tuple[int, int] = (0, 0),
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
 ) -> DensityField:
     """
     Sample Gaussian initial conditions and package them as a Field PyTree.
@@ -170,7 +170,7 @@ def interpolate_initial_conditions(
         else:
             k = jnp.logspace(-4, 1, 128)
             pk = jc.power.linear_matter_power(cosmo, k)
-            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, sharding)
+            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, field_sharding)
 
     field = fft3d(initial_field)
     kvec = fftk(field)
@@ -186,7 +186,7 @@ def interpolate_initial_conditions(
         mesh_size=mesh_size,
         box_size=box_size,
         observer_position=observer_position,
-        sharding=sharding,
+        field_sharding=field_sharding,
         halo_size=halo_size,
         #
         nside=nside,
