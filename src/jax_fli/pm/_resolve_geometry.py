@@ -2,74 +2,358 @@
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
+from jaxpm.growth import Dplus_to_a, growth_factor
 
-from ..fields import DensityField
-from ..utils import compute_lightcone_shells, distances
+from ..utils import distances as _voronoi_distances
+
+_VALID_SHELL_SPACINGS = ("comoving", "a", "growth", "equal_vol")
 
 
-def resolve_ts_geometry(
-    cosmo, field: DensityField, painting, ts=None, nb_shells=None, density_widths=None, equal_vol=False, min_width=50.0
-):
-    """Resolve the ``ts`` / ``nb_shells`` / ``density_widths`` triple into canonical geometry.
+# ---------------------------------------------------------------------------
+# Edge generators — all return ascending comoving distance
+# ---------------------------------------------------------------------------
+
+
+def _generate_edges_comoving(n, r_max):
+    """Edges uniform in comoving distance."""
+    return jnp.linspace(0.0, r_max, n + 1)
+
+
+def _generate_edges_equal_vol(n, r_max):
+    """Edges uniform in volume (r^3)."""
+    r3_edges = jnp.linspace(0.0, r_max**3, n + 1)
+    return r3_edges ** (1.0 / 3.0)
+
+
+def _generate_edges_a(cosmo, n, r_max):
+    """Edges uniform in scale factor.  *r_max* is comoving Mpc/h."""
+    a_start = jc.background.a_of_chi(cosmo, jnp.array(r_max)).squeeze()
+    a_edges = jnp.linspace(a_start, 1.0, n + 1)
+    r_edges = jc.background.radial_comoving_distance(cosmo, a_edges)
+    return r_edges[::-1]  # ascending r
+
+
+def _generate_edges_growth(cosmo, n, r_max):
+    """Edges uniform in growth factor D+(a).  *r_max* is comoving Mpc/h."""
+    a_start = jc.background.a_of_chi(cosmo, jnp.array(r_max)).squeeze()
+    D_start = growth_factor(cosmo, jnp.atleast_1d(a_start)).squeeze()
+    D_today = growth_factor(cosmo, jnp.atleast_1d(1.0)).squeeze()
+    D_edges = jnp.linspace(D_start, D_today, n + 1)
+    a_edges = Dplus_to_a(cosmo, D_edges)
+    r_edges = jc.background.radial_comoving_distance(cosmo, a_edges)
+    return r_edges[::-1]  # ascending r
+
+
+# ---------------------------------------------------------------------------
+# Min-width checks (concrete values — function is NOT jittable)
+# ---------------------------------------------------------------------------
+
+
+def _check_min_width(widths, min_width):
+    """Check min_width on concrete JAX array of widths."""
+    min_w = float(jnp.min(widths))
+    if min_w < min_width - 1e-10:
+        raise ValueError(
+            f"Minimum shell width {min_w:.2f} Mpc/h is below min_width={min_width} Mpc/h. "
+            f"Reduce the number of shells/steps or lower min_width."
+        )
+
+
+def _check_min_width_static(shell_spacing, n, r_max, min_width):
+    """Fast pure-Python check before computing edges (comoving / equal_vol only)."""
+    if shell_spacing == "comoving":
+        width = r_max / n
+        if width < min_width - 1e-10:
+            raise ValueError(
+                f"Minimum shell width {width:.2f} Mpc/h is below min_width={min_width} Mpc/h. "
+                f"Reduce the number of shells/steps or lower min_width."
+            )
+    elif shell_spacing == "equal_vol":
+        outer_width = r_max * (1.0 - ((n - 1) / n) ** (1.0 / 3.0))
+        if outer_width < min_width - 1e-10:
+            raise ValueError(
+                f"Minimum shell width {outer_width:.2f} Mpc/h is below min_width={min_width} Mpc/h. "
+                f"Reduce the number of shells/steps or lower min_width."
+            )
+
+
+# ---------------------------------------------------------------------------
+# nb_steps ↔ nb_shells extrapolation helpers
+# ---------------------------------------------------------------------------
+
+
+def compute_n_steps_for_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, r_max_sim):
+    """Given *nb_shells* inside the box, extrapolate total integration steps to *r_max_sim*.
 
     Parameters
     ----------
     cosmo : jax_cosmo.Cosmology
         Cosmology for distance calculations.
-    field : DensityField
-        Field carrying box/observer metadata (needed for ``compute_lightcone_shells``).
-    ts : scalar, 1-D array, or 2-D ``(2, N)`` array, optional
-        Scale-factor specification.  Mutually exclusive with *nb_shells*.
-    nb_shells : int, optional
-        Number of radial shells.  Mutually exclusive with *ts*.
-    density_widths : scalar or array, optional
-        Override shell widths.  When *ts* is a scalar this triggers lightcone
-        mode for a single shell.
-    t1 : scalar, 1-D array, or 2-D ``(2, N)`` array, optional
-        End time or detailed time specification. Used if *ts* and *nb_shells* are None.
-        Defaults to 1.0.
+    shell_spacing : str
+        One of ``'comoving'``, ``'a'``, ``'growth'``, ``'equal_vol'``.
+    nb_shells : int
+        Number of radial shells inside the box.
+    max_box_comoving : float
+        Maximum comoving distance of the box (half the box diagonal), in Mpc/h.
+    r_max_sim : float
+        Maximum simulation comoving distance in Mpc/h.
 
     Returns
     -------
-    ts_resolved : jax.Array or None
-        Scale factors at shell centres (or ``None`` for snapshot mode).
-    r_centers : jax.Array or None
-        Comoving distances at shell centres.
-    density_widths : jax.Array or None
-        Shell widths in comoving distance.
-    is_lightcone : bool
-        ``True`` when the output should be treated as a lightcone (multi-shell
-        or single-shell with explicit *density_widths*).
-
-    Raises
-    ------
-    ValueError
-        If both *ts* and *nb_shells* are set, or if *ts* has an unsupported shape.
+    int
+        Estimated total integration steps.
     """
-    if ts is None and nb_shells is None:
-        raise ValueError("Cannot specify both `ts` and `nb_shells`.")
+    r_max_sim = float(r_max_sim)
 
-    is_projecting = painting.target in ("flat", "spherical")
+    if shell_spacing == "comoving":
+        delta = max_box_comoving / nb_shells
+        steps_outside = int((r_max_sim - max_box_comoving) / delta)
 
-    if ts is not None and nb_shells is not None:
-        raise ValueError("Cannot specify both `ts` and `nb_shells`.")
+    elif shell_spacing == "equal_vol":
+        delta_r3 = max_box_comoving**3 / nb_shells
+        steps_outside = int((r_max_sim**3 - max_box_comoving**3) / delta_r3)
 
-    # --- nb_shells path ---
+    elif shell_spacing == "a":
+        a_box = float(jc.background.a_of_chi(cosmo, jnp.array(max_box_comoving)).squeeze())
+        a_ini = float(jc.background.a_of_chi(cosmo, jnp.array(r_max_sim)).squeeze())
+        delta_a = (1.0 - a_box) / nb_shells
+        steps_outside = int((a_box - a_ini) / delta_a)
+
+    elif shell_spacing == "growth":
+        a_box = float(jc.background.a_of_chi(cosmo, jnp.array(max_box_comoving)).squeeze())
+        a_ini = float(jc.background.a_of_chi(cosmo, jnp.array(r_max_sim)).squeeze())
+        D_box = float(growth_factor(cosmo, jnp.atleast_1d(a_box)).squeeze())
+        D_ini = float(growth_factor(cosmo, jnp.atleast_1d(a_ini)).squeeze())
+        D_today = float(growth_factor(cosmo, jnp.atleast_1d(1.0)).squeeze())
+        delta_D = (D_today - D_box) / nb_shells
+        steps_outside = int((D_box - D_ini) / delta_D)
+
+    else:
+        raise ValueError(f"Unknown shell_spacing={shell_spacing!r}.")
+
+    return nb_shells + steps_outside
+
+
+# ---------------------------------------------------------------------------
+# Simulation stepping visualization
+# ---------------------------------------------------------------------------
+
+
+def simulation_stepping(
+    cosmo,
+    t0,
+    t1,
+    n_steps,
+    *,
+    ts=None,
+    nb_shells=None,
+    max_comoving_distance=None,
+    shell_spacing="comoving",
+    min_width=50.0,
+    density_widths=None,
+    time_stepping="a",
+):
+    """Return the exact scale factors visited during integration.
+
+    Replicates the double-loop logic of ``integrate()``: the outer loop
+    iterates over shell targets (from ``ts``), the inner loop advances by
+    ``dt_internal`` in the solver's time variable, clipping to each target.
+
+    When *nb_shells* and *max_comoving_distance* are provided, ``resolve_geometry``
+    is called internally to derive the shell scale factors.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+        Cosmology for distance/growth calculations.
+    t0 : float
+        Initial scale factor.
+    t1 : float
+        Final scale factor.
+    n_steps : int
+        Number of integration steps from *t0* to *t1*.
+    ts : array-like, optional
+        Shell target scale factors (descending). Mutually exclusive with
+        *nb_shells*.
+    nb_shells : int, optional
+        Number of lightcone shells. Requires *max_comoving_distance*.
+    max_comoving_distance : float, optional
+        Box half-diagonal in Mpc/h. Required when *nb_shells* is given.
+    shell_spacing : str, default='comoving'
+        Shell spacing mode (passed to ``resolve_geometry``).
+    min_width : float, default=50.0
+        Minimum shell width in Mpc/h (passed to ``resolve_geometry``).
+    density_widths : array-like, optional
+        Override shell widths (passed to ``resolve_geometry``).
+    time_stepping : str, default='a'
+        Integrator time variable: ``'a'``, ``'D'``, or ``'log_a'``.
+
+    Returns
+    -------
+    jax.Array
+        Scale factors at each visited time (including *t0* and shell targets).
+    """
+    t0, t1 = float(t0), float(t1)
+
+    # Resolve shell targets if needed
     if nb_shells is not None:
-        r_centers, ts_resolved = compute_lightcone_shells(
-            cosmo, field, nb_shells=nb_shells, equal_vol=equal_vol, min_width=min_width
+        if max_comoving_distance is None:
+            raise ValueError("`max_comoving_distance` is required when `nb_shells` is provided.")
+        shell_ts, _, _ = resolve_geometry(
+            cosmo,
+            max_comoving_distance,
+            nb_shells=nb_shells,
+            shell_spacing=shell_spacing,
+            min_width=min_width,
+            density_widths=density_widths,
         )
-        if density_widths is not None:
-            try:
-                density_widths = jnp.broadcast_to(density_widths, r_centers.shape)
-            except ValueError:
-                raise ValueError("density_widths must be broadcastable to the shape of r_centers.")
-        else:
-            density_widths = distances(r_centers, 0.0)
-        return ts_resolved, r_centers, density_widths, True
+        shell_targets = sorted(float(a) for a in shell_ts)
+    elif ts is not None:
+        shell_targets = sorted(float(a) for a in jnp.atleast_1d(jnp.asarray(ts)))
+    else:
+        shell_targets = None
 
+    # Compute dt_internal in the solver's time variable
+    dt_internal = _compute_dt(time_stepping, cosmo, t0, t1, n_steps)
+
+    if shell_targets is None:
+        # No shells — just step uniformly from t0 to t1
+        a_vals = [t0]
+        t_curr = t0
+        for _ in range(n_steps):
+            t_curr = _advance(time_stepping, cosmo, t_curr, dt_internal)
+            a_vals.append(min(t_curr, t1))
+        return jnp.array(a_vals)
+
+    # Double-loop: outer over shell targets, inner stepping
+    tol = 1e-10
+    a_vals = [t0]
+    t_curr = t0
+    for t_target in shell_targets:
+        t_target = float(t_target)
+        while t_curr < t_target - tol:
+            t_next = _advance(time_stepping, cosmo, t_curr, dt_internal)
+            # Clip to target (mirrors _clip_to_end)
+            if t_next > t_target - tol:
+                t_next = t_target
+            t_curr = t_next
+            a_vals.append(t_curr)
+
+    return jnp.array(a_vals)
+
+
+def _compute_dt(time_stepping, cosmo, t0, t1, n_steps):
+    """Compute step size in the solver's internal time variable (pure Python)."""
+    if time_stepping == "a":
+        return (t1 - t0) / n_steps
+    elif time_stepping == "D":
+        D0 = float(growth_factor(cosmo, jnp.atleast_1d(t0)).squeeze())
+        D1 = float(growth_factor(cosmo, jnp.atleast_1d(t1)).squeeze())
+        return (D1 - D0) / n_steps
+    elif time_stepping == "log_a":
+        return float((jnp.log(t1) - jnp.log(t0)) / n_steps)
+    else:
+        raise ValueError(f"Unknown time_stepping={time_stepping!r}. Use 'a', 'D', or 'log_a'.")
+
+
+def _advance(time_stepping, cosmo, t_curr, dt_internal):
+    """Advance t_curr by one step (pure Python)."""
+    if time_stepping == "a":
+        return t_curr + dt_internal
+    elif time_stepping == "D":
+        D_curr = float(growth_factor(cosmo, jnp.atleast_1d(t_curr)).squeeze())
+        return float(Dplus_to_a(cosmo, jnp.array(D_curr + dt_internal)).squeeze())
+    elif time_stepping == "log_a":
+        import math
+
+        return t_curr * math.exp(dt_internal)
+    else:
+        raise ValueError(f"Unknown time_stepping={time_stepping!r}.")
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+def resolve_geometry(
+    cosmo,
+    max_comoving_distance,
+    *,
+    ts=None,
+    nb_shells=None,
+    density_widths=None,
+    shell_spacing: str = "comoving",
+    min_width: float = 50.0,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Resolve the ``ts`` / ``nb_shells`` specification into canonical geometry.
+
+    This function is **not jittable** — it evaluates cosmology functions eagerly
+    to produce static Python ints for ``nb_shells``.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+        Cosmology for distance calculations.
+    max_comoving_distance : float
+        Maximum comoving distance of the box (half the box diagonal), in Mpc/h.
+    ts : scalar, 1-D array, or 2-D ``(2, N)`` array, optional
+        Scale-factor specification. Mutually exclusive with *nb_shells*.
+    nb_shells : int, optional
+        Number of radial shells inside the box. Mutually exclusive with *ts*.
+    density_widths : scalar or array, optional
+        Override shell widths.
+    shell_spacing : str, default='comoving'
+        ``'comoving'``, ``'a'``, ``'growth'``, or ``'equal_vol'``.
+    min_width : float, default=50.0
+        Minimum shell width in Mpc/h comoving.
+
+    Returns
+    -------
+    ts : jax.Array
+        Scale factors at shell centres.
+    r_centers : jax.Array
+        Comoving distances at shell centres.
+    density_widths : jax.Array
+        Shell widths in comoving distance.
+    """
+    if isinstance(max_comoving_distance, jax.core.Tracer):
+        raise RuntimeError("resolve_geometry cannot be called with traced arguments. Call it outside jax.jit.")
+
+    max_box_comoving = float(max_comoving_distance)
+
+    # --- Validation ---
+    if ts is not None and nb_shells is not None:
+        raise ValueError("`ts` and `nb_shells` are mutually exclusive.")
+
+    if ts is None and nb_shells is None:
+        raise ValueError("At least one of `ts` or `nb_shells` must be provided.")
+
+    if nb_shells is not None and shell_spacing not in _VALID_SHELL_SPACINGS:
+        raise ValueError(f"shell_spacing={shell_spacing!r} not in {_VALID_SHELL_SPACINGS}.")
+
+    # =====================================================================
+    # Path A: Manual ts
+    # =====================================================================
+    if ts is not None:
+        return _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving)
+
+    # =====================================================================
+    # Path B: Automatic generation from nb_shells
+    # =====================================================================
+    return _resolve_nb_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths)
+
+
+# ---------------------------------------------------------------------------
+# Path A: Manual ts
+# ---------------------------------------------------------------------------
+
+
+def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving):
+    """Handle user-provided ts (scalar, 1-D, or 2-D)."""
     ts = jnp.asarray(ts)
 
     # --- scalar ts ---
@@ -77,17 +361,10 @@ def resolve_ts_geometry(
         ts = jnp.atleast_1d(ts).squeeze()
         r_center = jc.background.radial_comoving_distance(cosmo, ts)
         if density_widths is not None:
-            # Single-shell lightcone
-            density_widths = jnp.asarray(density_widths).squeeze()
-            assert jnp.isscalar(density_widths), "For single-shell mode, density_widths must be a scalar."
-
-            density_widths = jnp.atleast_1d(density_widths)
-        elif is_projecting:
-            raise ValueError("Projection painting requires explicit density_widths for single-shell mode.")
+            density_widths = jnp.atleast_1d(jnp.asarray(density_widths).squeeze())
         else:
             density_widths = jnp.array([0.0])
-        # Snapshot mode
-        return jnp.atleast_1d(ts), jnp.atleast_1d(r_center), density_widths, False
+        return jnp.atleast_1d(ts), jnp.atleast_1d(r_center), density_widths
 
     # --- 1-D array: shell centres ---
     if ts.ndim == 1:
@@ -97,10 +374,9 @@ def resolve_ts_geometry(
                 density_widths = jnp.broadcast_to(density_widths, r_centers.shape)
             except ValueError:
                 raise ValueError("density_widths must be broadcastable to the shape of ts.")
-            density_widths = density_widths
         else:
-            density_widths = distances(r_centers, 0.0)
-        return ts, r_centers, density_widths, True
+            density_widths = _voronoi_distances(r_centers, max_box_comoving)
+        return ts, r_centers, density_widths
 
     # --- 2-D array (2, N): near/far ---
     if ts.ndim == 2 and ts.shape[0] == 2:
@@ -108,7 +384,52 @@ def resolve_ts_geometry(
         r_near, r_far = jc.background.radial_comoving_distance(cosmo, jnp.array([a_near, a_far]))
         r_centers = 0.5 * (r_near + r_far)
         ts_resolved = jc.background.a_of_chi(cosmo, r_centers)
-        density_widths = jnp.abs(r_far - r_near)
-        return ts_resolved, r_centers, density_widths, True
+        density_widths_out = jnp.abs(r_far - r_near)
+        return ts_resolved, r_centers, density_widths_out
 
     raise ValueError(f"ts has unsupported shape {ts.shape}. Expected scalar, 1-D, or (2, N).")
+
+
+# ---------------------------------------------------------------------------
+# Path B: nb_shells — shells inside box only
+# ---------------------------------------------------------------------------
+
+
+def _resolve_nb_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths):
+    """Generate ``nb_shells`` shells inside the box."""
+    # Generate edges inside box
+    if shell_spacing == "comoving":
+        _check_min_width_static("comoving", nb_shells, max_box_comoving, min_width)
+        r_edges = _generate_edges_comoving(nb_shells, max_box_comoving)
+    elif shell_spacing == "equal_vol":
+        _check_min_width_static("equal_vol", nb_shells, max_box_comoving, min_width)
+        r_edges = _generate_edges_equal_vol(nb_shells, max_box_comoving)
+    elif shell_spacing == "a":
+        r_edges = _generate_edges_a(cosmo, nb_shells, max_box_comoving)
+    elif shell_spacing == "growth":
+        r_edges = _generate_edges_growth(cosmo, nb_shells, max_box_comoving)
+    else:
+        raise ValueError(f"Unknown shell_spacing={shell_spacing!r}.")
+
+    r_centers = 0.5 * (r_edges[:-1] + r_edges[1:])
+    widths = jnp.abs(r_edges[1:] - r_edges[:-1])
+
+    # Min-width check for a/growth (comoving/equal_vol already caught above)
+    if shell_spacing in ("a", "growth"):
+        jax.debug.callback(_check_min_width, widths, min_width)
+
+    if density_widths is not None:
+        try:
+            widths = jnp.broadcast_to(density_widths, r_centers.shape)
+        except ValueError:
+            raise ValueError("density_widths must be broadcastable to the shape of r_centers.")
+
+    ts_resolved = jc.background.a_of_chi(cosmo, r_centers)
+
+    # Sort descending in r (far-to-near)
+    order = jnp.argsort(-r_centers)
+    r_centers = r_centers[order]
+    ts_resolved = ts_resolved[order]
+    widths = widths[order]
+
+    return ts_resolved, r_centers, widths

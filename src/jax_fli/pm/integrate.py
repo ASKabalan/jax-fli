@@ -1,4 +1,3 @@
-import math
 from functools import partial
 from typing import Any, Literal
 
@@ -9,7 +8,7 @@ import jax.numpy as jnp
 from jax._src.numpy.util import promote_dtypes_inexact
 
 from ..fields import ParticleField
-from .solvers import AbstractNBodySolver, NBodyState
+from .solvers import AbstractNBodySolver, NBodyState, _advance_time, _compute_dt_internal
 
 AdjointType = Literal["reverse", "checkpointed"]
 
@@ -60,7 +59,7 @@ def integrate(
     solver: AbstractNBodySolver,
     t0: float,
     t1: float,
-    dt0: float,
+    n_steps: int,
     adjoint: AdjointType = "checkpointed",
     checkpoints: int | None = None,
 ) -> Any:
@@ -73,13 +72,14 @@ def integrate(
       - 'reverse': Custom VJP with explicit backward pass using solver.reverse()
 
     Args:
-        y0: Initial state tuple (displacement, velocities) as ParticleFields.
+        displacements: Displacement ParticleField from LPT.
+        velocities: Velocity/momentum ParticleField from LPT.
         cosmo: Cosmology parameters.
         ts: Array of snapshot times at which to save output.
         solver: An AbstractNBodySolver instance.
         t0: Initial time for integration.
-        t1: Final time for integration (used to initialize solver).
-        dt0: Step size for integration.
+        t1: Final time for integration.
+        n_steps: Number of integration steps from t0 to t1.
         adjoint: Adjoint mode, either 'checkpointed' or 'reverse'.
 
     Returns:
@@ -87,6 +87,7 @@ def integrate(
 
     Raises:
         ValueError: If adjoint='reverse' is used with a non-reversible correction kernel.
+        ValueError: If adjoint='reverse' is used with time_stepping != 'a'.
     """
     # Validate reversibility compatibility
     if adjoint == "reverse":
@@ -95,24 +96,35 @@ def integrate(
                 f"Cannot use adjoint='reverse' with {type(solver.pgd_kernel).__name__}. "
                 f"Use SharpeningKernel for reversible integration, or use adjoint='checkpointed'."
             )
+        if solver.time_stepping != "a":
+            raise ValueError(
+                f"Cannot use adjoint='reverse' with time_stepping={solver.time_stepping!r}. "
+                f"The custom VJP backward pass assumes uniform a-steps. Use adjoint='checkpointed'."
+            )
 
     (ts,) = promote_dtypes_inexact(ts)
 
+    # Compute step sizes
+    dt0_a = (t1 - t0) / n_steps
+
     # Initialize solver OUTSIDE the loop
     disp0, vel0 = displacements, velocities
-    t1_init = t0 + dt0
-    disp, vel, state = solver.init(disp0, vel0, t0, t1_init, dt0, cosmo)
+    t1_init = t0 + dt0_a
+    disp, vel, state = solver.init(disp0, vel0, t0, t1_init, dt0_a, cosmo)
 
     # Bundle all differentiable args
     y0_cosmo_ts_solver = ((disp, vel, state), cosmo, ts, solver)
 
     if adjoint == "checkpointed":
-        return _integrate_checkpointed(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0, checkpoints=checkpoints)
+        return _integrate_checkpointed(
+            y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, checkpoints=checkpoints
+        )
     elif adjoint == "reverse":
-        return _integrate_reverse_adjoint(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0)
+        # For reverse adjoint, time_stepping must be "a" (validated above), so dt0_a is the step
+        return _integrate_reverse_adjoint(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0_a)
     elif adjoint == "lax":
         # For testing: just run the forward pass without custom VJP
-        snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0, kind="bounded")
+        snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, kind="bounded")
         return snapshots
     else:
         raise ValueError(f"Unknown adjoint type: {adjoint}")
@@ -123,7 +135,8 @@ def _integrate_checkpointed(
     *,
     t0: float,
     t1: float,
-    dt0: float,
+    n_steps: int,
+    dt0_a: float,
     checkpoints: int | None = None,
 ) -> Any:
     """
@@ -135,12 +148,16 @@ def _integrate_checkpointed(
     Args:
         y0_cosmo_ts_solver: Bundled differentiable args (y0, cosmo, ts, solver).
         t0: Initial time.
-        dt0: Step size.
+        t1: Final time.
+        n_steps: Number of integration steps.
+        dt0_a: Step size in scale factor (for solver.step dt parameter).
 
     Returns:
         Snapshots at each time in ts.
     """
-    snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0, kind="checkpointed", checkpoints=checkpoints)
+    snapshots, _ = _fwd_loop(
+        y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, kind="checkpointed", checkpoints=checkpoints
+    )
     return snapshots
 
 
@@ -154,18 +171,20 @@ def _integrate_reverse_adjoint(
     """
     Integration with custom VJP using explicit backward pass.
 
-    The backward pass uses solver.reverse() to step backwards through time,
-    accumulating gradients. This requires the solver to implement reverse().
+    Only supports time_stepping="a" (validated in integrate()).
+    dt0 here is dt0_a = (t1 - t0) / n_steps.
 
     Args:
         y0_cosmo_ts_solver: Bundled differentiable args (y0, cosmo, ts, solver).
         t0: Initial time.
-        dt0: Step size.
+        t1: Final time.
+        dt0: Step size in scale factor.
 
     Returns:
         Snapshots at each time in ts.
     """
-    snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0, kind="lax")
+    n_steps = round((t1 - t0) / dt0)
+    snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0, kind="lax")
     return snapshots
 
 
@@ -183,12 +202,14 @@ def _integrate_fwd(
     Args:
         y0_cosmo_ts_solver: Bundled differentiable args.
         t0: Initial time.
-        dt0: Step size.
+        t1: Final time.
+        dt0: Step size in scale factor.
 
     Returns:
         Tuple of (snapshots, residuals) where residuals contain state needed for backward.
     """
-    snapshots, y_final = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, dt0=dt0, kind="lax")
+    n_steps = round((t1 - t0) / dt0)
+    snapshots, y_final = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0, kind="lax")
     y0, cosmo, ts, solver = y0_cosmo_ts_solver
     return snapshots, (y_final, cosmo, ts, solver)
 
@@ -198,7 +219,8 @@ def _fwd_loop(
     *,
     t0: float,
     t1: float,
-    dt0: float,
+    n_steps: int,
+    dt0_a: float,
     kind: str = "lax",
     checkpoints: int | None = None,
 ) -> tuple[Any, tuple[ParticleField, ParticleField, NBodyState]]:
@@ -206,7 +228,7 @@ def _fwd_loop(
     Forward integration loop for AbstractNBodySolver.
 
     The integration process is organized into two nested loops:
-      - The inner loop steps forward in increments of dt0 until reaching the current snapshot time.
+      - The inner loop steps forward using the solver's time_stepping variable until reaching the snapshot time.
       - The outer loop iterates over each snapshot time in ts, applying save_at to record the state.
 
     Args:
@@ -216,7 +238,9 @@ def _fwd_loop(
             - ts: Array of snapshot times
             - solver: The AbstractNBodySolver instance
         t0: The starting time for integration.
-        dt0: The step size used for forward integration.
+        t1: The final time for integration.
+        n_steps: Number of integration steps from t0 to t1.
+        dt0_a: Step size in scale factor (passed to solver.step as dt parameter).
         kind: Loop type ('lax' or 'checkpointed').
 
     Returns:
@@ -225,16 +249,18 @@ def _fwd_loop(
           - The final state (disp, vel, state) after integration.
     """
     (disp, vel, state), cosmo, ts, solver = y0_cosmo_ts_solver
-    # Use t1 for max_steps upper bound to avoid ConcretizationTypeError if t0 is traced
-    # We assume t0 >= 0.
-    max_steps = int(math.ceil(t1 / dt0)) + 5
+    # n_steps is static, so max_steps is a compile-time constant
+    max_steps = n_steps + 5
+
+    # Compute step size in the solver's internal time variable
+    dt_internal = _compute_dt_internal(solver.time_stepping, t0, t1, n_steps, cosmo)
 
     def inner_forward_step(carry):
         """Single integration step."""
         disp_, vel_, state_, t_curr, t_target = carry
-        t_next = t_curr + dt0
+        t_next = _advance_time(solver.time_stepping, t_curr, dt_internal, cosmo)
         t_next = _clip_to_end(t_curr, t_next, t_target)
-        disp_next, vel_next, state_next = solver.step(disp_, vel_, t_curr, t_next, dt0, state_, cosmo)
+        disp_next, vel_next, state_next = solver.step(disp_, vel_, t_curr, t_next, dt0_a, state_, cosmo)
         return (disp_next, vel_next, state_next, t_next, t_target)
 
     def inner_forward_cond(carry):
@@ -262,7 +288,7 @@ def _fwd_loop(
         )
 
         # Save snapshot at t_target
-        snapshot = solver.save_at(disp_, vel_, t_target, dt0, state_, cosmo)
+        snapshot = solver.save_at(disp_, vel_, t_target, dt0_a, state_, cosmo)
 
         outer_carry = (disp_, vel_, state_, t_target)
         return outer_carry, snapshot

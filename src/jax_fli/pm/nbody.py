@@ -9,10 +9,10 @@ import jax_cosmo as jc
 
 from ..fields import FieldStatus, ParticleField
 from ..fields.painting import PaintingOptions
-from ._resolve_geometry import resolve_ts_geometry
+from ._resolve_geometry import resolve_geometry
 from .integrate import AdjointType, integrate
 from .interp import NoInterp
-from .solvers import AbstractNBodySolver, EfficientDriftDoubleKick
+from .solvers import AbstractNBodySolver, DoubleKickDrift
 
 __all__ = ["nbody"]
 
@@ -25,25 +25,27 @@ def _validate_t0_cb(lpt_t0, t0):
         raise ValueError(f"Starting scale factor t0={t0} does not match LPT fields' scale factor {lpt_t0}.")
 
 
-@partial(jax.jit, static_argnames=["t0", "t1", "dt0", "nb_shells", "adjoint", "checkpoints", "equal_vol", "min_width"])
+@partial(
+    jax.jit,
+    static_argnames=[
+        "n_steps",
+        "nb_shells",
+        "adjoint",
+        "checkpoints",
+    ],
+)
 def nbody(
     cosmo,
     dx_field: ParticleField,
     p_field: ParticleField,
     *,
-    t0: float = 0.1,
-    t1: float = 1.0,
-    dt0: float = 0.05,
-    ts: jnp.ndarray | None = None,
+    solver: AbstractNBodySolver = DoubleKickDrift(interp_kernel=NoInterp(painting=PaintingOptions(target="particles"))),
+    ts=None,
     nb_shells: int | None = None,
-    density_widths: float | jnp.ndarray | None = None,
-    solver: AbstractNBodySolver = EfficientDriftDoubleKick(
-        interp_kernel=NoInterp(painting=PaintingOptions(target="particles"))
-    ),
+    n_steps: int | None = None,
+    density_widths=None,
     adjoint: AdjointType = "checkpointed",
     checkpoints: int | None = None,
-    equal_vol: bool = False,
-    min_width: float = 50.0,
 ) -> jax.Array:
     """
     Evolve particles forward in time and save lightcone density planes.
@@ -59,38 +61,25 @@ def nbody(
         Displacement field from LPT.
     p_field : ParticleField
         Momentum field from LPT.
-    t1 : float, default=1.0
-        Final scale factor. Used as the snapshot target if *ts* and *nb_shells* are None.
-    dt0 : float, default=0.05
-        Integration time step.
-    ts : jnp.ndarray or None, optional
-        Scale factor specification.  Mutually exclusive with *nb_shells*.
-        Accepts scalar, 1-D array (shell centres), or 2-D ``(2, N)``
-        (near/far per shell).
-    nb_shells : int or None, optional
-        Number of shells (alternative to *ts*).
-    density_width : float or array, optional
+    solver : AbstractNBodySolver
+        Solver instance with t0, t1 configured.
+    ts : float, 1-D array, or 2-D ``(2, N)`` array, optional
+        Scale factor specification. Mutually exclusive with *nb_shells*.
+    nb_shells : int, optional
+        Number of radial lightcone shells (alternative to *ts*).
+    n_steps : int, optional
+        Number of integration steps. Overrides ``solver.n_steps`` if given.
+    density_widths : float or array, optional
         Override shell widths.
-    solver : AbstractNBodySolver or None, optional
-        Solver instance. If None, uses EfficientDriftDoubleKick with NoInterp/NoCorrection.
     adjoint : AdjointType, default='checkpointed'
         Adjoint mode: 'checkpointed' or 'reverse'.
+    checkpoints : int or None, optional
+        Number of checkpoints for 'checkpointed' adjoint.
 
     Returns
     -------
     Field
         Lightcone as a stacked Field PyTree.
-
-    Raises
-    ------
-    ValueError
-        If fields don't match.
-
-    Examples
-    --------
-    >>> cosmo = Planck18()
-    >>> dx, p = lpt(cosmo, initial_field, ts=0.1, order=1)
-    >>> lightcone = nbody(cosmo, dx, p, t1=1.0, nb_shells=10)
     """
 
     assert (
@@ -105,35 +94,46 @@ def nbody(
     if dx_field.box_size != p_field.box_size:
         raise ValueError("dx_field and p_field must have matching box_size")
 
+    # Derive t0 from solver or from LPT fields
+    t0 = solver.t0
+    if t0 is None:
+        t0 = float(jnp.atleast_1d(dx_field.scale_factors).squeeze())
+    t1 = solver.t1
+
     # Check that t0 matches the LPT fields' scale factor
     jax.debug.callback(_validate_t0_cb, dx_field.scale_factors, t0)
 
+    # Always resolve geometry through resolve_geometry
     if ts is None and nb_shells is None:
-        # Snapshot mode: single output at t1
-        ts = jnp.array([t1])
+        ts = jnp.array([t1])  # snapshot default
 
-    # Resolve lightcone geometry via shared helper
-    ts_resolved, r_centers, density_plane_width, _ = resolve_ts_geometry(
+    ts_resolved, r_centers, density_plane_width = resolve_geometry(
         cosmo,
-        dx_field,
-        painting=solver.interp_kernel.painting,
+        dx_field.max_comoving_radius,
         ts=ts,
         nb_shells=nb_shells,
         density_widths=density_widths,
-        equal_vol=equal_vol,
-        min_width=min_width,
+        shell_spacing=solver.shell_spacing,
+        min_width=solver.min_width,
     )
-
-    max_comoving_distance = dx_field.max_comoving_radius
-
-    # Update solver's interp_kernel with geometry
-    updated_interp_kernel = solver.interp_kernel.update_geometry(
+    updated_interp = solver.interp_kernel.update_geometry(
         ts=ts_resolved,
         r_centers=r_centers,
         density_widths=density_plane_width,
-        max_comoving_distance=max_comoving_distance,
+        max_comoving_distance=dx_field.max_comoving_radius,
     )
-    solver = eqx.tree_at(lambda s: s.interp_kernel, solver, updated_interp_kernel)
+    solver = eqx.tree_at(lambda s: s.interp_kernel, solver, updated_interp)
+
+    # n_steps: arg takes priority, then solver, then error
+    n_steps_final = n_steps if n_steps is not None else solver.n_steps
+    if n_steps_final is None:
+        raise ValueError("n_steps must be provided either as arg or on the solver.")
+
+    if nb_shells is not None and nb_shells > n_steps_final:
+        raise ValueError(
+            f"nb_shells={nb_shells} exceeds n_steps={n_steps_final}. "
+            f"The number of shells cannot exceed the number of integration steps."
+        )
 
     # Run integration
     lightcone = integrate(
@@ -144,7 +144,7 @@ def nbody(
         solver=solver,
         t0=t0,
         t1=t1,
-        dt0=dt0,
+        n_steps=n_steps_final,
         adjoint=adjoint,
         checkpoints=checkpoints,
     )
