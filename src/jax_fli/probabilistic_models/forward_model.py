@@ -6,7 +6,7 @@ import jax
 
 from ..fields.painting import PaintingOptions
 from ..lensing import born, raytrace
-from ..pm import DriftInterp, NoCorrection, NoInterp, ReversibleDoubleKickDrift, lpt, nbody
+from ..pm import DoubleKickDrift, DriftInterp, NoCorrection, NoInterp, lpt, nbody
 from .config import Configurations
 
 __all__ = ["make_full_field_model"]
@@ -20,6 +20,26 @@ def make_full_field_model(
     geometry = config.geometry
     if geometry not in {"flat", "spherical"}:
         raise ValueError("geometry must be either 'flat' or 'spherical'")
+
+    # Create solver with appropriate interp_kernel based on geometry
+    if config.drift_on_lightcone:
+        interp_kernel = DriftInterp(
+            painting=PaintingOptions(target=geometry, scheme=config.scheme, paint_nside=config.paint_nside)
+        )
+    else:
+        interp_kernel = NoInterp(
+            painting=PaintingOptions(target=geometry, scheme=config.scheme, paint_nside=config.paint_nside)
+        )
+
+    solver = DoubleKickDrift(
+        pgd_kernel=NoCorrection(),
+        interp_kernel=interp_kernel,
+        t0=config.t0,
+        t1=config.t1,
+        n_steps=config.nb_steps,
+        shell_spacing=config.shell_spacing,
+        min_width=config.min_width,
+    )
 
     def forward_model(cosmo, initial_conditions):
         # warmstart NZ
@@ -40,29 +60,14 @@ def make_full_field_model(
             order=config.lpt_order,
         )
 
-        # Create solver with appropriate interp_kernel based on geometry
-        if config.drift_on_lightcone:
-            interp_kernel = DriftInterp(painting=PaintingOptions(target=geometry))
-        else:
-            interp_kernel = NoInterp(painting=PaintingOptions(target=geometry))
-
-        solver = ReversibleDoubleKickDrift(
-            pgd_kernel=NoCorrection(),
-            interp_kernel=interp_kernel,
-        )
-
         lightcone = nbody(
             cosmo,
             dx_field,
             p_field,
-            t1=config.t1,
-            dt0=config.dt0,
-            nb_shells=config.number_of_shells,
             solver=solver,
+            nb_shells=config.number_of_shells,
             adjoint=config.adjoint,
             checkpoints=config.checkpoints,
-            equal_vol=config.equal_vol,
-            min_width=config.min_width,
         )
 
         lensing_fn = raytrace if config.lensing == "raytrace" else born
