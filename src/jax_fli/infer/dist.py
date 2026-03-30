@@ -33,12 +33,12 @@ class PowerSpectrumTransform(Transform):
     domain = constraints.real
     codomain = constraints.real
 
-    def __init__(self, mesh_size, box_size, cosmo=None, pk_fn=None, sharding=None):
+    def __init__(self, mesh_size, box_size, cosmo=None, pk_fn=None, field_sharding=None):
         self.mesh_size = mesh_size
         self.box_size = box_size
         self.cosmo = cosmo
         self.pk_fn = pk_fn
-        self.sharding = sharding
+        self.field_sharding = field_sharding
 
     def _get_pkmesh(self, field):
         """Helper to run your exact power spectrum logic."""
@@ -50,7 +50,7 @@ class PowerSpectrumTransform(Transform):
             k = jnp.logspace(-4, 1, 256)
             pk = jc.power.linear_matter_power(self.cosmo, k)
 
-            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, self.sharding)
+            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, self.field_sharding)
         else:
             pk_fn = self.pk_fn
 
@@ -104,13 +104,13 @@ class PowerSpectrumTransform(Transform):
     def tree_flatten(self):
         # Cosmo goes in params because it is traced by MCMC.
         # Everything else is static metadata.
-        return (self.cosmo,), (self.mesh_size, self.box_size, self.pk_fn, self.sharding)
+        return (self.cosmo,), (self.mesh_size, self.box_size, self.pk_fn, self.field_sharding)
 
     @classmethod
     def tree_unflatten(cls, aux_data, params):
         (cosmo,) = params
-        mesh_size, box_size, pk_fn, sharding = aux_data
-        return cls(mesh_size, box_size, cosmo, pk_fn, sharding)
+        mesh_size, box_size, pk_fn, field_sharding = aux_data
+        return cls(mesh_size, box_size, cosmo, pk_fn, field_sharding)
 
 
 class DistributedIC(TransformedDistribution):
@@ -134,7 +134,7 @@ class DistributedIC(TransformedDistribution):
         field_size=None,
         cosmo=None,
         pk_fn=None,
-        sharding=None,
+        field_sharding=None,
         validate_args=None,
     ):
         self.mesh_size = mesh_size
@@ -145,7 +145,7 @@ class DistributedIC(TransformedDistribution):
         self.nside = nside
         self.field_size = field_size
         self.cosmo = cosmo
-        self.sharding = sharding
+        self.field_sharding = field_sharding
 
         # 1. Base is the sharded N(0,1) noise
         base_dist = DistributedNormal(
@@ -158,7 +158,7 @@ class DistributedIC(TransformedDistribution):
             flatsky_npix=flatsky_npix,
             nside=nside,
             field_size=field_size,
-            sharding=sharding,
+            field_sharding=field_sharding,
             field_type="density",
         )
 
@@ -168,7 +168,7 @@ class DistributedIC(TransformedDistribution):
             box_size=box_size,
             cosmo=cosmo,
             pk_fn=pk_fn,
-            sharding=sharding,
+            field_sharding=field_sharding,
         )
 
         super().__init__(base_dist, [transform], validate_args=validate_args)
@@ -218,7 +218,7 @@ class DistributedNormal(Normal):
         flatsky_npix=None,
         nside=None,
         field_size=None,
-        sharding=None,
+        field_sharding=None,
         field_type=None,
         *,
         validate_args=None,
@@ -252,7 +252,7 @@ class DistributedNormal(Normal):
                 "flatsky_npix": flatsky_npix,
                 "nside": nside,
                 "field_size": field_size,
-                "sharding": sharding,
+                "field_sharding": field_sharding,
             }
             for arg_name, arg_val in metadata_args.items():
                 if arg_val is not None:
@@ -268,7 +268,7 @@ class DistributedNormal(Normal):
             flatsky_npix = loc.flatsky_npix
             nside = loc.nside
             field_size = loc.field_size
-            sharding = loc.sharding
+            field_sharding = loc.field_sharding
 
         else:
             # Apply standard defaults if loc is just an array
@@ -309,7 +309,7 @@ class DistributedNormal(Normal):
         self.flatsky_npix = flatsky_npix
         self.nside = nside
         self.field_size = field_size
-        self.sharding = sharding
+        self.field_sharding = field_sharding
         self.field_type = field_type
 
         super().__init__(self.loc, self.scale, validate_args=validate_args)
@@ -317,7 +317,8 @@ class DistributedNormal(Normal):
     def sample(self, key: Key, sample_shape=()):
         assert is_prng_key(key)
         eps_shape = sample_shape + self.batch_shape + self.event_shape
-        eps = normal_field(key, eps_shape, self.sharding)
+        print(f"Sampling with shape {eps_shape} and sharding {self.field_sharding}")
+        eps = normal_field(key, eps_shape, self.field_sharding)
         arr = self.loc + eps * self.scale
 
         cls = _FIELD_CLS.get(self.field_type)
@@ -334,7 +335,7 @@ class DistributedNormal(Normal):
             field_size=self.field_size,
             status=FieldStatus.INITIAL_FIELD,
             unit=DensityUnit.DENSITY,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
 
     def log_prob(self, value):
@@ -354,7 +355,7 @@ class DistributedNormal(Normal):
             self.flatsky_npix,
             self.nside,
             self.field_size,
-            self.sharding,
+            self.field_sharding,
             self.field_type,
         )
 
@@ -369,7 +370,7 @@ class DistributedNormal(Normal):
             flatsky_npix,
             nside,
             field_size,
-            sharding,
+            field_sharding,
             field_type,
         ) = aux_data
         return cls(
@@ -382,7 +383,7 @@ class DistributedNormal(Normal):
             flatsky_npix=flatsky_npix,
             nside=nside,
             field_size=field_size,
-            sharding=sharding,
+            field_sharding=field_sharding,
             field_type=field_type,
         )
 
