@@ -9,7 +9,6 @@ from typing import ParamSpec, TypeVar
 
 import jax
 import jax.numpy as jnp
-import orbax.checkpoint as ocp
 from jaxtyping import Key, PyTree
 
 from ..io import load_sharded, save_sharded
@@ -26,6 +25,7 @@ def requires_samplers(func: Callable[_Param, _Return]) -> Callable[_Param, _Retu
     try:
         import blackjax  # noqa: F401
         import numpyro  # noqa: F401
+        import orbax.checkpoint  # noqa: F401
 
         return func
     except ImportError:
@@ -80,6 +80,7 @@ def batched_sampling(
     """
     import blackjax
     import numpyro
+    import orbax.checkpoint as ocp
 
     os.makedirs(path, exist_ok=True)
     state_path = f"{path}/sampling_state"

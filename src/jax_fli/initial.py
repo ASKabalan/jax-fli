@@ -10,7 +10,6 @@ import jax_cosmo as jc
 from jaxpm.distributed import fft3d, ifft3d, normal_field
 from jaxpm.kernels import fftk, interpolate_power_spectrum
 from jaxtyping import Array, PRNGKeyArray
-from numpyro.util import is_prng_key
 
 from .fields import DensityField, DensityUnit, FieldStatus
 
@@ -87,8 +86,6 @@ def gaussian_initial_conditions(
     >>> field.array.shape
     (16, 16, 16)
     """
-    if not is_prng_key(key):
-        raise ValueError("key must be a jax.random.PRNGKey")
 
     field = normal_field(seed=key, shape=mesh_size, sharding=field_sharding)
     return interpolate_initial_conditions(
