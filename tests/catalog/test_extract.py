@@ -171,6 +171,9 @@ def test_extract_singlechain_layout(tmp_path):
     for key in COSMO_KEYS:
         assert result.cosmo[key].shape == (1, N_SAMPLES_PER_CHAIN), f"cosmo['{key}'].shape = {result.cosmo[key].shape}"
 
+    assert result.mean_field is not None
+    assert result.std_field is not None
+
     assert result.mean_field.array.shape == (1, *MESH_SIZE)
     assert result.std_field.array.shape == (1, *MESH_SIZE)
 
@@ -181,6 +184,7 @@ def test_extract_field_metadata_preserved(tmp_path):
     result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     mean_field = result.mean_field
+    assert mean_field is not None
     assert mean_field.mesh_size == MESH_SIZE
     assert mean_field.box_size == BOX_SIZE
 
@@ -202,6 +206,7 @@ def test_catalog_extract_getitem_slice(tmp_path):
     result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     sub = result[0:1]
+    assert sub.mean_field is not None
     assert sub.n_chains == 1
     assert sub.cosmo["Omega_c"].shape == (1, N_SAMPLES_PER_CHAIN)
     assert sub.mean_field.array.shape == (1, *MESH_SIZE)

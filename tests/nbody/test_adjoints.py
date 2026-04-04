@@ -171,6 +171,7 @@ def _timed(fn, *args, **kwargs):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("solver_name", ["DKD", "KKD", "BullFrog"])
 @pytest.mark.parametrize("n_steps", [10, 20])
 def test_checkpointed_vs_reverse(cosmo, jfli_initial_field, perturbed_reference, solver_name, n_steps):

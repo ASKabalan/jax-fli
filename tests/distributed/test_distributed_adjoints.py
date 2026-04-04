@@ -211,8 +211,6 @@ def test_distributed_nbody_gradient_equivalence(single_device_ics, cosmo, solver
         result = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
         return jnp.sum(result.array**2)
 
-    return forward
-
     # Single-device gradient
     grad_single = jax.grad(forward)(single_device_ics)
 
@@ -242,14 +240,11 @@ def test_distributed_born_gradient_equivalence(single_device_ics, cosmo, pdims):
     solver = _make_solver("KKD", "spherical")
 
     @jax.jit
-    def forward(ic_array):
-        ic = ics.replace(array=ic_array)
+    def forward(ic):
         dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
         lc = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
         kappa = jfli.born(cosmo, lc, nz_shear=Z_SOURCE_BORN)
         return jnp.sum(kappa.array**2)
-
-    return forward
 
     # Single-device gradient
     grad_single = jax.grad(forward)(single_device_ics)

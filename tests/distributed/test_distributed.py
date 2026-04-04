@@ -79,6 +79,9 @@ def _check_sharding(array, input_sharding, field_type):
 @pytest.mark.parametrize("pdims", _PDIMS)
 def test_distributed_lpt_lightcone(single_device_ics, cosmo, target, pdims):
     """LPT lightcone produces identical results single-device vs multi-device."""
+    import jax
+
+    print(f"jax devices in test: {jax.devices()}")
     painting = jfli.PaintingOptions(target=target, paint_nside=PAINT_NSIDE)
 
     # Single-device run

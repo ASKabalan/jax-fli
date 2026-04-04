@@ -14,11 +14,14 @@ if "SLURM_JOB_ID" in os.environ:
     import jax
 
     jax.distributed.initialize()
+    print(f"initialized distributed with {jax.process_count()} processes and {jax.device_count()}  devices")
 else:
     os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
     os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=8")
+    import jax
 
-import jax  # noqa: E402
+    print(f"starting local distributed on CPU with {jax.device_count()} devices")
+
 import jax_cosmo as jc  # noqa: E402
 import jax_fli as jfli  # noqa: E402
 import pytest  # noqa: E402
