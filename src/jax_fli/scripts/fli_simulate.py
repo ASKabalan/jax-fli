@@ -55,7 +55,16 @@ def _build_painting(args: Namespace):
     density = getattr(args, "density", False)
 
     if nside is not None:
-        return PaintingOptions(target="spherical", scheme=args.scheme, paint_nside=args.paint_nside), nside, None
+        return (
+            PaintingOptions(
+                target="spherical",
+                scheme=args.scheme,
+                paint_nside=args.paint_nside,
+                kernel_width_arcmin=getattr(args, "kernel_width_arcmin", None),
+            ),
+            nside,
+            None,
+        )
     elif flatsky_npix is not None:
         h, w = flatsky_npix
         return PaintingOptions(target="flat"), None, (h, w)
@@ -264,6 +273,13 @@ def parser() -> ArgumentParser:
         default=None,
         dest="paint_nside",
         help="Override nside for spherical painting (default: same as --nside)",
+    )
+    common.add_argument(
+        "--kernel-width-arcmin",
+        type=float,
+        default=None,
+        dest="kernel_width_arcmin",
+        help="RBF smoothing kernel width in arcmin (default: None = pixel-scale sigma)",
     )
 
     # ------------------------------------------------------------------
@@ -480,7 +496,6 @@ def run_lpt(
     cosmo,
     initial_conditions,
     ts,
-    *,
     lpt_order,
     painting,
     nb_shells,
@@ -512,13 +527,21 @@ def run_lpt(
 
 @partial(
     jax.jit,
-    static_argnames=["lpt_order", "sim_type", "nb_shells", "gradient_order", "laplace_fd", "dealiased", "exact_growth"],
+    static_argnames=[
+        "lpt_order",
+        "sim_type",
+        "nb_shells",
+        "gradient_order",
+        "laplace_fd",
+        "dealiased",
+        "exact_growth",
+        "n_integrate",
+    ],
 )
 def run_simulations(
     cosmo,
     initial_conditions,
     solver,
-    *,
     lpt_order,
     sim_type,
     nz_shear=None,
@@ -529,6 +552,9 @@ def run_simulations(
     laplace_fd=False,
     dealiased=False,
     exact_growth=False,
+    min_z=0.01,
+    max_z=1.5,
+    n_integrate=32,
 ):
     # LPT to particles snapshot at t0, then run NBody
     dx, p = jfli.lpt(
@@ -558,7 +584,7 @@ def run_simulations(
 
     # Run lensing
     if sim_type == "born":
-        return jfli.born(cosmo, lightcone, nz_shear)
+        return jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
     else:
         raise ValueError(f"Unknown sim_type: {sim_type}")
 
@@ -647,6 +673,9 @@ def main() -> None:
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,
             "exact_growth": args.exact_growth,
+            "min_z": getattr(args, "min_z", 0.01),
+            "max_z": getattr(args, "max_z", 1.5),
+            "n_integrate": getattr(args, "n_integrate", 32),
         }
 
     if args.perf:
@@ -656,7 +685,11 @@ def main() -> None:
             print("Error: jax-hpc-profiler not found. Please install it to use --perf.", file=sys.stderr)
             sys.exit(1)
 
-        timer = JaxTimer(save_jaxpr=False)
+        if sim_type == "lpt":
+            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12)
+        else:
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 15)
+        timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)
         del result
@@ -684,7 +717,8 @@ def main() -> None:
             "lpt_order": str(args.lpt_order),
         }
 
-        report_file = f"perf_{sim_type}.csv"
+        output_dir = f"{os.path.dirname(args.output)}/" if args.output else ""
+        report_file = f"{output_dir}/perf_{sim_type}.csv"
         nb_steps = getattr(args, "nb_steps", "")
         func_name = f"{sim_type}{nb_steps}"
         timer.report(report_file, function=func_name, extra_info=extra_info, **metadata)

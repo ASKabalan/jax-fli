@@ -113,7 +113,6 @@ def test_born_vs_glass(born_kappa_multi, glass_kappa_maps):
         jfli_list.append(np.asarray(jfli_cls[2:n]))
         glass_list.append(glass_cls[2:n])
 
-
     _plot_spectra(ells_list, jfli_list, glass_list, z_sources, "glass", os.path.join(PLOT_DIR, "glass_spectra.png"))
     ratio_list = [j / (g + 1e-30) for j, g in zip(jfli_list, glass_list)]
     _plot_ratio(ells_list, ratio_list, z_sources, "glass", os.path.join(PLOT_DIR, "glass_spectra_ratio.png"))

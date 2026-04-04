@@ -502,6 +502,9 @@ def main() -> None:
                 "laplace_fd": getattr(combo, "laplace_fd", False),
                 "dealiased": getattr(combo, "dealiased", False),
                 "exact_growth": getattr(combo, "exact_growth", False),
+                "min_z": getattr(combo, "min_z", 0.01),
+                "max_z": getattr(combo, "max_z", 1.5),
+                "n_integrate": getattr(combo, "n_integrate", 32),
             }
 
         result = jax.block_until_ready(run_fn(**run_kwargs))

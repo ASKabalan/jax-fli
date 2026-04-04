@@ -95,6 +95,7 @@ def lensing_lightcone(cosmology, lensing_initial_field):
         ),
         t0=T0,
         t1=T1,
+        n_steps=N_STEPS,
     )
     lightcone = jfli.nbody(
         cosmology,
@@ -102,7 +103,6 @@ def lensing_lightcone(cosmology, lensing_initial_field):
         p,
         solver=solver,
         nb_shells=NB_SHELLS,
-        n_steps=N_STEPS,
     )
     return lightcone
 
