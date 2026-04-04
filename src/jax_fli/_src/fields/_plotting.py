@@ -3,10 +3,32 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import wraps
 from math import ceil
 
-import matplotlib.pyplot as plt
 import numpy as np
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None  # type: ignore[assignment]
+
+
+def requires_matplotlib(func):
+    """Decorator that raises ImportError when 'matplotlib' is not installed."""
+    try:
+        import matplotlib  # noqa: F401
+
+        return func
+    except ImportError:
+        pass
+
+    @wraps(func)
+    def _deferred(*args, **kwargs):
+        raise ImportError("Missing optional dependency 'matplotlib'. Install with: pip install jax-fli[plot]")
+
+    return _deferred
+
 
 # String keyword to attribute mapping for particle weights
 WEIGHT_KEYWORDS = {
@@ -19,6 +41,7 @@ WEIGHT_KEYWORDS = {
 }
 
 
+@requires_matplotlib
 def prepare_axes(
     ax, n_plots: int, ncols: int, projection: str | None = None, figsize: tuple[float, float] | None = None
 ):
@@ -53,7 +76,7 @@ def prepare_axes(
         nrows = ceil(n_plots / ncols_eff)
         if figsize is None:
             figsize = (6 * ncols_eff, 6 * nrows)
-        fig, axes = plt.subplots(
+        fig, axes = plt.subplots(  # type: ignore[union-attr]
             nrows, ncols_eff, figsize=figsize, subplot_kw={"projection": projection}, squeeze=False
         )
         return fig, axes.ravel()
@@ -86,6 +109,7 @@ def prepare_axes(
         return fig, axes_flat
 
 
+@requires_matplotlib
 def plot_3d_density(
     ax,
     vol,
@@ -357,6 +381,7 @@ def generate_titles(
     return titles
 
 
+@requires_matplotlib
 def plot_3d_particles(
     ax,
     particles,
@@ -483,6 +508,7 @@ def plot_3d_particles(
     return ax
 
 
+@requires_matplotlib
 def plot_flat_density(
     ax,
     data,
@@ -509,6 +535,7 @@ def plot_flat_density(
     return ax
 
 
+@requires_matplotlib
 def plot_spherical_density(
     ax,
     data,
