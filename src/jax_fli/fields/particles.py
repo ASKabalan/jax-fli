@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from functools import partial
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import jax
 import jax.core
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 from jaxpm.painting import cic_read, cic_read_dx
 from jaxtyping import Array, Float
-from matplotlib.axes import Axes
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
 from .._src.fields._painting import (
@@ -580,6 +581,8 @@ class ParticleField(AbstractField):
         zoom: float = 0.8,
     ) -> None:
         """Display 3D particle field using :meth:`plot`."""
+        import matplotlib.pyplot as plt
+
         self.plot(
             ax=ax,
             cmap=cmap,
