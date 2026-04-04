@@ -28,7 +28,6 @@ def _validate_t0_cb(lpt_t0, t0):
 @partial(
     jax.jit,
     static_argnames=[
-        "n_steps",
         "nb_shells",
         "adjoint",
         "checkpoints",
@@ -42,7 +41,6 @@ def nbody(
     solver: AbstractNBodySolver = DoubleKickDrift(interp_kernel=NoInterp(painting=PaintingOptions(target="particles"))),
     ts=None,
     nb_shells: int | None = None,
-    n_steps: int | None = None,
     density_widths=None,
     adjoint: AdjointType = "checkpointed",
     checkpoints: int | None = None,
@@ -67,8 +65,6 @@ def nbody(
         Scale factor specification. Mutually exclusive with *nb_shells*.
     nb_shells : int, optional
         Number of radial lightcone shells (alternative to *ts*).
-    n_steps : int, optional
-        Number of integration steps. Overrides ``solver.n_steps`` if given.
     density_widths : float or array, optional
         Override shell widths.
     adjoint : AdjointType, default='checkpointed'
@@ -124,10 +120,9 @@ def nbody(
     )
     solver = eqx.tree_at(lambda s: s.interp_kernel, solver, updated_interp)
 
-    # n_steps: arg takes priority, then solver, then error
-    n_steps_final = n_steps if n_steps is not None else solver.n_steps
-    if n_steps_final is None:
-        raise ValueError("n_steps must be provided either as arg or on the solver.")
+    if solver.n_steps is None:
+        raise ValueError("n_steps must be set on the solver before calling nbody().")
+    n_steps_final = solver.n_steps
 
     if nb_shells is not None and nb_shells > n_steps_final:
         raise ValueError(

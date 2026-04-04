@@ -14,11 +14,12 @@ T0 = 0.1
 T1 = 1.0
 
 
-def _make_solver(target="flat", shell_spacing="comoving", min_width=1.0):
+def _make_solver(target="flat", shell_spacing="comoving", min_width=1.0, n_steps=10):
     return jfli.DoubleKickDrift(
         interp_kernel=jfli.NoInterp(painting=jfli.PaintingOptions(target=target, paint_nside=PAINT_NSIDE)),
         t0=T0,
         t1=T1,
+        n_steps=n_steps,
         shell_spacing=shell_spacing,
         min_width=min_width,
     )
@@ -43,7 +44,6 @@ def test_scalar_ts(cosmology, lpt_fields, target, a_target):
         p,
         solver=solver,
         ts=a_target,
-        n_steps=10,
     )
 
     assert not result.is_batched()
@@ -67,7 +67,7 @@ def test_scalar_ts(cosmology, lpt_fields, target, a_target):
     ],
 )
 def test_nb_shells(cosmology, lpt_fields, target, nb_shells, shell_spacing):
-    solver = _make_solver(target=target, shell_spacing=shell_spacing, min_width=1.0)
+    solver = _make_solver(target=target, shell_spacing=shell_spacing, min_width=1.0, n_steps=15)
     dx, p = lpt_fields
     result = jfli.nbody(
         cosmology,
@@ -75,7 +75,6 @@ def test_nb_shells(cosmology, lpt_fields, target, nb_shells, shell_spacing):
         p,
         solver=solver,
         nb_shells=nb_shells,
-        n_steps=15,
     )
 
     assert result.status == jfli.FieldStatus.LIGHTCONE
@@ -122,7 +121,6 @@ def test_1d_ts(cosmology, lpt_fields, target):
         solver=solver,
         ts=ts,
         density_widths=widths,
-        n_steps=10,
     )
 
     assert result.status == jfli.FieldStatus.LIGHTCONE
@@ -158,7 +156,6 @@ def test_2d_ts(cosmology, lpt_fields, target):
         p,
         solver=solver,
         ts=ts,
-        n_steps=10,
     )
 
     assert result.status == jfli.FieldStatus.LIGHTCONE
@@ -205,7 +202,7 @@ def test_snapshot_default(cosmology, lpt_fields, target):
 
 def test_nb_shells_exceeds_n_steps(cosmology, lpt_fields):
     """nb_shells > n_steps should raise ValueError."""
-    solver = _make_solver(target="particles")
+    solver = _make_solver(target="particles", n_steps=5)
     dx, p = lpt_fields
 
     with pytest.raises(ValueError, match="nb_shells.*n_steps"):
@@ -215,5 +212,4 @@ def test_nb_shells_exceeds_n_steps(cosmology, lpt_fields):
             p,
             solver=solver,
             nb_shells=20,
-            n_steps=5,
         )
