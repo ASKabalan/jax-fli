@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 import jax
 import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
 from jax.image import resize
-from matplotlib.axes import Axes
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
 from .._src.base._enums import FieldStatus
@@ -56,6 +59,7 @@ class FlatDensity(AbstractField):
         omega_m: float | None = None,
         h: float | None = None,
         mean_density: float | None = None,
+        normalization: str = "global",
     ) -> FlatDensity:
         """
         Convert the flat-sky map to a different density unit.
@@ -71,6 +75,11 @@ class FlatDensity(AbstractField):
         mean_density : float, optional
             Mean density ρ̄ in particles per (Mpc/h)^3. Required when converting
             FROM OVERDENSITY to other units.
+        normalization : str, optional
+            Overdensity normalization: "global" (default) uses the mean over
+            the whole array; "per_plane" normalises each shell (axis 0) by its
+            own spatial mean over the pixel axes. Ignored unless converting to
+            OVERDENSITY and mean_density is not provided explicitly.
 
         Returns
         -------
@@ -95,6 +104,7 @@ class FlatDensity(AbstractField):
             mean_density=mean_density,
             volume_element=volume_element,
             field_sharding=self.field_sharding,
+            normalization=normalization,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -485,6 +495,7 @@ class SphericalDensity(AbstractField):
         omega_m: float | None = None,
         h: float | None = None,
         mean_density: float | None = None,
+        normalization: str = "global",
     ) -> SphericalDensity:
         """
         Convert the spherical (HEALPix) map to a different density unit.
@@ -500,6 +511,12 @@ class SphericalDensity(AbstractField):
         mean_density : float, optional
             Mean density in particles per (Mpc/h)^3, required when converting
             FROM OVERDENSITY to other units.
+        normalization : str, optional
+            Overdensity normalization: "global" (default) uses the mean over
+            the whole array; "per_plane" normalises each shell (axis 0) by its
+            own pixel mean. For a (n_shells, npix) array this gives each shell
+            zero global mean. Ignored unless converting to OVERDENSITY and
+            mean_density is not provided explicitly.
 
         Returns
         -------
@@ -529,6 +546,7 @@ class SphericalDensity(AbstractField):
             mean_density=mean_density,
             volume_element=shell_volume_per_pixel,
             field_sharding=self.field_sharding,
+            normalization=normalization,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -646,7 +664,7 @@ class SphericalDensity(AbstractField):
         mesh2: SphericalDensity | None = None,
         *,
         lmax: int | None = None,
-        method: str = "jax",
+        method: str = "healpy",
         batch_size: int | None = None,
     ) -> PowerSpectrum:
         """Compute a spherical (HEALPix) angular power spectrum C_ell (auto or cross)."""
