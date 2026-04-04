@@ -60,6 +60,7 @@ from .power import (
     angular_cl_spherical,
     coherence,
     compute_theory_cl,
+    compute_theory_cl_for_density,
     power,
     tophat_z,
     transfer,
@@ -135,6 +136,7 @@ __all__ = [
     "angular_cl_flat",
     "angular_cl_spherical",
     "compute_theory_cl",
+    "compute_theory_cl_for_density",
     "tophat_z",
     # From lensing
     "born",
