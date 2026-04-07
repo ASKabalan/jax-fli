@@ -23,7 +23,6 @@ def add_subparser(sub):
     g.add_argument("--output-dir", default="results/lensing/multi_shell")
     g.add_argument("--enable-x64", action="store_true")
 
-    # born_rt_script.bash: CONSTRAINT="" (empty), PDIMS="4 1", NODES=1
     p.set_defaults(
         constraint="",
         pdim=[4, 1],
@@ -63,6 +62,5 @@ def run(args):
     if args.enable_x64:
         fli_cmd.append("--enable-x64")
 
-    # use_gpu=False when constraint is "cpu" or empty
     use_gpu = bool(args.constraint) and args.constraint != "cpu"
     dispatch(args, job_name, "FLI_BORN_RT", fli_cmd, use_gpu=use_gpu)

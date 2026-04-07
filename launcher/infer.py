@@ -47,7 +47,6 @@ def add_subparser(sub):
     g.add_argument("--h", type=float, default=0.6774)
     g.add_argument("--seed", type=int, default=0)
 
-    # infer_script.bash: GPUS_PER_NODE=1, NODES=1, NB_STEPS=40, ENABLE_X64=true
     p.set_defaults(
         gpus_per_node=1,
         nodes=1,

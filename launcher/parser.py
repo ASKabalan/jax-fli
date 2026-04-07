@@ -1,6 +1,6 @@
 """Launcher-specific argument groups and dispatch logic.
 
-Thin wrapper around ``jax_fli.scripts.parser`` — imports all shared groups
+Thin wrapper around shared_args — imports all shared groups
 and adds the SLURM/cluster layer on top.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 
-from jax_fli.scripts.parser import (  # noqa: F401 (re-exported for subcommand modules)
+from .shared_args import (  # noqa: F401 (re-exported for subcommand modules)
     DEFAULT_NAME_TEMPLATE,
     add_common_sim_args,
     add_cosmo_args,
