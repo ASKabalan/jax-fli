@@ -146,6 +146,9 @@ def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> N
     parent_folder = os.path.dirname(out_path)
     if parent_folder:
         os.makedirs(parent_folder, exist_ok=True)
+    name = getattr(args, "name", None)
+    if name is not None:
+        result = result.replace(name=name)
     catalog = jfli.io.Catalog(field=result, cosmology=cosmo)
     catalog.to_parquet(out_path)
     print(f"Saved to {out_path}")
@@ -158,63 +161,33 @@ def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> N
 
 def parser() -> ArgumentParser:
     """Build the full argparse tree with subcommands."""
-
-    # ------------------------------------------------------------------
-    # Common parent (shared by all subcommands)
-    # ------------------------------------------------------------------
-    common = ArgumentParser(add_help=False)
-
-    # Mesh / box
-    common.add_argument(
-        "--mesh-size",
-        type=int,
-        nargs=3,
-        default=[64, 64, 64],
-        metavar=("NX", "NY", "NZ"),
-        help="Mesh resolution (default: 64 64 64)",
-    )
-    common.add_argument(
-        "--box-size",
-        type=float,
-        nargs=3,
-        default=[200.0, 200.0, 200.0],
-        metavar=("LX", "LY", "LZ"),
-        help="Box side lengths in Mpc/h (default: 200 200 200)",
-    )
-    common.add_argument(
-        "--pdim",
-        type=int,
-        nargs=2,
-        default=[1, 1],
-        metavar=("PX", "PY"),
-        help="Process mesh dimensions (default: 1 1 = single device)",
-    )
-    common.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
-    common.add_argument(
-        "--halo-fraction",
-        type=int,
-        default=8,
-        metavar="F",
-        help="Halo size as mesh // fraction for distributed painting (default: 8)",
-    )
-    common.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=[0.5, 0.5, 0.5],
-        metavar=("OX", "OY", "OZ"),
-        help="Observer position in box coordinates (default: 0.5 0.5 0.5, i.e. center of the box)",
+    from jax_fli.scripts.parser import (
+        add_common_sim_args,
+        add_cosmo_args,
+        add_distributed_args,
+        add_lensing_args,
+        add_lightcone_args,
+        add_mesh_args,
+        add_output_target_args,
     )
 
-    # Random seed and output
-    common.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
-    common.add_argument(
+    # Single shared parent for all three subcommands
+    shared = ArgumentParser(add_help=False)
+    add_mesh_args(shared, nargs=3)
+    add_distributed_args(shared)
+    add_cosmo_args(shared, sweep=False)
+    add_output_target_args(shared)
+    add_common_sim_args(shared)
+    add_lightcone_args(shared)
+
+    # fli-simulate-specific args
+    shared.add_argument("--nb-shells", type=int, default=None, help="Number of lightcone shells")
+    shared.add_argument(
         "--output", "-o", default="sim_output.parquet", help="Output file path (default: sim_output.parquet)"
     )
-
-    # Performance
-    common.add_argument("--perf", action="store_true", help="Benchmark: warmup + N timed iterations")
-    common.add_argument(
+    shared.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
+    shared.add_argument("--perf", action="store_true", help="Benchmark: warmup + N timed iterations")
+    shared.add_argument(
         "--iterations",
         "-i",
         type=int,
@@ -222,217 +195,38 @@ def parser() -> ArgumentParser:
         metavar="N",
         help="Number of timed iterations for --perf (default: 5)",
     )
-    common.add_argument("--trace", action="store_true", help="Run with JAX profiler trace")
-    common.add_argument(
+    shared.add_argument("--trace", action="store_true", help="Run with JAX profiler trace")
+    shared.add_argument(
         "--trace-dir", default="/tmp/jax_trace", help="Directory for profiler trace (default: /tmp/jax_trace)"
     )
-    common.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
+    shared.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
+    shared.set_defaults(nb_steps=19, t0=0.1)
 
-    # Cosmology
-    cosmo_group = common.add_argument_group("cosmology")
-    cosmo_group.add_argument("--Omega-c", type=float, default=0.2589, help="Cold dark matter density (default: 0.2589)")
-    cosmo_group.add_argument("--Omega-b", type=float, default=0.0486, help="Baryon density (default: 0.0486)")
-    cosmo_group.add_argument("--h", type=float, default=0.6774, help="Dimensionless Hubble parameter (default: 0.6774)")
-    cosmo_group.add_argument("--n-s", type=float, default=0.9667, dest="n_s", help="Spectral index (default: 0.9667)")
-    cosmo_group.add_argument("--sigma8", type=float, default=0.8159, help="sigma8 (default: 0.8159)")
-    cosmo_group.add_argument("--Omega-k", type=float, default=0.0, help="Curvature density (default: 0.0)")
-    cosmo_group.add_argument("--w0", type=float, default=-1.0, help="Dark energy EOS w0 (default: -1.0)")
-    cosmo_group.add_argument("--wa", type=float, default=0.0, help="Dark energy EOS wa (default: 0.0)")
-    cosmo_group.add_argument("--Omega-nu", type=float, default=0.0, help="Neutrino density (default: 0.0)")
-
-    # Painting target (mutually exclusive)
-    paint_group = common.add_mutually_exclusive_group()
-    paint_group.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
-    paint_group.add_argument(
-        "--flatsky-npix",
-        type=int,
-        nargs=2,
-        default=None,
-        metavar=("H", "W"),
-        help="Flat-sky pixel resolution (height width)",
-    )
-    paint_group.add_argument(
-        "--field-size",
-        type=int,
-        nargs=2,
-        default=None,
-        metavar=("H", "W"),
-        help="2D field pixel resolution (alternative to --flatsky-npix)",
-    )
-    paint_group.add_argument("--density", action="store_true", default=False, help="3D density field painting")
-
-    common.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    common.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside for spherical painting (default: same as --nside)",
-    )
-    common.add_argument(
-        "--kernel-width-arcmin",
-        type=float,
-        default=None,
-        dest="kernel_width_arcmin",
-        help="RBF smoothing kernel width in arcmin (default: None = pixel-scale sigma)",
-    )
-
-    # ------------------------------------------------------------------
-    # LPT parent (shared by lpt, nbody, lensing)
-    # ------------------------------------------------------------------
-    lpt_parent = ArgumentParser(add_help=False)
-    lpt_parent.add_argument("--t0", type=float, default=0.1, help="LPT starting scale factor (default: 0.1)")
-    lpt_parent.add_argument("--lpt-order", type=int, default=2, choices=[1, 2], help="LPT order (default: 2)")
-    lpt_parent.add_argument("--nb-shells", type=int, default=None, help="Number of lightcone shells")
-    lpt_parent.add_argument(
-        "--density-widths", type=float, nargs="+", default=None, metavar="W", help="Override shell widths (Mpc/h)"
-    )
-    # Mutually exclusive ts group
-    ts_group = lpt_parent.add_mutually_exclusive_group()
-    ts_group.add_argument(
-        "--ts", type=float, nargs="+", default=None, metavar="A", help="Scale factors for snapshot/shell output"
-    )
-    ts_group.add_argument(
-        "--ts-near",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_NEAR",
-        help="Near scale factor edge(s) (use with --ts-far; one value per shell pair)",
-    )
-    lpt_parent.add_argument(
-        "--ts-far",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_FAR",
-        help="Far scale factor edge(s) (use with --ts-near; one value per shell pair)",
-    )
-    lpt_parent.add_argument(
-        "--shell-spacing",
-        choices=["comoving", "equal_vol", "a", "growth"],
-        default="comoving",
-        dest="shell_spacing",
-        help="Shell spacing mode (default: comoving)",
-    )
-    lpt_parent.add_argument(
-        "--min-width",
-        type=float,
-        default=50.0,
-        dest="min_width",
-        help="Minimum shell width in Mpc/h (default: 50.0)",
-    )
-    lpt_parent.add_argument(
-        "--gradient-order",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        dest="gradient_order",
-        help="Force gradient order (0=exact ik, 1=finite-difference) (default: 1)",
-    )
-    lpt_parent.add_argument(
-        "--laplace-fd",
-        action="store_true",
-        default=False,
-        dest="laplace_fd",
-        help="Use finite-difference Laplacian (default: False)",
-    )
-    lpt_parent.add_argument(
-        "--dealiased",
-        action="store_true",
-        default=False,
-        help="Enable dealiased mode (default: False)",
-    )
-    lpt_parent.add_argument(
-        "--exact-growth",
-        action="store_true",
-        default=False,
-        dest="exact_growth",
-        help="Use exact growth factor computation (default: False)",
-    )
-
-    # ------------------------------------------------------------------
-    # NBody parent (adds t1, nb_steps, solver, interp)
-    # ------------------------------------------------------------------
-    nbody_parent = ArgumentParser(add_help=False)
-    nbody_parent.add_argument("--t1", type=float, default=1.0, help="NBody final scale factor (default: 1.0)")
-    nbody_parent.add_argument(
-        "--nb-steps",
-        type=int,
-        default=19,
-        dest="nb_steps",
-        help="Number of integration steps (default: 19)",
-    )
-    nbody_parent.add_argument(
-        "--interp",
-        choices=["none", "onion", "telephoto"],
-        default="none",
-        help="Interpolation kernel (default: none)",
-    )
-    nbody_parent.add_argument(
-        "--drift-on-lightcone", action="store_true", help="Apply drift correction when painting lightcone shells"
-    )
-    nbody_parent.add_argument(
-        "--solver",
-        choices=["kdk", "dkd", "bf"],
-        default="kdk",
-        help="N-body integrator: kdk=DoubleKickDrift, dkd=DriftKickDrift, bf=BullFrog (default: kdk)",
-    )
-
-    # ------------------------------------------------------------------
     # Top-level parser
-    # ------------------------------------------------------------------
-    parser = ArgumentParser(
-        prog="fli-simulate",
-        description="jax_fli simulation pipeline CLI",
-    )
-    subparsers = parser.add_subparsers(dest="subcommand", required=True)
+    p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
+    subparsers = p.add_subparsers(dest="subcommand", required=True)
 
-    # lpt subcommand
     subparsers.add_parser(
         "lpt",
-        parents=[common, lpt_parent],
+        parents=[shared],
         help="Run IC → LPT only",
         description="Generate initial conditions and apply LPT displacements.",
     )
-
-    # nbody subcommand
     subparsers.add_parser(
         "nbody",
-        parents=[common, lpt_parent, nbody_parent],
+        parents=[shared],
         help="Run IC → LPT(particles) → NBody",
         description="Run full N-body integration from LPT initial conditions.",
     )
-
-    # lensing subcommand
     lensing_p = subparsers.add_parser(
         "lensing",
-        parents=[common, lpt_parent, nbody_parent],
+        parents=[shared],
         help="Run IC → LPT → NBody → Born lensing",
         description="Run full pipeline including weak lensing convergence maps.",
     )
-    lensing_p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        required=True,
-        metavar="Z",
-        help="Source redshifts or 'stage3'/'s3' for 4-bin Stage 3 distributions",
-    )
-    lensing_p.add_argument(
-        "--min-z", type=float, default=0.01, help="Minimum redshift for nz integration (default: 0.01)"
-    )
-    lensing_p.add_argument(
-        "--max-z", type=float, default=1.5, help="Maximum redshift for nz integration (default: 1.5)"
-    )
-    lensing_p.add_argument(
-        "--n-integrate", type=int, default=32, help="Number of integration points for nz distributions (default: 32)"
-    )
-    return parser
+    add_lensing_args(lensing_p)
+
+    return p
 
 
 # ---------------------------------------------------------------------------
@@ -614,7 +408,8 @@ def main() -> None:
     solver = _build_solver(args, painting)
 
     mesh = tuple(args.mesh_size)
-    halo_size = (mesh[0] // args.halo_fraction, mesh[1] // args.halo_fraction)
+    px, py = args.pdim
+    halo_size = (int(mesh[0] / px * args.halo_multiplier), int(mesh[1] / py * args.halo_multiplier))
 
     key = jax.random.key(args.seed)
 
@@ -710,7 +505,7 @@ def main() -> None:
             "nodes": str(args.nodes),
         }
         extra_info = {
-            "halo_fraction": str(args.halo_fraction),
+            "halo_multiplier": str(args.halo_multiplier),
             "painting_target": painting.target,
             "ts": str(args.ts) if args.ts is not None else f"near={args.ts_near}, far={args.ts_far}",
             "nb_shells": str(args.nb_shells),

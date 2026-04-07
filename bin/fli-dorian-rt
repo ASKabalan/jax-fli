@@ -16,7 +16,7 @@ rank = comm.Get_rank()
 size = comm.Get_size()
 print(f"MPI rank={rank}, size={size}")
 
-from jax_fli.scripts.fli_dorian_rt import main
+from jax_fli.scripts.entry.fli_dorian_rt import main
 
 if __name__ == "__main__":
     main()

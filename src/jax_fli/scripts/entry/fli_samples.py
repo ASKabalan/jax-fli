@@ -18,6 +18,14 @@ from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
 
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-samples."""
+    from jax_fli.scripts.parser import (
+        add_common_sim_args,
+        add_distributed_args,
+        add_lensing_args,
+        add_lightcone_args,
+        add_mesh_args,
+    )
+
     p = argparse.ArgumentParser(
         prog="fli-samples",
         description="Generate prior-predictive samples from a probabilistic model.",
@@ -27,59 +35,18 @@ def parser() -> argparse.ArgumentParser:
         "--model",
         choices=["full", "mock"],
         default="full",
-        help="Probabilistic model to sample from: 'full' (full_field_probmodel) or 'mock' (mock_probmodel). (default: full)",
+        help="Probabilistic model to sample from: 'full' or 'mock' (default: full)",
     )
 
-    # Mesh / box
-    p.add_argument(
-        "--mesh-size",
-        type=int,
-        nargs=3,
-        default=[64, 64, 64],
-        metavar=("NX", "NY", "NZ"),
-        help="Mesh resolution (default: 64 64 64)",
-    )
-    p.add_argument(
-        "--box-size",
-        type=float,
-        nargs=3,
-        default=[200.0, 200.0, 200.0],
-        metavar=("LX", "LY", "LZ"),
-        help="Box side lengths in Mpc/h (default: 200 200 200)",
-    )
-    p.add_argument(
-        "--pdim",
-        type=int,
-        nargs=2,
-        default=[1, 1],
-        metavar=("PX", "PY"),
-        help="Process mesh dimensions (default: 1 1 = single device)",
-    )
-    p.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
-    p.add_argument(
-        "--halo-fraction",
-        type=int,
-        default=8,
-        metavar="F",
-        help="Halo size as mesh // fraction for distributed painting (default: 8)",
-    )
-    p.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=[0.5, 0.5, 0.5],
-        metavar=("OX", "OY", "OZ"),
-        help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
-    )
+    add_mesh_args(p, nargs=3)
+    add_distributed_args(p)
+    add_common_sim_args(p)
+    add_lightcone_args(p)
+    add_lensing_args(p)
 
     # Geometry (mutually exclusive)
     geom_group = p.add_mutually_exclusive_group()
-    geom_group.add_argument(
-        "--nside",
-        type=int,
-        default=None,
-        help="HEALPix NSIDE for spherical painting",
-    )
+    geom_group.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
     geom_group.add_argument(
         "--flatsky-npix",
         type=int,
@@ -89,100 +56,19 @@ def parser() -> argparse.ArgumentParser:
         help="Flat-sky pixel resolution (height width)",
     )
 
-    # Simulation parameters
-    p.add_argument("--lpt-order", type=int, choices=[1, 2], default=2, help="LPT order (default: 2)")
-    p.add_argument("--t0", type=float, default=0.01, help="Start scale factor (default: 0.01)")
-    p.add_argument("--t1", type=float, default=1.0, help="End scale factor (default: 1.0)")
-    p.add_argument(
-        "--nb-steps",
-        type=int,
-        default=100,
-        dest="nb_steps",
-        help="Number of integration steps (>= 2); dt0 = (t1 - t0) / (nb_steps - 1). (default: 100)",
-    )
+    # Samples-specific
     p.add_argument("--nb-shells", type=int, default=8, help="Number of lightcone shells (default: 8)")
-    p.add_argument(
-        "--density-widths", type=float, nargs="+", default=None, metavar="W", help="Override shell widths (Mpc/h)"
-    )
-    # Shell spec alternatives
-    ts_group = p.add_mutually_exclusive_group()
-    ts_group.add_argument(
-        "--ts", type=float, nargs="+", default=None, metavar="A", help="Scale factors for snapshot/shell output"
-    )
-    ts_group.add_argument(
-        "--ts-near",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_NEAR",
-        help="Near scale factor edge(s) (use with --ts-far)",
-    )
-    p.add_argument(
-        "--ts-far",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_FAR",
-        help="Far scale factor edge(s) (use with --ts-near)",
-    )
-    p.add_argument(
-        "--interp",
-        choices=["none", "onion", "telephoto"],
-        default="none",
-        help="Interpolation kernel (default: none)",
-    )
-    p.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    p.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside used for painting (default: same as --nside)",
-    )
-    p.add_argument(
-        "--drift-on-lightcone", action="store_true", help="Apply drift correction when painting lightcone shells"
-    )
-    p.add_argument("--equal-vol", action="store_true", default=False, help="Use equal-volume shell partitioning")
-    p.add_argument(
-        "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h (default: 50.0)"
-    )
-
-    # Lensing / noise
-    p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        default=["s3"],
-        metavar="Z",
-        help="Source redshift bins: 's3'/'s3[i]'/'s3[start:stop]' or floats (default: s3)",
-    )
     p.add_argument("--sigma-e", type=float, default=0.26, help="Shape-noise dispersion (default: 0.26)")
     p.add_argument(
-        "--density-plane-smoothing",
-        type=float,
-        default=0.0,
-        help="Density plane smoothing scale (default: 0.0)",
+        "--density-plane-smoothing", type=float, default=0.0, help="Density plane smoothing scale (default: 0.0)"
     )
-    p.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for nz integration (default: 0.01)")
-    p.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for nz integration (default: 1.5)")
-    p.add_argument(
-        "--n-integrate", type=int, default=32, help="Number of integration points for nz distributions (default: 32)"
-    )
-
-    # Sampling
     p.add_argument("--num-samples", type=int, default=100, help="Number of prior-predictive samples (default: 100)")
     p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
-
-    # Output
     p.add_argument("--path", type=str, required=True, help="Output directory")
     p.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
-
-    # Precision
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
+
+    p.set_defaults(t0=0.01, nb_steps=100)
 
     return p
 
@@ -223,7 +109,8 @@ def main() -> None:
 
     # --- compute halo_size ---
     mesh = tuple(args.mesh_size)
-    halo_size = (mesh[0] // args.halo_fraction, mesh[1] // args.halo_fraction)
+    px, py = args.pdim
+    halo_size = (int(mesh[0] / px * args.halo_multiplier), int(mesh[1] / py * args.halo_multiplier))
 
     # --- build Configurations ---
     config = jfli.ppl.Configurations(
@@ -246,6 +133,7 @@ def main() -> None:
         geometry=geometry,
         scheme=args.scheme,
         paint_nside=args.paint_nside,
+        kernel_width_arcmin=args.kernel_width_arcmin,
         field_sharding=sharding,
         lensing="born",
         drift_on_lightcone=args.drift_on_lightcone,

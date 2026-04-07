@@ -14,6 +14,8 @@ from pathlib import Path
 
 def parser() -> ArgumentParser:
     """Build the argument parser for fli-born-rt."""
+    from jax_fli.scripts.parser import add_distributed_args, add_lensing_args
+
     p = ArgumentParser(
         prog="fli-born-rt",
         description="Post-process lightcone parquet files with Born lensing.",
@@ -25,28 +27,11 @@ def parser() -> ArgumentParser:
         help="Input parquet file(s) — single path or shell glob (e.g. 'results/*.parquet')",
     )
     p.add_argument("--output", "-o", default=".", metavar="DIR", help="Output directory (default: .)")
-    p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        required=True,
-        metavar="Z",
-        help="Source redshifts or 's3'/'s3[i]'/'s3[start:stop]' for Stage-3 distributions",
-    )
-    p.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for nz integration (default: 0.01)")
-    p.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for nz integration (default: 1.5)")
-    p.add_argument(
-        "--n-integrate", type=int, default=32, help="Number of integration points for nz distributions (default: 32)"
-    )
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
-    p.add_argument(
-        "--pdim",
-        type=int,
-        nargs=2,
-        default=[1, 1],
-        metavar=("PX", "PY"),
-        help="Process mesh dimensions (default: 1 1 = single device)",
-    )
-    p.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
+
+    add_lensing_args(p)
+    add_distributed_args(p)
+
     return p
 
 

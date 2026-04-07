@@ -21,34 +21,7 @@ from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
 
 
 def _load_observable(path: str, sharding):
-    """Load a kappa Catalog from parquet and extract per-bin arrays + metadata.
-
-    Parameters
-    ----------
-    path : str
-        Path to a parquet Catalog saved by ``sample2catalog`` (or equivalent).
-        Must contain a single ``SphericalKappaField`` or ``FlatKappaField`` entry
-        whose leading array dimension encodes the tomographic bins.
-
-    Returns
-    -------
-    kappa_arrays : list[jnp.ndarray]
-        One array per tomographic bin.  Shape (npix,) for spherical or (ny, nx) for flat.
-    obs_cosmo : jc.Cosmology
-        The cosmology stored alongside the observable field.
-    obs_box_size : tuple[float, float, float]
-        Box size (Mpc/h) recorded in the observable catalog.
-    geometry : str
-        ``"spherical"`` or ``"flat"``.
-    nside : int | None
-        HEALPix NSIDE for spherical geometry, else None.
-    flatsky_npix : tuple[int, int] | None
-        ``(ny, nx)`` pixel resolution for flat geometry, else None.
-    field_size : tuple[float, float] | None
-        Physical field size in degrees ``(size_y, size_x)`` for flat, else None.
-    n_kappas : int
-        Number of tomographic kappa bins.
-    """
+    """Load a kappa Catalog from parquet and extract per-bin arrays + metadata."""
     catalog = jfli.io.Catalog.from_parquet(path, sharding=sharding)
     obs_field = catalog.field[0]
     obs_cosmo = catalog.cosmology[0]
@@ -69,7 +42,6 @@ def _load_observable(path: str, sharding):
             "Generate observables with fli-samples or fli-simulate lensing."
         )
 
-    # The catalog stores all tomographic bins stacked along axis 0: (n_kappas, npix) or (n_kappas, ny, nx)
     n_kappas = obs_field.array.shape[0]
     kappa_arrays = [obs_field.array[i] for i in range(n_kappas)]
 
@@ -82,18 +54,7 @@ def _load_observable(path: str, sharding):
 
 
 def _load_initial_condition(path: str):
-    """Load an IC DensityField from a parquet Catalog.
-
-    Parameters
-    ----------
-    path : str
-        Path to a parquet Catalog containing a ``DensityField`` (IC).
-
-    Returns
-    -------
-    ic_field : DensityField
-        The initial condition field (first catalog entry).
-    """
+    """Load an IC DensityField from a parquet Catalog."""
     catalog = jfli.io.Catalog.from_parquet(path)
     return catalog.field[0]
 
@@ -105,19 +66,26 @@ def _load_initial_condition(path: str):
 
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-infer."""
+    from jax_fli.scripts.parser import (
+        add_common_sim_args,
+        add_distributed_args,
+        add_lensing_args,
+        add_lightcone_args,
+    )
+
     p = argparse.ArgumentParser(
         prog="fli-infer",
         description="Run full-field MCMC inference conditioned on observed kappa maps.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # --- Required args ---
+    # Required args
     p.add_argument(
         "--observable",
         type=str,
         required=True,
         metavar="PATH",
-        help="Parquet Catalog with batched kappa field (n_bins, npix) and cosmology.",
+        help="Parquet Catalog with batched kappa field and cosmology.",
     )
     p.add_argument(
         "--path",
@@ -130,15 +98,17 @@ def parser() -> argparse.ArgumentParser:
         "--mesh-size", type=int, nargs=3, required=True, metavar=("NX", "NY", "NZ"), help="Inference mesh resolution."
     )
     p.add_argument(
-        "--box-size",
-        type=float,
-        nargs=3,
-        required=True,
-        metavar=("LX", "LY", "LZ"),
-        help="Box side lengths in Mpc/h. Warns if different from the observable's stored box_size.",
+        "--box-size", type=float, nargs=3, required=True, metavar=("LX", "LY", "LZ"), help="Box side lengths in Mpc/h."
     )
 
-    # --- Optional: IC and sampling targets ---
+    # Shared arg groups
+    add_distributed_args(p)
+    add_common_sim_args(p)
+    add_lightcone_args(p)
+    add_lensing_args(p)
+
+    # Infer-specific
+    p.add_argument("--nb-shells", type=int, default=8, metavar="INT", help="Number of lightcone shells (default: 8)")
     p.add_argument(
         "--initial-condition",
         type=str,
@@ -149,7 +119,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--init-cosmo",
         action="store_true",
-        help="Warm-start cosmological parameters from the observable's stored cosmology (used when --sample includes 'ic' but not 'cosmo').",
+        help="Warm-start cosmological parameters from the observable's stored cosmology.",
     )
     p.add_argument(
         "--sample",
@@ -159,125 +129,29 @@ def parser() -> argparse.ArgumentParser:
         metavar="WHAT",
         help="Space-separated subset of {cosmo, ic} to sample (default: cosmo ic).",
     )
+    p.add_argument("--sigma-e", type=float, default=0.26, help="Shape noise dispersion (default: 0.26)")
+    p.add_argument(
+        "--density-plane-smoothing", type=float, default=0.0, help="Density plane smoothing scale (default: 0.0)"
+    )
+    p.add_argument(
+        "--adjoint",
+        choices=["checkpointed", "recursive"],
+        default="checkpointed",
+        help="Gradient strategy for NUTS (default: checkpointed)",
+    )
+    p.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")
+    p.add_argument("--num-warmup", type=int, default=500, help="MCMC warmup iterations (default: 500)")
+    p.add_argument("--num-samples", type=int, default=1000, help="Samples per batch (default: 1000)")
+    p.add_argument("--batch-count", type=int, default=5, help="Number of sequential batches (default: 5)")
+    p.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    p.add_argument(
+        "--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend (default: numpyro)"
+    )
+    p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
+    p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
+    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
-    # --- Device mesh / distributed ---
-    p.add_argument("--pdim", type=int, nargs=2, default=[1, 1], metavar=("PX", "PY"), help="Device mesh dimensions.")
-    p.add_argument("--nodes", type=int, default=1, help="Number of nodes.")
-    p.add_argument(
-        "--halo-fraction",
-        type=int,
-        default=8,
-        metavar="F",
-        help="Halo size as mesh // fraction for distributed painting.",
-    )
-
-    # --- Observer / physics ---
-    p.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=[0.5, 0.5, 0.5],
-        metavar=("OX", "OY", "OZ"),
-        help="Observer position in box coordinates.",
-    )
-    p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        default=["s3"],
-        metavar="Z",
-        help="Source redshift bins: 's3'/'s3[i]'/'s3[start:stop]' for Stage-3 presets, "
-        "or space-separated floats for delta-function redshifts.",
-    )
-    p.add_argument("--sigma-e", type=float, default=0.26, help="Shape noise dispersion.")
-    p.add_argument("--density-plane-smoothing", type=float, default=0.0, help="Density plane smoothing scale.")
-
-    # --- Simulation parameters ---
-    p.add_argument("--lpt-order", type=int, choices=[1, 2], default=2, help="LPT order.")
-    p.add_argument("--t0", type=float, default=0.01, help="LPT start scale factor.")
-    p.add_argument("--t1", type=float, default=1.0, help="NBody end scale factor.")
-    p.add_argument(
-        "--nb-steps",
-        type=int,
-        default=100,
-        dest="nb_steps",
-        help="Number of integration steps (>= 2); dt0 = (t1 - t0) / (nb_steps - 1).",
-    )
-    p.add_argument("--nb-shells", type=int, default=8, metavar="INT", help="Number of lightcone shells.")
-    p.add_argument(
-        "--density-widths", type=float, nargs="+", default=None, metavar="W", help="Override shell widths (Mpc/h)."
-    )
-    # Shell spec alternatives
-    ts_group = p.add_mutually_exclusive_group()
-    ts_group.add_argument(
-        "--ts", type=float, nargs="+", default=None, metavar="A", help="Scale factors for snapshot/shell output."
-    )
-    ts_group.add_argument(
-        "--ts-near",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_NEAR",
-        help="Near scale factor edge(s) (use with --ts-far).",
-    )
-    p.add_argument(
-        "--ts-far",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="A_FAR",
-        help="Far scale factor edge(s) (use with --ts-near).",
-    )
-    p.add_argument(
-        "--interp",
-        choices=["none", "onion", "telephoto"],
-        default="none",
-        help="Interpolation kernel.",
-    )
-    p.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    p.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside used for painting (default: same as observable nside)",
-    )
-    p.add_argument(
-        "--drift-on-lightcone", action="store_true", help="Apply drift correction when painting lightcone shells."
-    )
-    p.add_argument("--equal-vol", action="store_true", default=False, help="Use equal-volume shell partitioning.")
-    p.add_argument(
-        "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h for equal-vol."
-    )
-
-    # --- Lensing ---
-    p.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for nz integration.")
-    p.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for nz integration.")
-    p.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for nz distributions.")
-
-    # --- Gradient strategy ---
-    p.add_argument(
-        "--adjoint", choices=["checkpointed", "recursive"], default="checkpointed", help="Gradient strategy for NUTS."
-    )
-    p.add_argument(
-        "--checkpoints", type=int, default=10, help="Number of gradient checkpoints (used when --adjoint checkpointed)."
-    )
-
-    # --- MCMC settings ---
-    p.add_argument("--num-warmup", type=int, default=500, help="MCMC warmup iterations.")
-    p.add_argument("--num-samples", type=int, default=1000, help="Samples per batch.")
-    p.add_argument("--batch-count", type=int, default=5, help="Number of sequential batches.")
-    p.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler.")
-    p.add_argument("--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend.")
-
-    # --- Misc ---
-    p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed.")
-    p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars.")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision.")
+    p.set_defaults(t0=0.01, nb_steps=100)
 
     return p
 
@@ -288,11 +162,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
-    """Validate argument combinations before running JAX.
-
-    Raises SystemExit (via parser.error) for hard errors; issues warnings for soft mismatches.
-    """
-    # 1. --sample must contain at least one of cosmo or ic
+    """Validate argument combinations before running JAX."""
     if not args.sample:
         p.error("--sample must contain at least one of 'cosmo' or 'ic'.")
 
@@ -300,15 +170,12 @@ def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
     if not sample_set & {"cosmo", "ic"}:
         p.error(f"--sample must contain at least one of 'cosmo' or 'ic', got: {args.sample}")
 
-    # 2. If IC is NOT being sampled, --initial-condition is required to fix the IC value
     if "ic" not in sample_set and args.initial_condition is None:
         p.error("--initial-condition is required when 'ic' is not in --sample (IC must be fixed).")
 
-    # 3. MCLMC sampler requires --backend blackjax
     if args.sampler == "MCLMC" and args.backend != "blackjax":
         p.error("--sampler MCLMC requires --backend blackjax.")
 
-    # 4. nb_steps must be >= 2
     if args.nb_steps < 2:
         p.error(f"--nb-steps must be >= 2, got {args.nb_steps}")
 
@@ -326,15 +193,12 @@ def main() -> None:
     jax.config.update("jax_enable_x64", args.enable_x64)
 
     _validate_args(args, p)
-    # 6. Build sharding (warns if pdim product != device count)
     sharding = _build_sharding(args)
 
-    # 1. Load observable → kappa arrays and geometry metadata
     kappa_arrays, obs_cosmo, obs_box_size, geometry, nside, flatsky_npix, field_size, n_kappas = _load_observable(
         args.observable, sharding
     )
 
-    # 2. Warn if CLI box_size differs from observable's stored box_size
     cli_box = tuple(args.box_size)
     if cli_box != tuple(obs_box_size):
         warnings.warn(
@@ -343,14 +207,12 @@ def main() -> None:
             stacklevel=2,
         )
 
-    # 3. Optionally load initial conditions
     ic_field = None
     if args.initial_condition is not None:
         ic_field = _load_initial_condition(args.initial_condition)
 
     sample_set = set(args.sample)
 
-    # 4. Build condition_data: fix observed kappa maps and optionally cosmo / IC
     condition_data = {f"kappa_{i}": kappa_arrays[i] for i in range(n_kappas)}
 
     if "cosmo" not in sample_set:
@@ -361,7 +223,6 @@ def main() -> None:
         assert ic_field is not None  # guaranteed by _validate_args
         condition_data["initial_conditions"] = ic_field.array
 
-    # 5. Build init_params: warm-start IC chain from a provided field
     init_params = None
     if "ic" in sample_set and ic_field is not None:
         init_params = {"initial_conditions": ic_field.array}
@@ -369,8 +230,7 @@ def main() -> None:
         init_params = init_params or {}
         init_params.update({"Omega_c": float(obs_cosmo.Omega_c), "sigma8": float(obs_cosmo.sigma8)})
 
-    # 7. Assemble Configurations, probabilistic model, and conditioned model
-    nz_shear = _resolve_nz_shear(args)  # default args.nz_shear = ["s3"]
+    nz_shear = _resolve_nz_shear(args)
     if len(nz_shear) != n_kappas:
         print(
             f"Warning: observable has {n_kappas} kappa maps but nz_shear has {len(nz_shear)} bins. "
@@ -384,7 +244,8 @@ def main() -> None:
     }
 
     mesh = tuple(args.mesh_size)
-    halo_size = (mesh[0] // args.halo_fraction, mesh[1] // args.halo_fraction)
+    px, py = args.pdim
+    halo_size = (int(mesh[0] / px * args.halo_multiplier), int(mesh[1] / py * args.halo_multiplier))
 
     config = jfli.ppl.Configurations(
         mesh_size=mesh,
@@ -408,6 +269,7 @@ def main() -> None:
         lensing="born",
         scheme=args.scheme,
         paint_nside=args.paint_nside,
+        kernel_width_arcmin=args.kernel_width_arcmin,
         adjoint=args.adjoint,
         checkpoints=args.checkpoints,
         field_sharding=sharding,
@@ -421,7 +283,7 @@ def main() -> None:
     prob_model = jfli.ppl.full_field_probmodel(config)
     conditioned_model = condition(prob_model, data=condition_data)
 
-    # 8. Run batched MCMC
+    # Run batched MCMC
     jfli.infer.batched_sampling(
         conditioned_model,
         path=args.path,
