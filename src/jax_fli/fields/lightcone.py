@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 import jax
 import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
 from jax.image import resize
-from matplotlib.axes import Axes
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
 from .._src.base._enums import FieldStatus
@@ -56,6 +59,7 @@ class FlatDensity(AbstractField):
         omega_m: float | None = None,
         h: float | None = None,
         mean_density: float | None = None,
+        normalization: str = "global",
     ) -> FlatDensity:
         """
         Convert the flat-sky map to a different density unit.
@@ -71,6 +75,11 @@ class FlatDensity(AbstractField):
         mean_density : float, optional
             Mean density ρ̄ in particles per (Mpc/h)^3. Required when converting
             FROM OVERDENSITY to other units.
+        normalization : str, optional
+            Overdensity normalization: "global" (default) uses the mean over
+            the whole array; "per_plane" normalises each shell (axis 0) by its
+            own spatial mean over the pixel axes. Ignored unless converting to
+            OVERDENSITY and mean_density is not provided explicitly.
 
         Returns
         -------
@@ -94,7 +103,8 @@ class FlatDensity(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=volume_element,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
+            normalization=normalization,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -110,7 +120,7 @@ class FlatDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
     ):
         """
         Visualize one or more flat-sky maps using matplotlib.
@@ -163,7 +173,7 @@ class FlatDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
     ) -> None:
         """Plot and display flat maps using matplotlib."""
         import matplotlib.pyplot as plt
@@ -485,6 +495,7 @@ class SphericalDensity(AbstractField):
         omega_m: float | None = None,
         h: float | None = None,
         mean_density: float | None = None,
+        normalization: str = "global",
     ) -> SphericalDensity:
         """
         Convert the spherical (HEALPix) map to a different density unit.
@@ -500,6 +511,12 @@ class SphericalDensity(AbstractField):
         mean_density : float, optional
             Mean density in particles per (Mpc/h)^3, required when converting
             FROM OVERDENSITY to other units.
+        normalization : str, optional
+            Overdensity normalization: "global" (default) uses the mean over
+            the whole array; "per_plane" normalises each shell (axis 0) by its
+            own pixel mean. For a (n_shells, npix) array this gives each shell
+            zero global mean. Ignored unless converting to OVERDENSITY and
+            mean_density is not provided explicitly.
 
         Returns
         -------
@@ -528,7 +545,8 @@ class SphericalDensity(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=shell_volume_per_pixel,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
+            normalization=normalization,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -544,10 +562,13 @@ class SphericalDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
+        projection_type: str = "mollweide",
+        fontsize: dict | int | None = None,
+        border_linewidth: float = 3.0,
     ):
         """
-        Visualize one or more spherical maps using ``healpy.mollview``.
+        Visualize one or more spherical maps using ``healpy.projview``.
         """
         if not jax.core.is_concrete(self.array):
             raise ValueError("Cannot plot/show traced arrays. Use outside of jit context.")
@@ -582,6 +603,9 @@ class SphericalDensity(AbstractField):
                     show_colorbar=colorbar,
                     show_ticks=show_ticks,
                     title=title,
+                    projection_type=projection_type,
+                    fontsize=fontsize,
+                    border_linewidth=border_linewidth,
                 )
             else:
                 ax_i.axis("off")
@@ -599,7 +623,10 @@ class SphericalDensity(AbstractField):
         vmin: float | None = None,
         vmax: float | None = None,
         colorbar: bool = True,
-        show_ticks: bool = True,
+        show_ticks: bool = False,
+        projection_type: str = "mollweide",
+        fontsize: dict | int | None = None,
+        border_linewidth: float = 3.0,
     ) -> None:
         """
         Plot and display spherical maps using healpy.
@@ -619,6 +646,9 @@ class SphericalDensity(AbstractField):
             vmax=vmax,
             colorbar=colorbar,
             show_ticks=show_ticks,
+            projection_type=projection_type,
+            fontsize=fontsize,
+            border_linewidth=border_linewidth,
         )
         plt.show()
 
@@ -634,7 +664,7 @@ class SphericalDensity(AbstractField):
         mesh2: SphericalDensity | None = None,
         *,
         lmax: int | None = None,
-        method: str = "jax",
+        method: str = "healpy",
         batch_size: int | None = None,
     ) -> PowerSpectrum:
         """Compute a spherical (HEALPix) angular power spectrum C_ell (auto or cross)."""

@@ -14,7 +14,7 @@ from jaxtyping import Array
 
 from .power_spec import PowerSpectrum
 
-__all__ = ["compute_theory_cl", "tophat_z"]
+__all__ = ["compute_theory_cl", "compute_theory_cl_for_density", "tophat_z"]
 
 # Type alias for z_source parameter
 ZSourceType = Union[
@@ -220,4 +220,65 @@ def compute_theory_cl(
         wavenumber=ell,
         name="Cl",
         scale_factors=pair_indices,
+    )
+
+
+@partial(jax.jit, static_argnames=["nonlinear_fn", "cross", "nz_zmax"])
+def compute_theory_cl_for_density(
+    cosmo: jc.Cosmology,
+    lightcone,
+    ells: jnp.ndarray,
+    nonlinear_fn: str | Callable = jc.power.halofit,
+    cross: bool = False,
+    nz_zmax: float = 2.0,
+) -> PowerSpectrum:
+    """Compute theory number-counts Cls directly from a lightcone density field.
+
+    Converts shell geometry (comoving_centers, density_width) into tophat_z
+    redshift distributions and delegates to compute_theory_cl with
+    probe_type="number_counts".
+
+    Parameters
+    ----------
+    cosmo : jc.Cosmology
+    lightcone : FlatDensity or SphericalDensity
+        Must have .comoving_centers and .density_width of shape (n_shells,).
+    ells : jnp.ndarray
+        Multipole moments.
+    nonlinear_fn : str or callable, optional
+        Nonlinear power spectrum function (default jc.power.halofit).
+    cross : bool, optional
+        If True, return all auto + cross spectra. Default False (auto only).
+    nz_zmax : float, optional
+        Integration upper bound for the tophat_z normalization (default 2.0).
+        jax_cosmo normalises n(z) with 256 Simpson points over [0, nz_zmax];
+        spacing = nz_zmax/255.  Must satisfy two conditions:
+        (1) nz_zmax > max shell redshift (otherwise normalization is wrong),
+        (2) nz_zmax/255 < min shell width in z (otherwise some shells get
+            no integration point → _norm=0 → NaN).
+        Reduce this value if you have very narrow shells at low redshift.
+
+    Returns
+    -------
+    PowerSpectrum
+        shape (n_shells, n_ell) for auto-spectra, or (n_cls, n_ell) with cross.
+    """
+    r_centers = lightcone.comoving_centers
+    r_widths = lightcone.density_width
+
+    r_near = r_centers - r_widths / 2
+    r_far = r_centers + r_widths / 2
+
+    z_near = jc.utils.a2z(jc.background.a_of_chi(cosmo, r_near))
+    z_far = jc.utils.a2z(jc.background.a_of_chi(cosmo, r_far))
+
+    nz_list = [tophat_z(zn, zf, gals_per_arcmin2=1.0, zmax=nz_zmax) for zn, zf in zip(z_near, z_far)]
+
+    return compute_theory_cl(
+        cosmo,
+        ell=ells,
+        z_source=nz_list,
+        probe_type="number_counts",
+        nonlinear_fn=nonlinear_fn,
+        cross=cross,
     )

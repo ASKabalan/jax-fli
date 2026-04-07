@@ -139,7 +139,7 @@ def load_gowerstreet(
             mesh_size=(int(params["nGrid"]), int(params["nGrid"]), int(params["nGrid"])),
             box_size=(float(params["dBoxSize"]), float(params["dBoxSize"]), float(params["dBoxSize"])),
             observer_position=(0.5, 0.5, 0.5),
-            sharding=sharding,
+            field_sharding=sharding,
             halo_size=(0, 0),
             nside=hp.npix2nside(map_data.shape[-1]),
             z_sources=np.asarray([z_centers[i]]),

@@ -26,15 +26,13 @@ def born(
         raise ValueError(f"Expected lightcone with status=LIGHTCONE, got {lightcone.status}")
 
     scale_factors = jnp.atleast_1d(lightcone.scale_factors)
-    n_planes = scale_factors.size
 
     if lightcone.array.ndim not in [2, 3]:
         raise ValueError(f"Lightcone array must be 2D (spherical) or 3D (flat), got {lightcone.array.ndim}D")
 
     r_center = jc.background.radial_comoving_distance(cosmo, scale_factors)
 
-    max_radius = lightcone.max_comoving_radius
-    density_plane_width = max_radius / n_planes
+    density_plane_width = lightcone.density_width
 
     is_spherical = isinstance(lightcone, SphericalDensity)
 
