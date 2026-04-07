@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import equinox as eqx
 import jax
 import jax.core
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 from .._src.base._core import AbstractPytree
 from .._src.fields._plotting import generate_titles
@@ -110,6 +111,7 @@ class PowerSpectrum(AbstractPytree):
         color: str | None = None,
         figsize: tuple[float, float] | None = None,
         grid: bool = True,
+        legend: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes, list[Any]]:
         """
@@ -137,6 +139,7 @@ class PowerSpectrum(AbstractPytree):
         pk_2d = self.array[None, :] if self.array.ndim == 1 else self.array
         n_spec = pk_2d.shape[0]
 
+        # Always generate labels if none are provided, so the metadata exists
         if label is None:
             base_name = self.name or "spectrum"
             label = generate_titles(base_name, self.scale_factors, n_spec)
@@ -152,6 +155,8 @@ class PowerSpectrum(AbstractPytree):
             raise ValueError(f"label must have length {n_spec}, got {len(label)}.")
 
         if ax is None:
+            import matplotlib.pyplot as plt
+
             fig, ax = plt.subplots(figsize=figsize or (8, 6))
         else:
             fig = ax.get_figure()
@@ -175,7 +180,8 @@ class PowerSpectrum(AbstractPytree):
         else:
             ax.set_xlabel(r"$k$")
             ax.set_ylabel(r"$P(k)$")
-        ax.legend()
+        if legend:
+            ax.legend()
         return fig, ax, artists
 
     def show(
@@ -188,6 +194,7 @@ class PowerSpectrum(AbstractPytree):
         color: str | None = None,
         figsize: tuple[float, float] | None = None,
         grid: bool = True,
+        legend: bool = False,
         **kwargs: Any,
     ):
         fig, ax, artists = self.plot(
@@ -198,173 +205,12 @@ class PowerSpectrum(AbstractPytree):
             color=color,
             figsize=figsize,
             grid=grid,
+            legend=legend,
             **kwargs,
         )
+        import matplotlib.pyplot as plt
+
         plt.show()
-        return fig, ax, artists
-
-    def mean_std_plot(
-        self,
-        *,
-        ax: Axes | None = None,
-        logx: bool = True,
-        logy: bool = True,
-        label: Sequence[str] | None = None,
-        color: str | None = None,
-        alpha: float = 0.25,
-        figsize: tuple[float, float] | None = None,
-        grid: bool = True,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes, list[Any]]:
-        """
-        Plot mean and ±1σ band for a batched spectrum.
-
-        If only one spectrum is present, plots it directly without a band.
-        """
-        if not jax.core.is_concrete(self.wavenumber):
-            raise ValueError("Cannot plot traced arrays. Use PowerSpectrum.mean_std_plot() outside jit.")
-
-        k_1d = self.wavenumber
-        pk_2d = self.array[None, :] if self.array.ndim == 1 else self.array
-        n_spec = pk_2d.shape[0]
-
-        if label is not None:
-            if not isinstance(label, (list | tuple)):
-                raise TypeError("label must be a list/tuple of strings or None.")
-            if len(label) != n_spec:
-                raise ValueError(f"label must have length {n_spec}, got {len(label)}.")
-
-        if ax is None:
-            fig, ax = plt.subplots(figsize=figsize or (8, 6))
-        else:
-            fig = ax.get_figure()
-        assert ax is not None
-
-        artists: list[Any] = []
-        if n_spec == 1:
-            lab = (label[0] if label is not None else self.name) or "spectrum"
-            (line,) = ax.plot(k_1d, pk_2d[0], label=lab, color=color, **kwargs)
-            artists.append(line)
-        else:
-            mean_pk = pk_2d.mean(axis=0)
-            std_pk = pk_2d.std(axis=0)
-            lab = (label[0] if label is not None else self.name) or "mean"
-            (line,) = ax.plot(k_1d, mean_pk, label=lab, color=color, **kwargs)
-            band = ax.fill_between(k_1d, mean_pk - std_pk, mean_pk + std_pk, color=color, alpha=alpha)
-            artists.extend([line, band])
-
-        if logx:
-            ax.set_xscale("log")
-        if logy:
-            ax.set_yscale("log")
-        if grid:
-            ax.grid(True, which="both", ls=":", alpha=0.5)
-        if (self.name or "").lower() == "cl":
-            ax.set_xlabel(r"$\ell$")
-            ax.set_ylabel(r"$C_\ell$")
-        else:
-            ax.set_xlabel(r"$k$")
-            ax.set_ylabel(r"$P(k)$")
-        ax.legend()
-        return fig, ax, artists
-
-    def compare_plot(
-        self,
-        others: Sequence[PowerSpectrum],
-        *,
-        ax: Axes | None = None,
-        logx: bool = True,
-        logy: bool = True,
-        grid: bool = True,
-        labels: Sequence[Sequence[str]] | None = None,
-        colors: Sequence[Sequence[str]] | None = None,
-        ratio: bool = True,
-        ratio_ylim: tuple[float, float] | None = None,
-        figsize: tuple[float, float] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes, list[Any]]:
-        """
-        Overlay this spectrum and others on one axis; optionally add ratios on a twin y-axis.
-
-        `others` must share the same wavenumber grid.
-        """
-        if not jax.core.is_concrete(self.wavenumber):
-            raise ValueError("Cannot plot traced arrays. Use PowerSpectrum.compare_plot() outside jit.")
-        if not others:
-            raise ValueError("others must be non-empty.")
-
-        k_ref = self.wavenumber
-        pk_ref = self.array[None, :] if self.array.ndim == 1 else self.array
-        if pk_ref.shape[0] != 1:
-            raise ValueError("compare_plot expects the reference spectrum to be unbatched.")
-        pk_ref = pk_ref[0]
-
-        if labels is not None:
-            if len(labels) != len(others):
-                raise ValueError(f"Expected {len(others)} label rows, got {len(labels)}.")
-            for i, lbls in enumerate(labels):
-                pk_other = others[i].array[None, :] if others[i].array.ndim == 1 else others[i].array
-                if len(lbls) != pk_other.shape[0]:
-                    raise ValueError(
-                        f"labels[{i}] length {len(lbls)} does not match spectra batch {pk_other.shape[0]}."
-                    )
-
-        if colors is not None:
-            if len(colors) != len(others):
-                raise ValueError(f"Expected {len(others)} color rows, got {len(colors)}.")
-
-        if ax is None:
-            fig, ax = plt.subplots(figsize=figsize or (8, 6))
-        else:
-            fig = ax.get_figure()
-        assert ax is not None
-
-        artists: list[Any] = []
-        # plot reference
-        (ref_line,) = ax.plot(k_ref, pk_ref, color="k", lw=2, label=self.name or "reference", **kwargs)
-        artists.append(ref_line)
-
-        # optional ratio axis
-        ax_ratio = ax.twinx() if ratio else None
-        if ax_ratio:
-            ax_ratio.axhline(1.0, color="gray", lw=1, ls="--")
-
-        for i, other in enumerate(others):
-            if not jnp.allclose(other.wavenumber, k_ref):
-                raise ValueError("All spectra in compare_plot must share the same wavenumber grid.")
-            pk_other = other.array[None, :] if other.array.ndim == 1 else other.array
-            for j in range(pk_other.shape[0]):
-                color = colors[i][j] if colors else None
-                lab = labels[i][j] if labels else (other.name or f"spectrum {i}[{j}]")
-                (line,) = ax.plot(k_ref, pk_other[j], label=lab, color=color, **kwargs)
-                artists.append(line)
-                if ax_ratio:
-                    (ratio_line,) = ax_ratio.plot(
-                        k_ref, pk_other[j] / pk_ref, label=f"{lab} / ref", color=color, ls="--"
-                    )
-                    artists.append(ratio_line)
-
-        if logx:
-            ax.set_xscale("log")
-            if ax_ratio:
-                ax_ratio.set_xscale("log")
-        if logy:
-            ax.set_yscale("log")
-        if grid:
-            ax.grid(True, which="both", ls=":", alpha=0.5)
-        if (self.name or "").lower() == "cl":
-            ax.set_xlabel(r"$\ell$")
-            ax.set_ylabel(r"$C_\ell$")
-        else:
-            ax.set_xlabel(r"$k$")
-            ax.set_ylabel(r"$P(k)$")
-        ax.legend(loc="upper left")
-        if ax_ratio:
-            ax_ratio.set_ylabel("ratio")
-            if ratio_ylim is not None:
-                ax_ratio.set_ylim(*ratio_ylim)
-            ax_ratio.legend(loc="lower right")
-
         return fig, ax, artists
 
     # ---- Stacking helper ------------------------------------------------

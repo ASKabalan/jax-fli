@@ -24,7 +24,7 @@ def _single_paint(
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
     observer_position: tuple[float, float, float],
-    sharding: any,
+    field_sharding: any,
     halo_size: tuple[int, int],
     mode: PaintMode,
     mesh: Array | None,
@@ -44,7 +44,7 @@ def _single_paint(
         Physical box size in Mpc.
     observer_position : Tuple[float, float, float]
         Observer position as fractions [0, 1].
-    sharding : any
+    field_sharding : any
         JAX sharding specification.
     halo_size : Tuple[int, int]
         Halo padding size (left, right).
@@ -67,7 +67,7 @@ def _single_paint(
         density = cic_paint_dx(
             array,
             halo_size=halo_size,
-            sharding=sharding,
+            sharding=field_sharding,
             weight=weights,
             chunk_size=chunk_size,
         )
@@ -78,7 +78,7 @@ def _single_paint(
             array,
             weight=weights,
             halo_size=halo_size,
-            sharding=sharding,
+            sharding=field_sharding,
         )
     else:
         raise ValueError("mode must be either 'relative' or 'absolute'")
@@ -92,7 +92,7 @@ def _single_paint_2d_lightcone(
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
     observer_position: tuple[float, float, float],
-    sharding: any,
+    field_sharding: any,
     flatsky_npix: tuple[int, int],
     halo_size: tuple[int, int],
     weights: Array | float | None,
@@ -106,7 +106,7 @@ def _single_paint_2d_lightcone(
         mesh_size=mesh_size,
         box_size=box_size,
         observer_position=observer_position,
-        sharding=sharding,
+        field_sharding=field_sharding,
         flatsky_npix=flatsky_npix,
         halo_size=halo_size,
         weights=weights,
@@ -119,7 +119,7 @@ def _single_paint_2d(
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
     observer_position: tuple[float, float, float],
-    sharding: any,
+    field_sharding: any,
     flatsky_npix: tuple[int, int],
     halo_size: tuple[int, int],
     weights: Array | float | None,
@@ -141,7 +141,7 @@ def _single_paint_2d(
         Physical box size in Mpc.
     observer_position : Tuple[float, float, float]
         Observer position as fractions [0, 1].
-    sharding : any
+    field_sharding : any
         JAX sharding specification.
     flatsky_npix : Tuple[int, int]
         2D flat-sky grid dimensions.
@@ -186,9 +186,9 @@ def _single_paint_2d(
 
     # xy should already have that sharding but this is done for the gradient
     # This way in the backward pass the gradient will also be sharded and not cause memory issues on a single device
-    if sharding is not None:
-        xy = jax.lax.with_sharding_constraint(xy, sharding)
-        grid = jax.lax.with_sharding_constraint(grid, sharding)
+    if field_sharding is not None:
+        xy = jax.lax.with_sharding_constraint(xy, field_sharding)
+        grid = jax.lax.with_sharding_constraint(grid, field_sharding)
 
     # Apply CIC painting
     painted = cic_paint_2d(grid, xy, painting_weights)
@@ -208,7 +208,7 @@ def _single_paint_spherical_lightcone(
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
     observer_position: tuple[float, float, float],
-    sharding: any,
+    field_sharding: any,
     nside: int,
     halo_size: tuple[int, int],
     scheme: SphericalScheme,
@@ -230,7 +230,7 @@ def _single_paint_spherical_lightcone(
         mesh_size=mesh_size,
         box_size=box_size,
         observer_position=observer_position,
-        sharding=sharding,
+        field_sharding=field_sharding,
         nside=nside,
         halo_size=halo_size,
         scheme=scheme,
@@ -251,7 +251,7 @@ def _single_paint_spherical(
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
     observer_position: tuple[float, float, float],
-    sharding: any,
+    field_sharding: any,
     nside: int,
     halo_size: tuple[int, int],
     scheme: SphericalScheme,
@@ -281,7 +281,7 @@ def _single_paint_spherical(
         Physical box size in Mpc.
     observer_position : Tuple[float, float, float]
         Observer position as fractions [0, 1].
-    sharding : any
+    field_sharding : any
         JAX sharding specification.
     nside : int
         HEALPix nside parameter.
@@ -323,8 +323,8 @@ def _single_paint_spherical(
 
     # Position should be already sharded but this is done for the gradient
     # This way in the backward pass the gradient will also be sharded and not cause memory
-    if sharding is not None:
-        positions = jax.lax.with_sharding_constraint(positions, sharding)
+    if field_sharding is not None:
+        positions = jax.lax.with_sharding_constraint(positions, field_sharding)
 
     painted = paint_particles_spherical(
         positions=positions,
@@ -343,6 +343,6 @@ def _single_paint_spherical(
         ud_grade_order_in=ud_grade_order_in,
         ud_grade_order_out=ud_grade_order_out,
         ud_grade_pess=ud_grade_pess,
-        sharding=sharding,
+        sharding=field_sharding,
     )
     return painted

@@ -38,9 +38,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-timeout",
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
     "pre-commit>=3.0",
+    "cython",
 ]
 catalog = [
     "datasets>=2.0",
@@ -61,10 +63,11 @@ plot = [
     "arviz",
     "tabulate",
 ]
+benchmark = ["jax-hpc-profiler"]
 legacy = ["diffrax"]
-raytrace = ["dorian-raytrace@git+https://github.com/ASKabalan/Dorian.git@main"]
+raytrace = ["dorian-raytrace-mpi"]
 
-all = ["jax_fli[catalog, sampling, legacy, raytrace, plot]"]
+all = ["jax_fli[catalog, sampling, legacy, raytrace, plot, benchmark]"]
 
 [project.urls]
 Homepage = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
@@ -73,8 +76,11 @@ Repository = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 Issues = "https://github.com/DifferentiableUniverseInitiative/jax-fli/issues"
 
 
+[project.scripts]
+fli-launcher = "jax_fli.scripts.launcher.main:main"
+
 [tool.setuptools]
-script-files = ["bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-raytrace", "bin/fli-grid"]
+script-files = ["bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-grid", "bin/fli-extract"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -120,7 +126,15 @@ reportUndefinedVariable = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=jax_fli --cov-report=term-missing"
+markers = [
+    "distributed: tests requiring multi-device JAX setup (8 CPU devices or SLURM)",
+    "single_device: tests that run on a single device (default)",
+    "slow: tests that are too slow for CI",
+]
+timeout = 9000
+timeout_method = "thread"

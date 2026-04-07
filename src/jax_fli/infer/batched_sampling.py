@@ -9,7 +9,6 @@ from typing import ParamSpec, TypeVar
 
 import jax
 import jax.numpy as jnp
-import orbax.checkpoint as ocp
 from jaxtyping import Key, PyTree
 
 from ..io import load_sharded, save_sharded
@@ -26,6 +25,7 @@ def requires_samplers(func: Callable[_Param, _Return]) -> Callable[_Param, _Retu
     try:
         import blackjax  # noqa: F401
         import numpyro  # noqa: F401
+        import orbax.checkpoint  # noqa: F401
 
         return func
     except ImportError:
@@ -51,7 +51,7 @@ def batched_sampling(
     backend: str = "numpyro",
     init_params: PyTree | None = None,
     progress_bar: bool = True,
-    save_callback: Callable[[dict, dict, str, int], None] = default_save,
+    save_callback: Callable[[dict, str, int, dict | None], None] = default_save,
     *model_args,
     **model_kwargs,
 ):
@@ -80,6 +80,7 @@ def batched_sampling(
     """
     import blackjax
     import numpyro
+    import orbax.checkpoint as ocp
 
     os.makedirs(path, exist_ok=True)
     state_path = f"{path}/sampling_state"
@@ -171,7 +172,7 @@ def batched_sampling(
             assert initial_position is not None, "initial_position must be defined for blackjax backend"
             if sampler == "NUTS":
                 adapt = blackjax.window_adaptation(
-                    blackjax.nuts, logdensity_fn, progress_bar=progress_bar, target_acceptance_rate=0.8
+                    blackjax.nuts, logdensity_fn, progress_bar=progress_bar, target_acceptance_rate=0.60
                 )
                 (last_state, parameters), _ = adapt.run(warmup_key, initial_position, num_warmup)
             elif sampler == "HMC":
@@ -210,7 +211,7 @@ def batched_sampling(
             if init_params is not None:
                 numpyro_kwargs["init_strategy"] = partial(numpyro.infer.init_to_value, values=init_params)
             mcmc = numpyro.infer.MCMC(
-                numpyro.infer.NUTS(model, **numpyro_kwargs)
+                numpyro.infer.NUTS(model, max_tree_depth=2, target_accept_prob=0.60, **numpyro_kwargs)
                 if sampler == "NUTS"
                 else numpyro.infer.HMC(model, **numpyro_kwargs),
                 num_warmup=num_warmup,
@@ -232,7 +233,7 @@ def batched_sampling(
     if backend == "blackjax":
         assert logdensity_fn is not None, "logdensity_fn must be defined for blackjax backend"
         if sampler == "NUTS":
-            sampler_fn = blackjax.nuts(logdensity_fn, **parameters)
+            sampler_fn = blackjax.nuts(logdensity_fn, max_tree_depth=2, **parameters)
         elif sampler == "HMC":
             sampler_fn = blackjax.hmc(logdensity_fn, **parameters)
         elif sampler == "MCLMC":
@@ -310,7 +311,7 @@ def batched_sampling(
 
         if save:
             print(f"Saving batch {i + 1} samples and state...")
-            save_callback(samples, metrics, samples_prefix, i)
+            save_callback(samples, samples_prefix, i, metrics)
             inference_state = {"nb_samples": jnp.array(nb_samples), "last_state": last_state, "parameters": parameters}
             save_sharded(inference_state, state_path, overwrite=True, dump_structure=False)
         del samples

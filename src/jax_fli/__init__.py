@@ -35,18 +35,22 @@ from .lensing import born, raytrace
 # From pm
 from .pm import (
     AbstractNBodySolver,
+    BullFrog,
+    DoubleKickDrift,
     DriftInterp,
-    EfficientDriftDoubleKick,
+    DriftKickDrift,
     InterpTilerState,
     NoCorrection,
     NoInterp,
     OnionTiler,
     PGDKernel,
-    ReversibleDoubleKickDrift,
     SharpeningKernel,
     TelephotoInterp,
+    compute_n_steps_for_shells,
     lpt,
     nbody,
+    resolve_geometry,
+    simulation_stepping,
 )
 
 # From power
@@ -56,6 +60,7 @@ from .power import (
     angular_cl_spherical,
     coherence,
     compute_theory_cl,
+    compute_theory_cl_for_density,
     power,
     tophat_z,
     transfer,
@@ -108,8 +113,9 @@ __all__ = [
     # From pm
     "lpt",
     "nbody",
-    "EfficientDriftDoubleKick",
-    "ReversibleDoubleKickDrift",
+    "BullFrog",
+    "DoubleKickDrift",
+    "DriftKickDrift",
     "AbstractNBodySolver",
     "PGDKernel",
     "SharpeningKernel",
@@ -119,6 +125,9 @@ __all__ = [
     "NoInterp",
     "DriftInterp",
     "InterpTilerState",
+    "resolve_geometry",
+    "compute_n_steps_for_shells",
+    "simulation_stepping",
     # From power
     "PowerSpectrum",
     "power",
@@ -127,6 +136,7 @@ __all__ = [
     "angular_cl_flat",
     "angular_cl_spherical",
     "compute_theory_cl",
+    "compute_theory_cl_for_density",
     "tophat_z",
     # From lensing
     "born",

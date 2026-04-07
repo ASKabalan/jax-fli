@@ -16,6 +16,9 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
+from jaxpm.distributed import get_sharding_for_shape
 from jaxtyping import Array
 from typing_extensions import Self
 
@@ -190,13 +193,14 @@ class AbstractField(AbstractPytree):
 
     # Static metadata (not traced by JAX)
     observer_position: tuple[float, float, float] = eqx.field(static=True, default=(0.5, 0.5, 0.5))
-    sharding: Any | None = eqx.field(static=True, default=None)
+    field_sharding: Any | None = eqx.field(static=True, default=None)
     halo_size: tuple[int, int] = eqx.field(static=True, default=(0, 0))
     nside: int | None = eqx.field(static=True, default=None)
     flatsky_npix: tuple[int, int] | None = eqx.field(static=True, default=None)
     field_size: float | None = eqx.field(static=True, default=None)
     status: FieldStatus = eqx.field(static=True, default=FieldStatus.UNKNOWN)
     unit: PhysicalUnit = eqx.field(static=True, default=PhysicalUnit.INVALID_UNIT)
+    name: str | None = eqx.field(static=True, default=None)
 
     STATUS_ENUM = FieldStatus
 
@@ -293,6 +297,7 @@ class AbstractField(AbstractPytree):
         # Unit and status metadata
         status: FieldStatus | None = None,
         unit: PhysicalUnit | None = None,
+        name: str | None = None,
     ) -> Self:
         """
         Rebuild a field of the same class using metadata from a reference DensityField.
@@ -320,7 +325,7 @@ class AbstractField(AbstractPytree):
             mesh_size=field.mesh_size,
             box_size=field.box_size,
             observer_position=field.observer_position,
-            sharding=field.sharding,
+            field_sharding=field.field_sharding,
             halo_size=field.halo_size,
             # Lightcone geometry and metadata
             nside=field.nside,
@@ -334,6 +339,7 @@ class AbstractField(AbstractPytree):
             # Unit and status metadata
             status=status if status is not None else field.status,
             unit=unit if unit is not None else field.unit,
+            name=name if name is not None else field.name,
         )
 
     @classmethod
@@ -399,13 +405,14 @@ class AbstractField(AbstractPytree):
             f"  mesh_size         ={self.mesh_size}, "
             f"  box_size          ={self.box_size}, "
             f"  observer_position ={self.observer_position}, "
-            f"  sharding          ={self.sharding}, "
+            f"  field_sharding    ={self.field_sharding}, "
             f"  halo_size         ={self.halo_size}, "
             f"  nside             ={self.nside}, "
             f"  flatsky_npix      ={self.flatsky_npix}, "
             f"  field_size        ={self.field_size}, "
             f"  status            ={self.status.name}, "
-            f"  unit              ={self.unit.name})"
+            f"  unit              ={self.unit.name}, "
+            f"  name              ={self.name!r})"
         )
 
     def runtime_inspect(self) -> None:
@@ -424,7 +431,7 @@ class AbstractField(AbstractPytree):
             "  mesh_size={}\n"
             "  box_size={}\n"
             "  observer_position={}\n"
-            "  sharding={}\n"
+            "  field_sharding={}\n"
             "  nside={}\n"
             "  flatsky_npix={}\n"
             "  field_size={}\n"
@@ -435,7 +442,7 @@ class AbstractField(AbstractPytree):
             self.mesh_size,
             self.box_size,
             self.observer_position,
-            self.sharding,
+            self.field_sharding,
             self.nside,
             self.flatsky_npix,
             self.field_size,
@@ -475,6 +482,37 @@ class AbstractField(AbstractPytree):
         dbg.print("{} array sharding:", classname)
         dbg.inspect_array_sharding(arr, callback=print)
 
+    def apply_sharding(self) -> Self:
+        """Apply self.field_sharding to self.array with correct dimension alignment.
+
+        Prepends None to the sharding spec for each leading batch (S or N,S)
+        dimension, then uses get_sharding_for_shape to trim for low-D spatial
+        shapes (e.g. 1D HEALPix). Safe to call on unbatched or batched fields.
+        Returns a new field with the sharding constraint applied.
+        """
+        if self.field_sharding is None or self.array is None:
+            return self
+
+        if self.is_multi_batched():
+            n_batch = 2
+            spatial_shape = self.array.shape[2:]
+        elif self.is_batched():
+            n_batch = 1
+            spatial_shape = self.array.shape[1:]
+        else:
+            n_batch = 0
+            spatial_shape = self.array.shape
+
+        spatial_sharding = get_sharding_for_shape(spatial_shape, self.field_sharding)
+
+        if n_batch > 0:
+            spec = spatial_sharding.spec
+            full_sharding = NamedSharding(spatial_sharding.mesh, P(*([None] * n_batch + list(spec))))
+        else:
+            full_sharding = spatial_sharding
+
+        return self.replace(array=jax.lax.with_sharding_constraint(self.array, full_sharding))
+
     def to_metadata(self) -> FieldMetadata:
         """Return a AbstractField with array=None, preserving all metadata."""
         return FieldMetadata(
@@ -486,13 +524,14 @@ class AbstractField(AbstractPytree):
             comoving_centers=self.comoving_centers,
             density_width=self.density_width,
             observer_position=self.observer_position,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
             halo_size=self.halo_size,
             nside=self.nside,
             flatsky_npix=self.flatsky_npix,
             field_size=self.field_size,
             status=self.status,
             unit=self.unit,
+            name=self.name,
         )
 
     # ------------------------------------------------------------------ Factory
