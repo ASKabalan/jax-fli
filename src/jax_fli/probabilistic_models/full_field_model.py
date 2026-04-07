@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
+import jax_cosmo as jc
 import numpyro
 
 from ..fields import DensityField, DensityUnit, FieldStatus
@@ -31,6 +32,16 @@ def _spherical_pixel_area_arcmin2(lightcone: DensityField) -> float:
     return pixel_area_sr * (arcmin_per_rad**2)
 
 
+def _nz_to_distributions(nz_shear):
+    """Ensure every nz entry is a redshift_distribution; wrap floats in delta_nz."""
+    if isinstance(nz_shear, (list | tuple)):
+        return [
+            nz if isinstance(nz, jc.redshift.redshift_distribution) else jc.redshift.delta_nz(nz) for nz in nz_shear
+        ]
+    # JAX float array (from _resolve_nz_shear scalar path)
+    return [jc.redshift.delta_nz(z) for z in nz_shear]
+
+
 def full_field_probmodel(
     config: Configurations,
 ):
@@ -54,7 +65,7 @@ def full_field_probmodel(
                 flatsky_npix=config.flatsky_npix,
                 field_size=config.field_size,
                 cosmo=cosmo,
-                sharding=config.sharding,
+                field_sharding=config.field_sharding,
             ),
         )
 
@@ -70,7 +81,7 @@ def full_field_probmodel(
                 field_size=config.field_size,
                 status=FieldStatus.INITIAL_FIELD,
                 unit=DensityUnit.DENSITY,
-                sharding=config.sharding,
+                field_sharding=config.field_sharding,
             )
 
         numpyro.deterministic("initial_conditions_meta_data", initial_conditions.to_metadata())
@@ -90,8 +101,9 @@ def full_field_probmodel(
         else:
             raise ValueError("geometry must be 'flat' or 'spherical'")
 
+        nz_list = _nz_to_distributions(config.nz_shear)
         observed_maps = []
-        for idx, (kappa_field, nz) in enumerate(zip(kappa_fields, config.nz_shear)):
+        for idx, (kappa_field, nz) in enumerate(zip(kappa_fields, nz_list)):
             sigma = config.sigma_e / jnp.sqrt(nz.gals_per_arcmin2 * pixel_area_arcmin2)
             observed_maps.append(numpyro.sample(f"kappa_{idx}", DistributedNormal(loc=kappa_field, scale=sigma)))
 
@@ -125,7 +137,7 @@ def mock_probmodel(config: Configurations):
                 flatsky_npix=config.flatsky_npix,
                 field_size=config.field_size,
                 cosmo=cosmo,
-                sharding=config.sharding,
+                field_sharding=config.field_sharding,
             ),
         )
 
@@ -141,7 +153,7 @@ def mock_probmodel(config: Configurations):
                 field_size=config.field_size,
                 status=FieldStatus.INITIAL_FIELD,
                 unit=DensityUnit.DENSITY,
-                sharding=config.sharding,
+                field_sharding=config.field_sharding,
             )
 
         numpyro.deterministic("initial_conditions_meta_data", initial_conditions.to_metadata())

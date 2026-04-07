@@ -19,7 +19,7 @@ ICs ──> LPT ──> PM N-body ──> Lightcone Painting ──> Lensing ─
 
 ## Key Features
 
-- **N-body solvers** -- Symplectic DKD (`EfficientDriftDoubleKick`) and reversible KKD (`ReversibleDoubleKickDrift`) integrators
+- **N-body solvers** -- Reversible symplectic KKD (`DoubleKickDrift`) integrator
 - **Painting targets** -- 3D density, flat-sky 2D projection, and HEALPix spherical maps with CIC / bilinear / NGP / RBF schemes
 - **Interpolation kernels** -- `DriftInterp`, `OnionTiler`, and `TelephotoInterp` for on-the-fly lightcone construction beyond the box boundary
 - **Correction kernels** -- PGD (position-based) and Sharpening (velocity-based, reversible) for sub-grid halo correction
@@ -67,7 +67,7 @@ initial_field = jfli.gaussian_initial_conditions(
 dx, p = jfli.lpt(cosmo, initial_field, ts=0.1, order=1)
 
 # 3. PM N-body with spherical lightcone output
-solver = jfli.ReversibleDoubleKickDrift(
+solver = jfli.DoubleKickDrift(
     interp_kernel=jfli.NoInterp(painting=jfli.PaintingOptions(target="spherical")),
 )
 lightcone = jfli.nbody(cosmo, dx, p, t1=1.0, dt0=0.05, nb_shells=4, solver=solver)

@@ -55,7 +55,7 @@ class FlatKappaField(FlatDensity):
             omega_m=None,
             mean_density=None,
             volume_element=None,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
         return self.replace(array=new_array, unit=unit)
 
@@ -104,7 +104,7 @@ class SphericalKappaField(SphericalDensity):
             omega_m=None,
             mean_density=None,
             volume_element=None,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
         return self.replace(array=new_array, unit=unit)
 
@@ -147,7 +147,7 @@ class FlatShearField(FlatDensity):
             omega_m=None,
             mean_density=None,
             volume_element=None,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
         return self.replace(array=new_array, unit=unit)
 
@@ -186,7 +186,7 @@ class SphericalShearField(SphericalDensity):
             omega_m=None,
             mean_density=None,
             volume_element=None,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
         return self.replace(array=new_array, unit=unit)
 

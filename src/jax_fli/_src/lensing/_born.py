@@ -62,8 +62,10 @@ def _born_core_impl(
             )
             coords = jnp.stack([xgrid, ygrid], axis=0) * (jnp.pi / 180)
 
-    r_b = r.reshape(n_planes, *((1,) * (density_planes.ndim - 1)))
-    a_b = a.reshape(n_planes, *((1,) * (density_planes.ndim - 1)))
+    broadcast_shape = (n_planes, *((1,) * (density_planes.ndim - 1)))
+    r_b = r.reshape(broadcast_shape)
+    a_b = a.reshape(broadcast_shape)
+    d_r = d_r.reshape(broadcast_shape)
 
     mean_axes = tuple(range(1, density_planes.ndim))
     rho_mean = jnp.mean(density_planes, axis=mean_axes, keepdims=True)

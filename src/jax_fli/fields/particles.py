@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from functools import partial
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import jax
 import jax.core
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 from jaxpm.painting import cic_read, cic_read_dx
 from jaxtyping import Array, Float
-from matplotlib.axes import Axes
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
 from .._src.fields._painting import (
@@ -109,7 +110,7 @@ class ParticleField(AbstractField):
             destination=unit,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -136,9 +137,8 @@ class ParticleField(AbstractField):
         """
         data = jnp.asarray(self.array)
         if self.unit == PositionUnit.MPC_H:
-            raise ValueError(
-                "Cannot paint ParticleField with unit MPC_H; convert to GRID_RELATIVE or GRID_ABSOLUTE first."
-            )
+            # If input is in MPC/h, we convert to relative grid units for painting, since absolute MPC/h doesn't make sense on a grid.
+            self = self.to(PositionUnit.GRID_RELATIVE)
         mode = "relative" if self.unit == PositionUnit.GRID_RELATIVE else "absolute"
 
         paint_fn = jax.tree_util.Partial(
@@ -146,7 +146,7 @@ class ParticleField(AbstractField):
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             observer_position=self.observer_position,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
             halo_size=self.halo_size,
             mode=mode,
             mesh=mesh,
@@ -163,17 +163,10 @@ class ParticleField(AbstractField):
         painted = jax.lax.map(paint_fn, data, batch_size=batch_size)
         painted = painted.squeeze()
 
-        return DensityField(
+        return DensityField.FromDensityMetadata(
             array=painted,
-            mesh_size=self.mesh_size,
-            box_size=self.box_size,
-            observer_position=self.observer_position,
-            sharding=self.sharding,
-            nside=self.nside,
-            flatsky_npix=self.flatsky_npix,
-            halo_size=self.halo_size,
+            field=self,
             status=FieldStatus.DENSITY_FIELD,
-            scale_factors=self.scale_factors,
             unit=DensityUnit.DENSITY,
         )
 
@@ -194,9 +187,8 @@ class ParticleField(AbstractField):
         - MPC_H -> error (convert first)
         """
         if self.unit == PositionUnit.MPC_H:
-            raise ValueError(
-                "Cannot read_out ParticleField with unit MPC_H; convert to GRID_RELATIVE or GRID_ABSOLUTE first."
-            )
+            # If input is in MPC/h, we convert to relative grid units for reading out,
+            self = self.to(PositionUnit.GRID_RELATIVE)
         mode = "relative" if self.unit == PositionUnit.GRID_RELATIVE else "absolute"
 
         if mode == "relative":
@@ -204,27 +196,19 @@ class ParticleField(AbstractField):
                 density_mesh.array,
                 self.array,
                 halo_size=self.halo_size,
-                sharding=self.sharding,
+                sharding=self.field_sharding,
             )
         else:  # "absolute"
             read_data = cic_read(
                 density_mesh.array,
                 self.array,
                 halo_size=self.halo_size,
-                sharding=self.sharding,
+                sharding=self.field_sharding,
             )
 
-        return DensityField(
+        return DensityField.FromDensityMetadata(
             array=read_data,
-            mesh_size=self.mesh_size,
-            box_size=self.box_size,
-            observer_position=self.observer_position,
-            sharding=self.sharding,
-            nside=self.nside,
-            flatsky_npix=self.flatsky_npix,
-            halo_size=self.halo_size,
-            status=self.status,
-            scale_factors=self.scale_factors,
+            field=self,
             unit=DensityUnit.DENSITY,
         )
 
@@ -286,7 +270,7 @@ class ParticleField(AbstractField):
             "mesh_size": self.mesh_size,
             "box_size": self.box_size,
             "observer_position": self.observer_position,
-            "sharding": self.sharding,
+            "field_sharding": self.field_sharding,
             "flatsky_npix": self.flatsky_npix,
             "halo_size": self.halo_size,
             "weights": weights,
@@ -399,7 +383,7 @@ class ParticleField(AbstractField):
             "mesh_size": self.mesh_size,
             "box_size": self.box_size,
             "observer_position": self.observer_position,
-            "sharding": self.sharding,
+            "field_sharding": self.field_sharding,
             "nside": self.nside,
             "halo_size": self.halo_size,
             "scheme": scheme,
@@ -595,6 +579,8 @@ class ParticleField(AbstractField):
         zoom: float = 0.8,
     ) -> None:
         """Display 3D particle field using :meth:`plot`."""
+        import matplotlib.pyplot as plt
+
         self.plot(
             ax=ax,
             cmap=cmap,

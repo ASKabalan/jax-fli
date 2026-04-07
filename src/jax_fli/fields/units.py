@@ -29,7 +29,8 @@ def convert_units(
     omega_m: float | None = None,  # Matter density parameter, needed for MSUN conversions
     mean_density: float | None = None,  # Mean density for overdensity conversions
     volume_element: float | None = None,  # Volume per voxel/pixel for density conversions
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
+    normalization: str = "global",  # "global" or "per_plane"
 ) -> Array:
     """
     Convert array between units of the same physical quantity.
@@ -48,6 +49,11 @@ def convert_units(
         Box size in Mpc/h
     h : float, optional
         Hubble parameter (h = H0 / 100 km/s/Mpc), required for MPC conversions
+    normalization : str, optional
+        Overdensity normalization mode. "global" (default) divides by the
+        mean of the entire array. "per_plane" divides each leading slice
+        (shell) by its own spatial mean — useful for lightcone maps where
+        each shell is a separate density plane.
 
     Returns
     -------
@@ -66,9 +72,9 @@ def convert_units(
 
     # Dispatch to specific converter
     if isinstance(origin, PositionUnit):
-        return _convert_position(array, origin, destination, mesh_size, box_size, sharding)
+        return _convert_position(array, origin, destination, mesh_size, box_size, field_sharding)
     elif isinstance(origin, DensityUnit):
-        return _convert_density(array, origin, destination, volume_element, omega_m, h, mean_density)
+        return _convert_density(array, origin, destination, volume_element, omega_m, h, mean_density, normalization)
     elif isinstance(origin, ConvergenceUnit):
         return _convert_convergence(array, origin, destination)
     else:
@@ -81,7 +87,7 @@ def _convert_position(
     destination: PositionUnit,
     mesh_size: tuple[int, int, int],
     box_size: tuple[float, float, float],
-    sharding: Any | None = None,
+    field_sharding: Any | None = None,
 ) -> Array:
     """
     Convert position units via GRID_ABSOLUTE as the canonical hub.
@@ -98,7 +104,7 @@ def _convert_position(
         Grid dimensions (nx, ny, nz)
     box_size : tuple of float
         Box size in Mpc/h
-    sharding : optional
+    field_sharding : optional
         JAX sharding for distributed computation
 
     Returns
@@ -113,7 +119,7 @@ def _convert_position(
     if origin == PositionUnit.GRID_ABSOLUTE:
         grid_coords = array
     elif origin == PositionUnit.GRID_RELATIVE:
-        grid_coords = array + uniform_particles(mesh_size, sharding=sharding)
+        grid_coords = array + uniform_particles(mesh_size, sharding=field_sharding)
     elif origin == PositionUnit.MPC_H:
         grid_coords = (array / box_size_arr) * mesh_size_arr
     else:
@@ -123,7 +129,7 @@ def _convert_position(
     if destination == PositionUnit.GRID_ABSOLUTE:
         return grid_coords
     elif destination == PositionUnit.GRID_RELATIVE:
-        return grid_coords - uniform_particles(mesh_size, sharding=sharding)
+        return grid_coords - uniform_particles(mesh_size, sharding=field_sharding)
     elif destination == PositionUnit.MPC_H:
         return (grid_coords / mesh_size_arr) * box_size_arr
     else:
@@ -138,6 +144,7 @@ def _convert_density(
     omega_m: float | None = None,
     h: float | None = None,
     mean_density: float | None = None,
+    normalization: str = "global",
 ) -> Array:
     """
     Convert between density units.
@@ -176,6 +183,12 @@ def _convert_density(
     mean_density : float, optional
         Mean density ρ̄ in particles per (Mpc/h)³. Required when converting
         FROM OVERDENSITY to other units.
+    normalization : str, optional
+        "global" (default): overdensity is relative to the global mean of
+        the whole array. "per_plane": each plane along axis 0 is normalised
+        by its own spatial mean (mean over all remaining axes). Useful for
+        lightcone shells — SphericalDensity (n_shells, npix) or FlatDensity
+        (n_shells, ny, nx). Ignored when mean_density is provided explicitly.
 
     Returns
     -------
@@ -242,8 +255,14 @@ def _convert_density(
 
     elif destination == DensityUnit.OVERDENSITY:
         if mean_density is None:
-            # If not provided, compute mean from the density field
-            mean_density = jnp.mean(density)
+            if normalization == "per_plane" and density.ndim > 1:
+                # Mean over all spatial axes (axis 1 onward), keepdims for broadcast.
+                # e.g. SphericalDensity (n_shells, npix)  → mean shape (n_shells, 1)
+                #      FlatDensity      (n_shells, ny, nx) → mean shape (n_shells, 1, 1)
+                reduce_axes = tuple(range(1, density.ndim))
+                mean_density = jnp.mean(density, axis=reduce_axes, keepdims=True)
+            else:
+                mean_density = jnp.mean(density)
         eps = jnp.finfo(density.dtype).eps
         safe_mean = jnp.where(mean_density == 0, eps, mean_density)
         return density / safe_mean - 1.0
