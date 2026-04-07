@@ -104,6 +104,14 @@ def _make_stem(
 
 def parser() -> ArgumentParser:
     """Build the fli-grid argument parser."""
+    from jax_fli.scripts.parser import (
+        add_common_sim_args,
+        add_cosmo_args,
+        add_distributed_args,
+        add_lensing_args,
+        add_lightcone_args,
+        add_mesh_args,
+    )
 
     p = ArgumentParser(
         prog="fli-grid",
@@ -111,224 +119,52 @@ def parser() -> ArgumentParser:
     )
     subparsers = p.add_subparsers(dest="subcommand", required=True)
 
-    # ------------------------------------------------------------------
     # Shared grid parent (used by all subcommands)
-    # ------------------------------------------------------------------
     grid_parent = ArgumentParser(add_help=False)
 
-    # --- Griddable: mesh / box (flat list, parsed in groups of 3) ---
-    grid_parent.add_argument(
-        "--mesh-size",
-        type=int,
-        nargs="+",
-        default=[64, 64, 64],
-        metavar="N",
-        help="Mesh resolution(s) — groups of 3: '64 64 64 128 128 128' → two configs",
-    )
-    grid_parent.add_argument(
-        "--box-size",
-        type=float,
-        nargs="+",
-        default=[200.0, 200.0, 200.0],
-        metavar="L",
-        help="Box side length(s) in Mpc/h — groups of 3",
-    )
+    add_mesh_args(grid_parent, nargs="+")  # flat list, groups of 3
+    add_distributed_args(grid_parent)
+    add_common_sim_args(grid_parent)
+    add_lightcone_args(grid_parent)
+    add_cosmo_args(grid_parent, sweep=True)  # range-notation strings for Omega-c/sigma8/seed
 
-    # --- Griddable: cosmology / seed ---
-    grid_parent.add_argument(
-        "--Omega-c",
-        type=str,
-        nargs="+",
-        default=[0.2589],
-        metavar="OC",
-        help="Cold dark matter density values; supports start:stop:step range notation",
-    )
-    grid_parent.add_argument(
-        "--sigma8",
-        type=str,
-        nargs="+",
-        default=[0.8159],
-        metavar="S8",
-        help="sigma8 values; supports start:stop:step range notation",
-    )
-    grid_parent.add_argument(
-        "--seed",
-        type=str,
-        nargs="+",
-        default=[0],
-        metavar="S",
-        help="Random seed(s); supports start:stop:step range notation (e.g. 0:9:1)",
-    )
-
-    # --- Griddable: shells ---
+    # Griddable: shells and nside
     grid_parent.add_argument(
         "--nb-shells",
         type=str,
         nargs="+",
         default=[10],
         metavar="N",
-        help="Number of lightcone shells values; supports start:stop:step range notation",
+        help="Number of lightcone shells; supports start:stop:step range notation",
     )
-
-    # --- Griddable: nside ---
     grid_parent.add_argument(
         "--nside",
         type=str,
         nargs="+",
         default=None,
         metavar="NS",
-        help="HEALPix NSIDE value(s) for spherical painting; supports start:stop:step range notation",
+        help="HEALPix NSIDE value(s); supports start:stop:step range notation",
     )
 
-    # --- Fixed: alternative painting targets (mutually exclusive with each other, not with nside) ---
+    # Painting targets (mutually exclusive; nside is handled separately above)
     paint_group = grid_parent.add_mutually_exclusive_group()
     paint_group.add_argument("--flatsky-npix", type=int, nargs=2, default=None, metavar=("H", "W"))
-    paint_group.add_argument("--field-size", type=int, nargs=2, default=None, metavar=("H", "W"))
     paint_group.add_argument("--density", action="store_true", default=False)
+    grid_parent.add_argument("--field-size", type=int, nargs=2, default=None, metavar=("H", "W"))
 
-    # --- Fixed: time-stepping ---
-    grid_parent.add_argument(
-        "--nb-steps",
-        type=int,
-        default=19,
-        dest="nb_steps",
-        metavar="N",
-        help="Number of integration steps (fixed, not griddable); dt0 = (t1 - t0) / (nb_steps - 1). (default: 19)",
-    )
-
-    # --- Fixed: other cosmology ---
-    cosmo_group = grid_parent.add_argument_group("fixed cosmology")
-    cosmo_group.add_argument("--Omega-b", type=float, default=0.0486)
-    cosmo_group.add_argument("--h", type=float, default=0.6774)
-    cosmo_group.add_argument("--n-s", type=float, default=0.9667, dest="n_s")
-    cosmo_group.add_argument("--Omega-k", type=float, default=0.0)
-    cosmo_group.add_argument("--w0", type=float, default=-1.0)
-    cosmo_group.add_argument("--wa", type=float, default=0.0)
-    cosmo_group.add_argument("--Omega-nu", type=float, default=0.0)
-
-    # --- Fixed: integration bounds ---
-    grid_parent.add_argument("--t0", type=float, default=0.1)
-    grid_parent.add_argument("--t1", type=float, default=1.0)
-
-    # --- Fixed: LPT / solver ---
-    grid_parent.add_argument("--lpt-order", type=int, default=2, choices=[1, 2])
-    grid_parent.add_argument(
-        "--gradient-order",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        dest="gradient_order",
-        help="Force gradient order (0=exact ik, 1=finite-difference) (default: 1)",
-    )
-    grid_parent.add_argument(
-        "--laplace-fd",
-        action="store_true",
-        default=False,
-        dest="laplace_fd",
-        help="Use finite-difference Laplacian (default: False)",
-    )
-    grid_parent.add_argument(
-        "--dealiased",
-        action="store_true",
-        default=False,
-        help="Enable dealiased mode (default: False)",
-    )
-    grid_parent.add_argument(
-        "--exact-growth",
-        action="store_true",
-        default=False,
-        dest="exact_growth",
-        help="Use exact growth factor computation (default: False)",
-    )
-    grid_parent.add_argument("--interp", choices=["none", "onion", "telephoto"], default="none")
-    grid_parent.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    grid_parent.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside for spherical painting (default: same as --nside)",
-    )
-    grid_parent.add_argument("--drift-on-lightcone", action="store_true")
-
-    # --- Fixed: lightcone geometry ---
-    grid_parent.add_argument(
-        "--shell-spacing",
-        choices=["comoving", "equal_vol", "a", "growth"],
-        default="comoving",
-        dest="shell_spacing",
-        help="Shell spacing mode (default: comoving)",
-    )
-    grid_parent.add_argument(
-        "--solver",
-        choices=["kdk", "dkd", "bf"],
-        default="kdk",
-        help="N-body integrator: kdk=DoubleKickDrift, dkd=DriftKickDrift, bf=BullFrog (default: kdk)",
-    )
-    grid_parent.add_argument("--min-width", type=float, default=50.0, dest="min_width")
-    grid_parent.add_argument("--density-widths", type=float, nargs="+", default=None, metavar="W")
-    ts_group = grid_parent.add_mutually_exclusive_group()
-    ts_group.add_argument("--ts", type=float, nargs="+", default=None, metavar="A")
-    ts_group.add_argument("--ts-near", type=float, nargs="+", default=None, metavar="A_NEAR")
-    grid_parent.add_argument("--ts-far", type=float, nargs="+", default=None, metavar="A_FAR")
-
-    # --- Fixed: distributed / sharding ---
-    grid_parent.add_argument("--pdim", type=int, nargs=2, default=[1, 1], metavar=("PX", "PY"))
-    grid_parent.add_argument("--nodes", type=int, default=1)
-    grid_parent.add_argument(
-        "--halo-fraction",
-        type=int,
-        default=8,
-        metavar="F",
-        help="Halo size as mesh // fraction for distributed painting (default: 8)",
-    )
-    grid_parent.add_argument(
-        "--observer-position", type=float, nargs=3, default=[0.5, 0.5, 0.5], metavar=("OX", "OY", "OZ")
-    )
-
-    # --- Output / control ---
+    # Output / control
     grid_parent.add_argument("--output-dir", default=".", metavar="DIR", help="Output directory (default: .)")
     grid_parent.add_argument("--dry-run", action="store_true", help="Print combinations without running")
     grid_parent.add_argument("--enable-x64", action="store_true")
 
-    # --- lpt subcommand ---
+    grid_parent.set_defaults(nb_steps=19, t0=0.1)
+
+    # Subcommands
     subparsers.add_parser("lpt", parents=[grid_parent], help="Grid over LPT runs")
-
-    # --- nbody subcommand ---
     subparsers.add_parser("nbody", parents=[grid_parent], help="Grid over NBody runs")
-
-    # --- lensing subcommand ---
     lensing_p = subparsers.add_parser("lensing", parents=[grid_parent], help="Grid over full lensing pipeline runs")
-    lensing_p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        required=True,
-        metavar="Z",
-        help="Source redshifts or 's3'/'s3[i]' for Stage-3 bins",
-    )
-    lensing_p.add_argument(
-        "--min-z",
-        type=float,
-        default=0.01,
-        help="Minimum redshift for n(z) integration (default: 0.01)",
-    )
-    lensing_p.add_argument(
-        "--max-z",
-        type=float,
-        default=1.5,
-        help="Maximum redshift for n(z) integration (default: 1.5)",
-    )
-    lensing_p.add_argument(
-        "--n-integrate",
-        type=int,
-        default=32,
-        help="Number of Simpson quadrature points for n(z) distributions (default: 32)",
-    )
+    add_lensing_args(lensing_p)
+
     return p
 
 
@@ -343,7 +179,7 @@ def main() -> None:
     import jax.numpy as jnp
 
     from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
-    from jax_fli.scripts.fli_simulate import (
+    from jax_fli.scripts.entry.fli_simulate import (
         _build_cosmo,
         _build_painting,
         _build_solver,
@@ -444,7 +280,8 @@ def main() -> None:
         ts = _resolve_ts(combo)
         solver = _build_solver(combo, painting)
 
-        halo_size = (mesh[0] // args.halo_fraction, mesh[1] // args.halo_fraction)
+        px, py = args.pdim
+        halo_size = (int(mesh[0] / px * args.halo_multiplier), int(mesh[1] / py * args.halo_multiplier))
 
         key = jax.random.key(seed)
         initial_field = jfli.gaussian_initial_conditions(

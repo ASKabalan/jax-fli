@@ -12,6 +12,8 @@ from pathlib import Path
 
 def parser() -> ArgumentParser:
     """Build the argument parser for fli-dorian-rt."""
+    from jax_fli.scripts.parser import add_lensing_args
+
     p = ArgumentParser(
         prog="fli-dorian-rt",
         description="Post-process lightcone parquet files with dorian ray-tracing (MPI).",
@@ -24,24 +26,15 @@ def parser() -> ArgumentParser:
     )
     p.add_argument("--output", "-o", default=".", metavar="DIR", help="Output directory (default: .)")
     p.add_argument(
-        "--nz-shear",
-        nargs="+",
-        required=True,
-        metavar="Z",
-        help="Source redshifts or 's3'/'s3[i]'/'s3[start:stop]' for Stage-3 distributions",
-    )
-    p.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for nz integration (default: 0.01)")
-    p.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for nz integration (default: 1.5)")
-    p.add_argument(
-        "--n-integrate", type=int, default=32, help="Number of integration points for nz distributions (default: 32)"
-    )
-    p.add_argument(
         "--rt-interp",
         choices=["bilinear", "ngp", "nufft"],
         default="bilinear",
         help="Interpolation method for raytrace (default: bilinear)",
     )
     p.add_argument("--no-parallel-transport", action="store_true", help="Disable parallel transport in raytrace")
+
+    add_lensing_args(p)
+
     return p
 
 
@@ -114,7 +107,7 @@ def main() -> None:
         row_count += 1
 
         if comm is not None:
-            comm.Barrier()  # Ensure all ranks have finished processing the current row before moving on
+            comm.Barrier()
 
     if rank == 0:
         print(f"  Done: {row_count} row(s)")
