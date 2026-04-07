@@ -76,6 +76,9 @@ Repository = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 Issues = "https://github.com/DifferentiableUniverseInitiative/jax-fli/issues"
 
 
+[project.scripts]
+fli-launcher = "jax_fli.scripts.launcher.main:main"
+
 [tool.setuptools]
 script-files = ["bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-grid", "bin/fli-extract"]
 

@@ -24,20 +24,44 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install system dependencies (MPI, GSL, FFTW)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gfortran \
+            pkg-config \
+            cmake \
+            ninja-build \
+            openmpi-bin \
+            libopenmpi-dev \
+            libgsl-dev \
+            libfftw3-dev \
+            libfftw3-mpi-dev
+
       - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel hatchling hatch-vcs packaging hatch-fancy-pypi-readme
+          python -m pip install --upgrade scikit-build-core cmake ninja
+
+          python -m pip install --upgrade pybind11
+          echo "CMAKE_PREFIX_PATH=$(python -m pybind11 --cmakedir)" >> $GITHUB_ENV
+
+          pip install "jax[cpu]"
+          pip install -e ".[dev,catalog,sampling]"
+          pip install cython mpi4py
+          pip install -r tests/requirements.txt --no-build-isolation
+
+      - name: Run non-distributed tests
         env:
-          # Prefer CPU JAX on CI
           JAX_PLATFORM_NAME: cpu
           XLA_PYTHON_CLIENT_PREALLOCATE: "false"
         run: |
-          python -m pip install --upgrade pip
-          pip install "jax[cpu]"
-          pip install -e .[dev]
+          pytest -m "not distributed and not slow"
 
-      - name: Run tests
+      - name: Run distributed tests
         env:
           JAX_PLATFORM_NAME: cpu
-          # Give JAX multiple host devices for pmap/sharding shims
-          XLA_FLAGS: --xla_force_host_platform_device_count=8
+          XLA_PYTHON_CLIENT_PREALLOCATE: "false"
         run: |
-          pytest
+          pytest -m distributed
