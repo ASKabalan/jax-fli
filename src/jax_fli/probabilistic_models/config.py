@@ -27,7 +27,7 @@ class Configurations:
     # Simulation settings
     halo_size: tuple[float, float] = (0, 0)
     observer_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    sharding: Any = None
+    field_sharding: Any = None
     nside: int = None
     flatsky_npix: tuple[int, int] = None
     field_size: tuple[float, float] = None
@@ -39,14 +39,17 @@ class Configurations:
     # Simulation parameters
     lpt_order: int = 2
     t0: float = 0.01
-    dt0: float = 0.01
+    nb_steps: int = 100
     t1: float = 1.0
     adjoint: str = "checkpointed"
     checkpoints: int = 10
     number_of_shells: int = 8
-    equal_vol: bool = False
-    min_width: float = 50.0  # Mpc/h comoving, minimum shell width for equal_vol mode
+    shell_spacing: str = "comoving"
+    min_width: float = 50.0  # Mpc/h comoving, minimum shell width
     geometry: str = "spherical"
+    scheme: str = "bilinear"
+    paint_nside: int | None = None
+    kernel_width_arcmin: float | None = None
     drift_on_lightcone: bool = False
     # Power spectrum settings (for power-spectrum model, not used in full-field model)
     ells: Array = field(default_factory=lambda: jnp.arange(2, 2048))

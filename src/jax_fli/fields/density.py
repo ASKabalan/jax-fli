@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax
 import jax.core
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 from jaxtyping import Array
-from matplotlib.axes import Axes
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
 from .._src.base._enums import DensityUnit, FieldStatus
@@ -70,6 +72,7 @@ class DensityField(AbstractField):
         omega_m: float | None = None,
         h: float | None = None,
         mean_density: float | None = None,
+        normalization: str = "global",
     ) -> DensityField:
         """
         Convert the field to a different unit.
@@ -85,6 +88,10 @@ class DensityField(AbstractField):
         mean_density : float, optional
             Mean density ρ̄ in particles per (Mpc/h)³. Required when converting
             FROM OVERDENSITY to other units.
+        normalization : str, optional
+            Overdensity normalization: "global" (default) uses the mean over
+            the whole array. Ignored unless converting to OVERDENSITY and
+            mean_density is not provided explicitly.
 
         Returns
         -------
@@ -118,7 +125,8 @@ class DensityField(AbstractField):
             omega_m=omega_m,
             mean_density=mean_density,
             volume_element=volume_element,
-            sharding=self.sharding,
+            field_sharding=self.field_sharding,
+            normalization=normalization,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -249,6 +257,8 @@ class DensityField(AbstractField):
         levels: int = 64,
     ) -> None:
         """Display 3D density using :meth:`plot`."""
+
+        import matplotlib.pyplot as plt
 
         self.plot(
             ax=ax,

@@ -22,7 +22,7 @@ def single_ode(cosmo, reference_field: ParticleField):
     mesh_shape = reference_field.mesh_size
     paint_absolute_pos = reference_field.unit == PositionUnit.GRID_ABSOLUTE
     halo_size = reference_field.halo_size
-    sharding = reference_field.sharding
+    sharding = reference_field.field_sharding
 
     def nbody_ode(a, state, args):
         """
@@ -127,7 +127,7 @@ def symplectic_fpm(
     mesh_shape = reference_field.mesh_size
     paint_absolute_pos = reference_field.unit == PositionUnit.GRID_ABSOLUTE
     halo_size = reference_field.halo_size
-    sharding = reference_field.sharding
+    sharding = reference_field.field_sharding
 
     def drift(a, vel, args):
         """

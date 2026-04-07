@@ -3,15 +3,37 @@
 from __future__ import annotations
 
 import tarfile
+from functools import wraps
 from pathlib import Path
 from typing import Union
 
-import h5py
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import jax_healpy as jhp
 import numpy as np
+
+try:
+    import h5py
+except ImportError:
+    h5py = None  # type: ignore[assignment]
+
+
+def requires_h5py(func):
+    """Decorator that raises ImportError when 'h5py' is not installed."""
+    try:
+        import h5py  # noqa: F401
+
+        return func
+    except ImportError:
+        pass
+
+    @wraps(func)
+    def _deferred(*args, **kwargs):
+        raise ImportError("Missing optional dependency 'h5py'. Install with: pip install jax-fli[catalog]")
+
+    return _deferred
+
 
 from .._src.base._enums import FieldStatus
 from ..fields import SphericalDensity
@@ -221,7 +243,7 @@ def load_cosmogrid_lc(
             mesh_size=mesh_size,
             box_size=box_tuple,
             observer_position=(0.5, 0.5, 0.5),
-            sharding=sharding,
+            field_sharding=sharding,
             halo_size=(0, 0),
             nside=nside,
             z_sources=jnp.asarray([z_centers[i]]),
@@ -317,6 +339,7 @@ def _find_nz_support(zcat: np.ndarray, weight: np.ndarray, frac: float = 1e-3) -
     return z_min, z_max
 
 
+@requires_h5py
 def _resolve_cosmogrid_cosmology(path: Path) -> jc.Cosmology:
     """Resolve cosmology from ``CosmoGridV1_metainfo.h5`` given a stage3 path.
 
@@ -350,7 +373,7 @@ def _resolve_cosmogrid_cosmology(path: Path) -> jc.Cosmology:
         raise FileNotFoundError(f"CosmoGridV1_metainfo.h5 not found in any parent of {path}")
 
     # Look up the cosmology row by matching path_par containing the cosmo ID
-    with h5py.File(metainfo_path, "r") as f:
+    with h5py.File(metainfo_path, "r") as f:  # type: ignore[union-attr]
         params = f["parameters/grid"]
         path_pars = params["path_par"]
         row = None
@@ -379,6 +402,7 @@ def _resolve_cosmogrid_cosmology(path: Path) -> jc.Cosmology:
     )
 
 
+@requires_h5py
 def load_cosmogrid_kappa(
     path: PathLike,
     *,
@@ -431,7 +455,7 @@ def load_cosmogrid_kappa(
     nz_shear = get_stage3_nz_shear()
 
     maps = []
-    with h5py.File(h5_file, "r") as f:
+    with h5py.File(h5_file, "r") as f:  # type: ignore[union-attr]
         for bin_idx in bins:
             key = f"{probe}/stage3_lensing{bin_idx}"
             if key not in f:
@@ -450,7 +474,7 @@ def load_cosmogrid_kappa(
                 mesh_size=(1, 1, 1),
                 box_size=(1.0, 1.0, 1.0),
                 observer_position=(0.5, 0.5, 0.5),
-                sharding=sharding,
+                field_sharding=sharding,
                 halo_size=(0, 0),
                 nside=nside,
                 z_sources=z_eff,
