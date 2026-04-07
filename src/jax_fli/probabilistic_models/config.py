@@ -49,6 +49,7 @@ class Configurations:
     geometry: str = "spherical"
     scheme: str = "bilinear"
     paint_nside: int | None = None
+    kernel_width_arcmin: float | None = None
     drift_on_lightcone: bool = False
     # Power spectrum settings (for power-spectrum model, not used in full-field model)
     ells: Array = field(default_factory=lambda: jnp.arange(2, 2048))

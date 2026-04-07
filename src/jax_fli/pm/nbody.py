@@ -93,8 +93,10 @@ def nbody(
     # Derive t0 from solver or from LPT fields
     t0 = solver.t0
     if t0 is None:
-        t0 = float(jnp.atleast_1d(dx_field.scale_factors).squeeze())
+        raise ValueError("t0 must be set on the solver before calling nbody().")
     t1 = solver.t1
+    if t1 is None:
+        raise ValueError("t1 must be set on the solver before calling nbody().")
 
     # Check that t0 matches the LPT fields' scale factor
     jax.debug.callback(_validate_t0_cb, dx_field.scale_factors, t0)
