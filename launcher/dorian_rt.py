@@ -28,7 +28,6 @@ def add_subparser(sub):
     )
     g.add_argument("--no-parallel-transport", action="store_true")
 
-    # dorian_rt_script.bash: CPU-only, TASKS_PER_NODE=4, CPUS_PER_NODE=24, NODES=1
     p.set_defaults(
         constraint="cpu",
         cpus_per_node=24,
@@ -67,5 +66,4 @@ def run(args):
     if args.no_parallel_transport:
         fli_cmd.append("--no-parallel-transport")
 
-    # CPU-only: no GPU args; local mode always uses mpirun
     dispatch(args, job_name, "FLI_DORIAN_RT", fli_cmd, use_gpu=False, always_mpirun=True)
