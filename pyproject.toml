@@ -77,13 +77,14 @@ Issues = "https://github.com/DifferentiableUniverseInitiative/jax-fli/issues"
 
 
 [project.scripts]
-fli-launcher = "jax_fli.scripts.launcher.main:main"
+fli-launcher = "launcher.main:main"
 
 [tool.setuptools]
 script-files = ["bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-grid", "bin/fli-extract"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["jax_fli*", "launcher*"]
 
 [tool.setuptools.package-data]
 "jax_fli.io" = ["data/*.txt"]

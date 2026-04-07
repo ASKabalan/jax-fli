@@ -62,7 +62,7 @@ def add_subparser(sub):
     g.add_argument("--output-dir", default="results/grid_runs")
 
     p.set_defaults(
-        time_limit="24:00:00",  # grid runs ALL combos — set generously
+        time_limit="24:00:00",
         drift_on_lightcone=True,
         ts_near=_DEFAULT_TS_NEAR,
         ts_far=_DEFAULT_TS_FAR,

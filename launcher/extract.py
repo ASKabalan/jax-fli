@@ -40,7 +40,6 @@ def add_subparser(sub):
 
 
 def run(args):
-    # Validation: repo-id requires config
     if args.repo_id is not None and not args.config:
         print("Error: --config must be set when --repo-id is used.", file=sys.stderr)
         sys.exit(1)
