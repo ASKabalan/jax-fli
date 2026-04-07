@@ -111,6 +111,7 @@ class PowerSpectrum(AbstractPytree):
         color: str | None = None,
         figsize: tuple[float, float] | None = None,
         grid: bool = True,
+        legend: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes, list[Any]]:
         """
@@ -138,6 +139,7 @@ class PowerSpectrum(AbstractPytree):
         pk_2d = self.array[None, :] if self.array.ndim == 1 else self.array
         n_spec = pk_2d.shape[0]
 
+        # Always generate labels if none are provided, so the metadata exists
         if label is None:
             base_name = self.name or "spectrum"
             label = generate_titles(base_name, self.scale_factors, n_spec)
@@ -178,7 +180,8 @@ class PowerSpectrum(AbstractPytree):
         else:
             ax.set_xlabel(r"$k$")
             ax.set_ylabel(r"$P(k)$")
-        ax.legend()
+        if legend:
+            ax.legend()
         return fig, ax, artists
 
     def show(
@@ -191,6 +194,7 @@ class PowerSpectrum(AbstractPytree):
         color: str | None = None,
         figsize: tuple[float, float] | None = None,
         grid: bool = True,
+        legend: bool = False,
         **kwargs: Any,
     ):
         fig, ax, artists = self.plot(
@@ -201,6 +205,7 @@ class PowerSpectrum(AbstractPytree):
             color=color,
             figsize=figsize,
             grid=grid,
+            legend=legend,
             **kwargs,
         )
         import matplotlib.pyplot as plt

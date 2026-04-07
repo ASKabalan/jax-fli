@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
+import jax_fli as jfli
 import jax_healpy as jhp
 import numpy as np
 import pytest
-
-import jax_fli as jfli
 from jax_fli.fields.units import DensityUnit
 
 # ---------------------------------------------------------------------------

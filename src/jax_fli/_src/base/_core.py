@@ -200,6 +200,7 @@ class AbstractField(AbstractPytree):
     field_size: float | None = eqx.field(static=True, default=None)
     status: FieldStatus = eqx.field(static=True, default=FieldStatus.UNKNOWN)
     unit: PhysicalUnit = eqx.field(static=True, default=PhysicalUnit.INVALID_UNIT)
+    name: str | None = eqx.field(static=True, default=None)
 
     STATUS_ENUM = FieldStatus
 
@@ -296,6 +297,7 @@ class AbstractField(AbstractPytree):
         # Unit and status metadata
         status: FieldStatus | None = None,
         unit: PhysicalUnit | None = None,
+        name: str | None = None,
     ) -> Self:
         """
         Rebuild a field of the same class using metadata from a reference DensityField.
@@ -337,6 +339,7 @@ class AbstractField(AbstractPytree):
             # Unit and status metadata
             status=status if status is not None else field.status,
             unit=unit if unit is not None else field.unit,
+            name=name if name is not None else field.name,
         )
 
     @classmethod
@@ -408,7 +411,8 @@ class AbstractField(AbstractPytree):
             f"  flatsky_npix      ={self.flatsky_npix}, "
             f"  field_size        ={self.field_size}, "
             f"  status            ={self.status.name}, "
-            f"  unit              ={self.unit.name})"
+            f"  unit              ={self.unit.name}, "
+            f"  name              ={self.name!r})"
         )
 
     def runtime_inspect(self) -> None:
@@ -527,6 +531,7 @@ class AbstractField(AbstractPytree):
             field_size=self.field_size,
             status=self.status,
             unit=self.unit,
+            name=self.name,
         )
 
     # ------------------------------------------------------------------ Factory

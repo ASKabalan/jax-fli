@@ -368,6 +368,7 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving):
 
     # --- 1-D array: shell centres ---
     if ts.ndim == 1:
+        ts = jnp.sort(ts)
         r_centers = jc.background.radial_comoving_distance(cosmo, ts)
         if density_widths is not None:
             try:
@@ -381,6 +382,9 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving):
     # --- 2-D array (2, N): near/far ---
     if ts.ndim == 2 and ts.shape[0] == 2:
         a_near, a_far = ts[0], ts[1]
+        sorted_near_index = jnp.argsort(a_near)
+        a_near = a_near[sorted_near_index]
+        a_far = a_far[sorted_near_index]
         r_near, r_far = jc.background.radial_comoving_distance(cosmo, jnp.array([a_near, a_far]))
         r_centers = 0.5 * (r_near + r_far)
         ts_resolved = jc.background.a_of_chi(cosmo, r_centers)

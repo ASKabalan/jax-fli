@@ -142,7 +142,7 @@ class AbstractNBodySolver(eqx.Module):
     laplace_fd: bool = eqx.field(static=True, default=False)
     time_stepping: str = eqx.field(static=True, default="a")
     shell_spacing: str = eqx.field(static=True, default="comoving")
-    t0: float | None = eqx.field(static=True, default=None)
+    t0: float | None = eqx.field(static=True, default=0.001)
     t1: float = eqx.field(static=True, default=1.0)
     n_steps: int | None = eqx.field(static=True, default=None)
     min_width: float = eqx.field(static=True, default=50.0)

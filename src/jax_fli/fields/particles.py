@@ -137,9 +137,8 @@ class ParticleField(AbstractField):
         """
         data = jnp.asarray(self.array)
         if self.unit == PositionUnit.MPC_H:
-            raise ValueError(
-                "Cannot paint ParticleField with unit MPC_H; convert to GRID_RELATIVE or GRID_ABSOLUTE first."
-            )
+            # If input is in MPC/h, we convert to relative grid units for painting, since absolute MPC/h doesn't make sense on a grid.
+            self = self.to(PositionUnit.GRID_RELATIVE)
         mode = "relative" if self.unit == PositionUnit.GRID_RELATIVE else "absolute"
 
         paint_fn = jax.tree_util.Partial(
@@ -188,9 +187,8 @@ class ParticleField(AbstractField):
         - MPC_H -> error (convert first)
         """
         if self.unit == PositionUnit.MPC_H:
-            raise ValueError(
-                "Cannot read_out ParticleField with unit MPC_H; convert to GRID_RELATIVE or GRID_ABSOLUTE first."
-            )
+            # If input is in MPC/h, we convert to relative grid units for reading out,
+            self = self.to(PositionUnit.GRID_RELATIVE)
         mode = "relative" if self.unit == PositionUnit.GRID_RELATIVE else "absolute"
 
         if mode == "relative":
