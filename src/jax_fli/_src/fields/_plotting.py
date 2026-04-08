@@ -604,10 +604,8 @@ def plot_spherical_density(
         title=title,
         bgcolor=(0.0,) * 4,
         cbar=show_colorbar,
-        min=vmin if vmin is not None else 0,
-        max=vmax
-        if vmax is not None
-        else (np.percentile(map_np[map_np > 0], 95) if np.any(map_np > 0) else np.max(map_np)),
+        min=vmin,
+        max=vmax,
         projection_type=projection_type,
         graticule=show_ticks,
         graticule_labels=show_ticks,

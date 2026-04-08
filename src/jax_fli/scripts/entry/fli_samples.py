@@ -137,7 +137,7 @@ def main() -> None:
         field_sharding=sharding,
         lensing="born",
         drift_on_lightcone=args.drift_on_lightcone,
-        shell_spacing="equal_vol" if args.equal_vol else "comoving",
+        shell_spacing=args.shell_spacing,
         min_width=args.min_width,
         min_redshift=args.min_z,
         max_redshift=args.max_z,
