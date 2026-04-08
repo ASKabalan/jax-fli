@@ -17,7 +17,6 @@ def main():
         mod.add_subparser(sub)
 
     args = parser.parse_args()
-
     # Pretty-print resolved configuration
     width = 60
     print("=" * width)

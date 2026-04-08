@@ -157,8 +157,6 @@ def parser() -> ArgumentParser:
     grid_parent.add_argument("--dry-run", action="store_true", help="Print combinations without running")
     grid_parent.add_argument("--enable-x64", action="store_true")
 
-    grid_parent.set_defaults(nb_steps=19, t0=0.1)
-
     # Subcommands
     subparsers.add_parser("lpt", parents=[grid_parent], help="Grid over LPT runs")
     subparsers.add_parser("nbody", parents=[grid_parent], help="Grid over NBody runs")

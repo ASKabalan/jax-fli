@@ -68,8 +68,6 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
-    p.set_defaults(t0=0.01, nb_steps=100)
-
     return p
 
 

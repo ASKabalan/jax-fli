@@ -198,7 +198,6 @@ def parser() -> ArgumentParser:
         "--trace-dir", default="/tmp/jax_trace", help="Directory for profiler trace (default: /tmp/jax_trace)"
     )
     shared.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
-    shared.set_defaults(nb_steps=19, t0=0.1)
 
     # Top-level parser
     p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
@@ -489,7 +488,7 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 15)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 17)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)
