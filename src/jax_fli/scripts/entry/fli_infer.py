@@ -151,8 +151,6 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
-    p.set_defaults(t0=0.01, nb_steps=100)
-
     return p
 
 

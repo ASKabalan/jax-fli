@@ -24,9 +24,6 @@ def add_subparser(sub):
     g.add_argument("--enable-x64", action="store_true")
 
     p.set_defaults(
-        constraint="",
-        pdim=[4, 1],
-        nodes=1,
         func=run,
     )
 
