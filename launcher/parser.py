@@ -57,6 +57,9 @@ def _slurm_params(args):
     """Return (tasks_per_node, cpus_per_task, total_gpus)."""
     tpn = args.tasks_per_node if args.tasks_per_node is not None else args.gpus_per_node
     cpt = args.cpus_per_node // tpn
+    if cpt < 1:
+        print(f"Error: cpus_per_node={args.cpus_per_node} is too low for tasks_per_node={tpn}", file=sys.stderr)
+        sys.exit(1)
     total_gpus = args.gpus_per_node * args.nodes
     return tpn, cpt, total_gpus
 
