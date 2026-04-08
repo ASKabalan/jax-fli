@@ -122,6 +122,13 @@ def add_common_sim_args(p):
     )
     g.add_argument("--solver", choices=["kdk", "dkd", "bf"], default="kdk", help="N-body integrator (default: kdk)")
     g.add_argument(
+        "--time-stepping",
+        choices=["a", "D", "log_a"],
+        default="a",
+        dest="time_stepping",
+        help="Integrator time-stepping variable (default: a)",
+    )
+    g.add_argument(
         "--shell-spacing",
         choices=["comoving", "equal_vol", "a", "growth"],
         default="comoving",

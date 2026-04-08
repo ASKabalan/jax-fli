@@ -113,7 +113,6 @@ def _build_solver(args: Namespace, painting):
     else:
         raise ValueError(f"Unknown --interp value: {inter}")
 
-    shell_spacing = getattr(args, "shell_spacing", "comoving")
     solver_name = getattr(args, "solver", "kdk")
     common_kwargs = dict(
         interp_kernel=interp_kernel,
@@ -122,8 +121,7 @@ def _build_solver(args: Namespace, painting):
         t0=args.t0,
         t1=getattr(args, "t1", 1.0),
         n_steps=getattr(args, "nb_steps", 19),
-        shell_spacing=shell_spacing,
-        min_width=getattr(args, "min_width", 50.0),
+        time_stepping=getattr(args, "time_stepping", "a"),
     )
     if solver_name == "kdk":
         return jfli.DoubleKickDrift(**common_kwargs)
@@ -325,6 +323,8 @@ def run_lpt(
         "lpt_order",
         "sim_type",
         "nb_shells",
+        "shell_spacing",
+        "min_width",
         "gradient_order",
         "laplace_fd",
         "dealiased",
@@ -342,6 +342,8 @@ def run_simulations(
     ts=None,
     nb_shells=None,
     density_widths=None,
+    shell_spacing: str = "a",
+    min_width: float = 50.0,
     gradient_order=1,
     laplace_fd=False,
     dealiased=False,
@@ -372,6 +374,8 @@ def run_simulations(
         ts=ts,
         nb_shells=nb_shells,
         density_widths=density_widths,
+        shell_spacing=shell_spacing,
+        min_width=min_width,
     )
     if sim_type == "nbody":
         return lightcone
@@ -464,6 +468,8 @@ def main() -> None:
             "ts": ts,
             "nb_shells": nb_shells,
             "density_widths": density_widths,
+            "shell_spacing": shell_spacing,
+            "min_width": getattr(args, "min_width", 50.0),
             "gradient_order": args.gradient_order,
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,

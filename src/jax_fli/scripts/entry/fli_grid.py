@@ -335,6 +335,8 @@ def main() -> None:
                 "ts": ts,
                 "nb_shells": effective_nb_shells,
                 "density_widths": density_widths_val,
+                "shell_spacing": shell_spacing,
+                "min_width": getattr(combo, "min_width", 50.0),
                 "gradient_order": getattr(combo, "gradient_order", 1),
                 "laplace_fd": getattr(combo, "laplace_fd", False),
                 "dealiased": getattr(combo, "dealiased", False),
