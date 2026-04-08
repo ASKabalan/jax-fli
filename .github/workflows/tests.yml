@@ -62,6 +62,6 @@ jobs:
       - name: Run distributed tests
         env:
           JAX_PLATFORM_NAME: cpu
-          XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+          XLA_FLAGS: "--xla_force_host_platform_device_count=8"
         run: |
           pytest -m distributed
