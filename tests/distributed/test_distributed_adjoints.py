@@ -51,8 +51,6 @@ def _make_solver(solver_name, target):
         t0=T0,
         t1=T1,
         n_steps=N_STEPS,
-        shell_spacing="growth",
-        min_width=1.0,
     )
     if solver_name == "KKD":
         return jfli.DoubleKickDrift(**kwargs)
@@ -114,7 +112,16 @@ def test_distributed_nbody_gradient_sharding(single_device_ics, cosmo, solver_na
     def forward(ic_array):
         ic = sharded_ics.replace(array=ic_array)
         dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
-        result = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
+        result = jfli.nbody(
+            cosmo,
+            dx,
+            p,
+            solver=solver,
+            nb_shells=NB_SHELLS,
+            adjoint="checkpointed",
+            shell_spacing="growth",
+            min_width=1.0,
+        )
         return jnp.sum(result.array**2)
 
     grads = jax.grad(forward)(sharded_ics.array)
@@ -141,7 +148,16 @@ def test_distributed_born_gradient_sharding(single_device_ics, cosmo, pdims):
     def forward(ic_array):
         ic = sharded_ics.replace(array=ic_array)
         dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
-        lc = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
+        lc = jfli.nbody(
+            cosmo,
+            dx,
+            p,
+            solver=solver,
+            nb_shells=NB_SHELLS,
+            adjoint="checkpointed",
+            shell_spacing="growth",
+            min_width=1.0,
+        )
         kappa = jfli.born(cosmo, lc, nz_shear=Z_SOURCE_BORN)
         return jnp.sum(kappa.array**2)
 
@@ -208,7 +224,16 @@ def test_distributed_nbody_gradient_equivalence(single_device_ics, cosmo, solver
     @jax.jit
     def forward(ic):
         dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
-        result = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
+        result = jfli.nbody(
+            cosmo,
+            dx,
+            p,
+            solver=solver,
+            nb_shells=NB_SHELLS,
+            adjoint="checkpointed",
+            shell_spacing="growth",
+            min_width=1.0,
+        )
         return jnp.sum(result.array**2)
 
     # Single-device gradient
@@ -242,7 +267,16 @@ def test_distributed_born_gradient_equivalence(single_device_ics, cosmo, pdims):
     @jax.jit
     def forward(ic):
         dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
-        lc = jfli.nbody(cosmo, dx, p, solver=solver, nb_shells=NB_SHELLS, adjoint="checkpointed")
+        lc = jfli.nbody(
+            cosmo,
+            dx,
+            p,
+            solver=solver,
+            nb_shells=NB_SHELLS,
+            adjoint="checkpointed",
+            shell_spacing="growth",
+            min_width=1.0,
+        )
         kappa = jfli.born(cosmo, lc, nz_shear=Z_SOURCE_BORN)
         return jnp.sum(kappa.array**2)
 
