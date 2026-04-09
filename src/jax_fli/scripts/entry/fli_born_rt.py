@@ -40,7 +40,7 @@ def main() -> None:
     import jax
 
     from jax_fli.io import Catalog
-    from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
+    from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log
 
     p = parser()
     args = p.parse_args()
@@ -49,6 +49,7 @@ def main() -> None:
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
+    _save_args_log(args, str(output_dir), "fli-born-rt")
 
     nz_shear = _resolve_nz_shear(args)
 

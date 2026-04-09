@@ -9,7 +9,7 @@ import jax_cosmo as jc
 from numpyro.infer import Predictive
 
 import jax_fli as jfli
-from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
+from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log
 
 # ---------------------------------------------------------------------------
 # Argument parser
@@ -87,6 +87,8 @@ def main() -> None:
         parser().error("One of --nside or --flatsky-npix is required.")
     if args.nside is not None and args.flatsky_npix is not None:
         parser().error("Only one of --nside or --flatsky-npix can be specified.")
+
+    _save_args_log(args, args.path, "fli-samples")
 
     # --- resolve nz_shear ---
     nz_shear = _resolve_nz_shear(args)
