@@ -43,8 +43,6 @@ def _make_solver(solver_name, target):
         t0=T0,
         t1=T1,
         n_steps=N_STEPS,
-        shell_spacing="growth",
-        min_width=1.0,
     )
     if solver_name == "KKD":
         return jfli.DoubleKickDrift(**kwargs)
@@ -125,12 +123,28 @@ def test_distributed_nbody(single_device_ics, cosmo, target, solver_name, pdims)
 
     # Single-device run
     dx_single, p_single = jfli.lpt(cosmo, single_device_ics, ts=T0, order=1)
-    result_single = jfli.nbody(cosmo, dx_single, p_single, solver=solver, nb_shells=4)
+    result_single = jfli.nbody(
+        cosmo,
+        dx_single,
+        p_single,
+        solver=solver,
+        nb_shells=4,
+        shell_spacing="growth",
+        min_width=1.0,
+    )
 
     # Multi-device run
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     dx_multi, p_multi = jfli.lpt(cosmo, sharded_ics, ts=T0, order=1)
-    result_multi = jfli.nbody(cosmo, dx_multi, p_multi, solver=solver, nb_shells=4)
+    result_multi = jfli.nbody(
+        cosmo,
+        dx_multi,
+        p_multi,
+        solver=solver,
+        nb_shells=4,
+        shell_spacing="growth",
+        min_width=1.0,
+    )
 
     _check_sharding(result_multi.array, sharding, target)
     _compare_fields(
@@ -149,13 +163,17 @@ def test_distributed_born_lensing(single_device_ics, cosmo, pdims, target):
 
     # Single-device run
     dx_single, p_single = jfli.lpt(cosmo, single_device_ics, ts=T0, order=1)
-    lc_single = jfli.nbody(cosmo, dx_single, p_single, solver=solver, nb_shells=NB_SHELLS)
+    lc_single = jfli.nbody(
+        cosmo, dx_single, p_single, solver=solver, nb_shells=NB_SHELLS, shell_spacing="growth", min_width=1.0
+    )
     kappa_single = jfli.born(cosmo, lc_single, nz_shear=Z_SOURCE_BORN)
 
     # Multi-device run
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     dx_multi, p_multi = jfli.lpt(cosmo, sharded_ics, ts=T0, order=1)
-    lc_multi = jfli.nbody(cosmo, dx_multi, p_multi, solver=solver, nb_shells=NB_SHELLS)
+    lc_multi = jfli.nbody(
+        cosmo, dx_multi, p_multi, solver=solver, nb_shells=NB_SHELLS, shell_spacing="growth", min_width=1.0
+    )
     kappa_multi = jfli.born(cosmo, lc_multi, nz_shear=Z_SOURCE_BORN)
 
     _compare_fields(
