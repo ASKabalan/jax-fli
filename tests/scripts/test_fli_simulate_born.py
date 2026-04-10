@@ -13,17 +13,17 @@ pytestmark = pytest.mark.scripts
 
 import jax
 import jax.numpy as jnp
-
 import jax_fli as jfli
+
 from tests.helpers import compare_fields
 from tests.scripts.conftest import (
-    SCHEME_IDS,
-    SCHEME_PARAMS,
     _BASE_CLI,
     _BOX,
     _HALO_SIZE,
     _RES,
     _SEED,
+    SCHEME_IDS,
+    SCHEME_PARAMS,
     run_sim,
     scheme_cli,
 )
@@ -43,18 +43,34 @@ _FLATSKY_NPIX = _RES
 _FIELD_SIZE = 10  # degrees
 
 _COMMON_BORN_CLI = [
-    "--solver", "bf",
-    "--time-stepping", "D",
-    "--gradient-order", "1",
-    "--lpt-order", "1",
-    "--t0", str(_T0), "--t1", str(_T1), "--nb-steps", str(_N_STEPS),
-    "--interp", "none",
-    "--nb-shells", str(_N_SHELLS),
-    "--shell-spacing", "comoving",
-    "--nz-shear", *[str(z) for z in _NZ_SHEAR],
-    "--min-z", str(_MIN_Z),
-    "--max-z", str(_MAX_Z),
-    "--n-integrate", str(_N_INTEGRATE),
+    "--solver",
+    "bf",
+    "--time-stepping",
+    "D",
+    "--gradient-order",
+    "1",
+    "--lpt-order",
+    "1",
+    "--t0",
+    str(_T0),
+    "--t1",
+    str(_T1),
+    "--nb-steps",
+    str(_N_STEPS),
+    "--interp",
+    "none",
+    "--nb-shells",
+    str(_N_SHELLS),
+    "--shell-spacing",
+    "comoving",
+    "--nz-shear",
+    *[str(z) for z in _NZ_SHEAR],
+    "--min-z",
+    str(_MIN_Z),
+    "--max-z",
+    str(_MAX_Z),
+    "--n-integrate",
+    str(_N_INTEGRATE),
 ]
 
 
@@ -70,16 +86,24 @@ def _api_born(cosmo, initial_field, *, painting):
         gradient_order=1,
         laplace_fd=False,
         time_stepping="D",
-        t0=_T0, t1=_T1, n_steps=_N_STEPS,
+        t0=_T0,
+        t1=_T1,
+        n_steps=_N_STEPS,
     )
     dx, p = jfli.lpt(
-        cosmo, initial_field,
-        ts=_T0, order=1,
+        cosmo,
+        initial_field,
+        ts=_T0,
+        order=1,
         painting=jfli.PaintingOptions(target="particles"),
-        gradient_order=1, laplace_fd=False,
+        gradient_order=1,
+        laplace_fd=False,
     )
     lightcone = jfli.nbody(
-        cosmo, dx, p, solver=solver,
+        cosmo,
+        dx,
+        p,
+        solver=solver,
         nb_shells=_N_SHELLS,
         shell_spacing="comoving",
         min_width=50.0,
@@ -99,9 +123,16 @@ def test_born_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "lensing", "--nside", str(_NSIDE)] + _BASE_CLI + _COMMON_BORN_CLI + [
-        "--output", out_file,
-    ] + scheme_cli(scheme, kernel_width)
+    cmd = (
+        ["fli-simulate", "lensing", "--nside", str(_NSIDE)]
+        + _BASE_CLI
+        + _COMMON_BORN_CLI
+        + [
+            "--output",
+            out_file,
+        ]
+        + scheme_cli(scheme, kernel_width)
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -112,7 +143,10 @@ def test_born_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         nside=_NSIDE,
         halo_size=_HALO_SIZE,
@@ -139,9 +173,7 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "lensing",
-         "--flatsky-npix", npix, npix,
-         "--field-size", fsize, fsize]
+        ["fli-simulate", "lensing", "--flatsky-npix", npix, npix, "--field-size", fsize, fsize]
         + _BASE_CLI
         + _COMMON_BORN_CLI
         + ["--output", out_file]
@@ -156,7 +188,10 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         flatsky_npix=(_FLATSKY_NPIX, _FLATSKY_NPIX),
         field_size=(_FIELD_SIZE, _FIELD_SIZE),
@@ -168,7 +203,10 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
 
     # --- compare ---
     compare_fields(
-        script_kappa, api_kappa,
+        script_kappa,
+        api_kappa,
         label=f"born flatsky {_FLATSKY_NPIX}x{_FLATSKY_NPIX}/{_FIELD_SIZE}deg",
-        rtol=1e-5, atol=1e-10, mean_atol=1e-12,
+        rtol=1e-5,
+        atol=1e-10,
+        mean_atol=1e-12,
     )

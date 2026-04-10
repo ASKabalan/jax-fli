@@ -13,20 +13,20 @@ pytestmark = pytest.mark.scripts
 
 import jax
 import jax.numpy as jnp
+import jax_fli as jfli
 from numpy.testing import assert_allclose
 
-import jax_fli as jfli
 from tests.helpers import compare_fields
 from tests.scripts.conftest import (
+    _BASE_CLI,
+    _BOX,
+    _HALO_SIZE,
+    _RES,
+    _SEED,
     LPT_ORDER_IDS,
     LPT_ORDER_PARAMS,
     SCHEME_IDS,
     SCHEME_PARAMS,
-    _BASE_CLI,
-    _HALO_SIZE,
-    _BOX,
-    _RES,
-    _SEED,
     lpt_order_cli,
     run_sim,
     scheme_cli,
@@ -45,7 +45,7 @@ _FIELD_SIZE = (10, 10)
 # ---------------------------------------------------------------------------
 
 _SOLVER_PARAMS = [
-    ("bf",  "D"),
+    ("bf", "D"),
     ("dkd", "a"),
     ("kdk", "a"),
 ]
@@ -73,30 +73,52 @@ def _build_solver(solver_name: str, time_stepping: str, painting) -> jfli.Abstra
 @pytest.mark.parametrize(
     "solver_name,time_stepping,gradient_order,laplace_fd",
     [
-        ("bf",  "D",     1, False),
-        ("bf",  "a",     1, True),
+        ("bf", "D", 1, False),
+        ("bf", "a", 1, True),
         ("dkd", "log_a", 0, False),
-        ("kdk", "a",     1, False),
+        ("kdk", "a", 1, False),
     ],
     ids=["bf-D-fd-nolaplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-fd-nolaplace"],
 )
 def test_nbody_particles_script_vs_api(
-    tmp_path, cosmo,
-    solver_name, time_stepping, gradient_order, laplace_fd,
-    lpt_order, dealiased, exact_growth,
+    tmp_path,
+    cosmo,
+    solver_name,
+    time_stepping,
+    gradient_order,
+    laplace_fd,
+    lpt_order,
+    dealiased,
+    exact_growth,
 ):
     """fli-simulate nbody (default particles) must match direct jax_fli API call."""
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "nbody", "--ts", str(_A_END)] + _BASE_CLI + [
-        "--t0", str(_A_INI), "--t1", str(_A_END), "--nb-steps", str(_N_STEPS),
-        "--interp", "none", "--scheme", "bilinear",
-        "--gradient-order", str(gradient_order),
-        "--time-stepping", time_stepping,
-        "--solver", solver_name,
-        "--output", out_file,
-    ]
+    cmd = (
+        ["fli-simulate", "nbody", "--ts", str(_A_END)]
+        + _BASE_CLI
+        + [
+            "--t0",
+            str(_A_INI),
+            "--t1",
+            str(_A_END),
+            "--nb-steps",
+            str(_N_STEPS),
+            "--interp",
+            "none",
+            "--scheme",
+            "bilinear",
+            "--gradient-order",
+            str(gradient_order),
+            "--time-stepping",
+            time_stepping,
+            "--solver",
+            solver_name,
+            "--output",
+            out_file,
+        ]
+    )
     if laplace_fd:
         cmd.append("--laplace-fd")
     cmd += lpt_order_cli(lpt_order, dealiased, exact_growth)
@@ -110,7 +132,10 @@ def test_nbody_particles_script_vs_api(
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         halo_size=_HALO_SIZE,
     )
@@ -121,10 +146,15 @@ def test_nbody_particles_script_vs_api(
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         time_stepping=time_stepping,
-        t0=_A_INI, t1=_A_END, n_steps=_N_STEPS,
+        t0=_A_INI,
+        t1=_A_END,
+        n_steps=_N_STEPS,
     )
     dx, p = jfli.lpt(
-        cosmo, initial_field, ts=_A_INI, order=lpt_order,
+        cosmo,
+        initial_field,
+        ts=_A_INI,
+        order=lpt_order,
         painting=jfli.PaintingOptions(target="particles"),
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
@@ -146,15 +176,18 @@ def test_nbody_particles_script_vs_api(
     assert_allclose(
         jnp.atleast_1d(script_field.scale_factors),
         jnp.atleast_1d(result.scale_factors),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: scale_factors mismatch",
     )
     assert_allclose(
         jnp.atleast_1d(script_field.comoving_centers),
         jnp.atleast_1d(result.comoving_centers),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: comoving_centers mismatch",
     )
+
 
 # ---------------------------------------------------------------------------
 # Test 1: density output
@@ -165,31 +198,53 @@ def test_nbody_particles_script_vs_api(
 @pytest.mark.parametrize(
     "solver_name,time_stepping,gradient_order,laplace_fd",
     [
-        ("bf",  "D",     1, False),
-        ("bf",  "a",     1, True),
+        ("bf", "D", 1, False),
+        ("bf", "a", 1, True),
         ("dkd", "log_a", 0, False),
-        ("kdk", "a",     1, False),
+        ("kdk", "a", 1, False),
     ],
     # TODO fd-nolaplace is wrong term it is either fd-laplace or no-fd-laplace
     ids=["bf-D-fd-nolaplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-fd-nolaplace"],
 )
 def test_nbody_density_script_vs_api(
-    tmp_path, cosmo,
-    solver_name, time_stepping, gradient_order, laplace_fd,
-    lpt_order, dealiased, exact_growth,
+    tmp_path,
+    cosmo,
+    solver_name,
+    time_stepping,
+    gradient_order,
+    laplace_fd,
+    lpt_order,
+    dealiased,
+    exact_growth,
 ):
     """fli-simulate nbody --density must match direct jax_fli API call."""
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "nbody", "--density", "--ts", str(_A_END)] + _BASE_CLI + [
-        "--t0", str(_A_INI), "--t1", str(_A_END), "--nb-steps", str(_N_STEPS),
-        "--interp", "none", "--scheme", "bilinear",
-        "--gradient-order", str(gradient_order),
-        "--time-stepping", time_stepping,
-        "--solver", solver_name,
-        "--output", out_file,
-    ]
+    cmd = (
+        ["fli-simulate", "nbody", "--density", "--ts", str(_A_END)]
+        + _BASE_CLI
+        + [
+            "--t0",
+            str(_A_INI),
+            "--t1",
+            str(_A_END),
+            "--nb-steps",
+            str(_N_STEPS),
+            "--interp",
+            "none",
+            "--scheme",
+            "bilinear",
+            "--gradient-order",
+            str(gradient_order),
+            "--time-stepping",
+            time_stepping,
+            "--solver",
+            solver_name,
+            "--output",
+            out_file,
+        ]
+    )
     if laplace_fd:
         cmd.append("--laplace-fd")
     cmd += lpt_order_cli(lpt_order, dealiased, exact_growth)
@@ -203,7 +258,10 @@ def test_nbody_density_script_vs_api(
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         halo_size=_HALO_SIZE,
     )
@@ -214,10 +272,15 @@ def test_nbody_density_script_vs_api(
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         time_stepping=time_stepping,
-        t0=_A_INI, t1=_A_END, n_steps=_N_STEPS,
+        t0=_A_INI,
+        t1=_A_END,
+        n_steps=_N_STEPS,
     )
     dx, p = jfli.lpt(
-        cosmo, initial_field, ts=_A_INI, order=lpt_order,
+        cosmo,
+        initial_field,
+        ts=_A_INI,
+        order=lpt_order,
         painting=jfli.PaintingOptions(target="particles"),
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
@@ -244,24 +307,43 @@ def test_nbody_density_script_vs_api(
 @pytest.mark.parametrize("scheme,kernel_width", SCHEME_PARAMS, ids=SCHEME_IDS)
 @pytest.mark.parametrize("solver_name,time_stepping", _SOLVER_PARAMS, ids=_SOLVER_IDS)
 def test_nbody_spherical_script_vs_api(
-    tmp_path, cosmo,
-    solver_name, time_stepping,
-    scheme, kernel_width,
+    tmp_path,
+    cosmo,
+    solver_name,
+    time_stepping,
+    scheme,
+    kernel_width,
 ):
     # TODO also test with laplace_fd=True and False and gradient_order=0 and 1
     """fli-simulate nbody --nside must match direct jax_fli API call across all solvers and schemes."""
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "nbody", "--nside", str(_NSIDE), "--ts", str(_A_END)] + _BASE_CLI + [
-        "--t0", str(_A_INI), "--t1", str(_A_END), "--nb-steps", str(_N_STEPS),
-        "--interp", "none",
-        "--gradient-order", "1",
-        "--time-stepping", time_stepping,
-        "--solver", solver_name,
-        "--lpt-order", "1",
-        "--output", out_file,
-    ] + scheme_cli(scheme, kernel_width)
+    cmd = (
+        ["fli-simulate", "nbody", "--nside", str(_NSIDE), "--ts", str(_A_END)]
+        + _BASE_CLI
+        + [
+            "--t0",
+            str(_A_INI),
+            "--t1",
+            str(_A_END),
+            "--nb-steps",
+            str(_N_STEPS),
+            "--interp",
+            "none",
+            "--gradient-order",
+            "1",
+            "--time-stepping",
+            time_stepping,
+            "--solver",
+            solver_name,
+            "--lpt-order",
+            "1",
+            "--output",
+            out_file,
+        ]
+        + scheme_cli(scheme, kernel_width)
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -272,7 +354,10 @@ def test_nbody_spherical_script_vs_api(
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         nside=_NSIDE,
         halo_size=_HALO_SIZE,
@@ -284,12 +369,18 @@ def test_nbody_spherical_script_vs_api(
         gradient_order=1,
         laplace_fd=False,
         time_stepping=time_stepping,
-        t0=_A_INI, t1=_A_END, n_steps=_N_STEPS,
+        t0=_A_INI,
+        t1=_A_END,
+        n_steps=_N_STEPS,
     )
     dx, p = jfli.lpt(
-        cosmo, initial_field, ts=_A_INI, order=1,
+        cosmo,
+        initial_field,
+        ts=_A_INI,
+        order=1,
         painting=jfli.PaintingOptions(target="particles"),
-        gradient_order=1, laplace_fd=False,
+        gradient_order=1,
+        laplace_fd=False,
     )
     result = jfli.nbody(cosmo, dx, p, solver=solver, ts=jnp.array([_A_END]))
     api_field = result.array.squeeze()
@@ -301,27 +392,50 @@ def test_nbody_spherical_script_vs_api(
 
 @pytest.mark.parametrize("solver_name,time_stepping", _SOLVER_PARAMS, ids=_SOLVER_IDS)
 def test_nbody_flat_script_vs_api(
-    tmp_path, cosmo,
-    solver_name, time_stepping,
+    tmp_path,
+    cosmo,
+    solver_name,
+    time_stepping,
 ):
     """fli-simulate nbody --flatsky-npix must match direct jax_fli API call across all solvers."""
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = [
-        "fli-simulate", "nbody",
-        "--flatsky-npix", str(_FLATSKY_NPIX[0]), str(_FLATSKY_NPIX[1]),
-        "--field-size", str(_FIELD_SIZE[0]), str(_FIELD_SIZE[1]),
-        "--ts", str(_A_END),
-    ] + _BASE_CLI + [
-        "--t0", str(_A_INI), "--t1", str(_A_END), "--nb-steps", str(_N_STEPS),
-        "--interp", "none",
-        "--gradient-order", "1",
-        "--time-stepping", time_stepping,
-        "--solver", solver_name,
-        "--lpt-order", "1",
-        "--output", out_file,
-    ]
+    cmd = (
+        [
+            "fli-simulate",
+            "nbody",
+            "--flatsky-npix",
+            str(_FLATSKY_NPIX[0]),
+            str(_FLATSKY_NPIX[1]),
+            "--field-size",
+            str(_FIELD_SIZE[0]),
+            str(_FIELD_SIZE[1]),
+            "--ts",
+            str(_A_END),
+        ]
+        + _BASE_CLI
+        + [
+            "--t0",
+            str(_A_INI),
+            "--t1",
+            str(_A_END),
+            "--nb-steps",
+            str(_N_STEPS),
+            "--interp",
+            "none",
+            "--gradient-order",
+            "1",
+            "--time-stepping",
+            time_stepping,
+            "--solver",
+            solver_name,
+            "--lpt-order",
+            "1",
+            "--output",
+            out_file,
+        ]
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -332,7 +446,10 @@ def test_nbody_flat_script_vs_api(
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     initial_field = jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         flatsky_npix=_FLATSKY_NPIX,
         field_size=_FIELD_SIZE,
@@ -345,19 +462,27 @@ def test_nbody_flat_script_vs_api(
         gradient_order=1,
         laplace_fd=False,
         time_stepping=time_stepping,
-        t0=_A_INI, t1=_A_END, n_steps=_N_STEPS,
+        t0=_A_INI,
+        t1=_A_END,
+        n_steps=_N_STEPS,
     )
     dx, p = jfli.lpt(
-        cosmo, initial_field, ts=_A_INI, order=1,
+        cosmo,
+        initial_field,
+        ts=_A_INI,
+        order=1,
         painting=jfli.PaintingOptions(target="particles"),
-        gradient_order=1, laplace_fd=False,
+        gradient_order=1,
+        laplace_fd=False,
     )
     result = jfli.nbody(cosmo, dx, p, solver=solver, ts=jnp.array([_A_END]))
 
     label = f"nbody flat {solver_name}/{time_stepping}"
 
     # --- compare array ---
-    compare_fields(script_field.array.squeeze(), result.array.squeeze(), label=label, rtol=1e-5, atol=1e-10, mean_atol=1e-12)
+    compare_fields(
+        script_field.array.squeeze(), result.array.squeeze(), label=label, rtol=1e-5, atol=1e-10, mean_atol=1e-12
+    )
 
     # --- check all 4 metadata fields are set ---
     assert script_field.scale_factors is not None, f"{label}: scale_factors is None"
@@ -367,12 +492,14 @@ def test_nbody_flat_script_vs_api(
     assert_allclose(
         jnp.atleast_1d(script_field.comoving_centers),
         jnp.atleast_1d(result.comoving_centers),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: comoving_centers mismatch",
     )
     assert_allclose(
         jnp.atleast_1d(script_field.density_width),
         jnp.atleast_1d(result.density_width),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: density_width mismatch",
     )

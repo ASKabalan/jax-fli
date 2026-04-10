@@ -35,28 +35,52 @@ _COSMO_PARAMS = dict(
 # ---------------------------------------------------------------------------
 
 _COSMO_CLI = [
-    "--Omega-c", str(_COSMO_PARAMS["Omega_c"]),
-    "--sigma8", str(_COSMO_PARAMS["sigma8"]),
-    "--Omega-b", str(_COSMO_PARAMS["Omega_b"]),
-    "--h", str(_COSMO_PARAMS["h"]),
-    "--n-s", str(_COSMO_PARAMS["n_s"]),
-    "--Omega-k", str(_COSMO_PARAMS["Omega_k"]),
-    "--w0", str(_COSMO_PARAMS["w0"]),
-    "--wa", str(_COSMO_PARAMS["wa"]),
-    "--Omega-nu", str(_COSMO_PARAMS["Omega_nu"]),
+    "--Omega-c",
+    str(_COSMO_PARAMS["Omega_c"]),
+    "--sigma8",
+    str(_COSMO_PARAMS["sigma8"]),
+    "--Omega-b",
+    str(_COSMO_PARAMS["Omega_b"]),
+    "--h",
+    str(_COSMO_PARAMS["h"]),
+    "--n-s",
+    str(_COSMO_PARAMS["n_s"]),
+    "--Omega-k",
+    str(_COSMO_PARAMS["Omega_k"]),
+    "--w0",
+    str(_COSMO_PARAMS["w0"]),
+    "--wa",
+    str(_COSMO_PARAMS["wa"]),
+    "--Omega-nu",
+    str(_COSMO_PARAMS["Omega_nu"]),
 ]
 
 _MESH_CLI = [
-    "--mesh-size", str(_RES), str(_RES), str(_RES),
-    "--box-size", str(_BOX), str(_BOX), str(_BOX),
+    "--mesh-size",
+    str(_RES),
+    str(_RES),
+    str(_RES),
+    "--box-size",
+    str(_BOX),
+    str(_BOX),
+    str(_BOX),
 ]
 
-_BASE_CLI = [
-    "--enable-x64",
-    "--seed", str(_SEED),
-    "--halo-multiplier", str(_HALO_MULT),
-    "--observer-position", "0.5", "0.5", "0.5",
-] + _MESH_CLI + _COSMO_CLI
+_BASE_CLI = (
+    [
+        "--enable-x64",
+        "--seed",
+        str(_SEED),
+        "--halo-multiplier",
+        str(_HALO_MULT),
+        "--observer-position",
+        "0.5",
+        "0.5",
+        "0.5",
+    ]
+    + _MESH_CLI
+    + _COSMO_CLI
+)
 
 
 def run_sim(cmd: list[str]) -> None:
@@ -89,8 +113,8 @@ def scheme_cli(scheme: str, kernel_width: float | None) -> list[str]:
 
 #: (scheme, kernel_width_arcmin) covering all three painting schemes
 SCHEME_PARAMS = [
-    ("ngp",          None),
-    ("bilinear",     None),
+    ("ngp", None),
+    ("bilinear", None),
     ("rbf_neighbor", None),
     ("rbf_neighbor", 5.0),
     ("rbf_neighbor", 10.0),
@@ -101,7 +125,7 @@ SCHEME_IDS = ["ngp", "bilinear", "rbf-nokw", "rbf-5arcmin", "rbf-10arcmin"]
 LPT_ORDER_PARAMS = [
     (1, False, False),
     (2, False, False),
-    (2, True,  True),
+    (2, True, True),
 ]
 LPT_ORDER_IDS = ["order1", "order2", "order2-dealiased-exact"]
 
