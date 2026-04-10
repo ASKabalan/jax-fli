@@ -151,8 +151,6 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
-    p.set_defaults(t0=0.01, nb_steps=100)
-
     return p
 
 
@@ -274,7 +272,7 @@ def main() -> None:
         checkpoints=args.checkpoints,
         field_sharding=sharding,
         drift_on_lightcone=args.drift_on_lightcone,
-        shell_spacing="equal_vol" if args.equal_vol else "comoving",
+        shell_spacing=args.shell_spacing,
         min_width=args.min_width,
         min_redshift=args.min_z,
         max_redshift=args.max_z,

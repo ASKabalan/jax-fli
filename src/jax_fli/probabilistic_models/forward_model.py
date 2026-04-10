@@ -37,8 +37,6 @@ def make_full_field_model(
         t0=config.t0,
         t1=config.t1,
         n_steps=config.nb_steps,
-        shell_spacing=config.shell_spacing,
-        min_width=config.min_width,
     )
 
     def forward_model(cosmo, initial_conditions):
@@ -66,6 +64,8 @@ def make_full_field_model(
             p_field,
             solver=solver,
             nb_shells=config.number_of_shells,
+            shell_spacing=config.shell_spacing,
+            min_width=config.min_width,
             adjoint=config.adjoint,
             checkpoints=config.checkpoints,
         )

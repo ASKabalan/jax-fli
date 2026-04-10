@@ -113,7 +113,6 @@ def _build_solver(args: Namespace, painting):
     else:
         raise ValueError(f"Unknown --interp value: {inter}")
 
-    shell_spacing = getattr(args, "shell_spacing", "comoving")
     solver_name = getattr(args, "solver", "kdk")
     common_kwargs = dict(
         interp_kernel=interp_kernel,
@@ -122,8 +121,7 @@ def _build_solver(args: Namespace, painting):
         t0=args.t0,
         t1=getattr(args, "t1", 1.0),
         n_steps=getattr(args, "nb_steps", 19),
-        shell_spacing=shell_spacing,
-        min_width=getattr(args, "min_width", 50.0),
+        time_stepping=getattr(args, "time_stepping", "a"),
     )
     if solver_name == "kdk":
         return jfli.DoubleKickDrift(**common_kwargs)
@@ -200,7 +198,6 @@ def parser() -> ArgumentParser:
         "--trace-dir", default="/tmp/jax_trace", help="Directory for profiler trace (default: /tmp/jax_trace)"
     )
     shared.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
-    shared.set_defaults(nb_steps=19, t0=0.1)
 
     # Top-level parser
     p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
@@ -325,6 +322,8 @@ def run_lpt(
         "lpt_order",
         "sim_type",
         "nb_shells",
+        "shell_spacing",
+        "min_width",
         "gradient_order",
         "laplace_fd",
         "dealiased",
@@ -342,6 +341,8 @@ def run_simulations(
     ts=None,
     nb_shells=None,
     density_widths=None,
+    shell_spacing: str = "a",
+    min_width: float = 50.0,
     gradient_order=1,
     laplace_fd=False,
     dealiased=False,
@@ -372,6 +373,8 @@ def run_simulations(
         ts=ts,
         nb_shells=nb_shells,
         density_widths=density_widths,
+        shell_spacing=shell_spacing,
+        min_width=min_width,
     )
     if sim_type == "nbody":
         return lightcone
@@ -464,6 +467,8 @@ def main() -> None:
             "ts": ts,
             "nb_shells": nb_shells,
             "density_widths": density_widths,
+            "shell_spacing": shell_spacing,
+            "min_width": getattr(args, "min_width", 50.0),
             "gradient_order": args.gradient_order,
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,
@@ -483,7 +488,7 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 15)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 17)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

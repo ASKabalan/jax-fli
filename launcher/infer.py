@@ -48,11 +48,7 @@ def add_subparser(sub):
     g.add_argument("--seed", type=int, default=0)
 
     p.set_defaults(
-        gpus_per_node=1,
-        nodes=1,
-        nb_steps=40,
         func=run,
-        enable_x64=True,
     )
 
 

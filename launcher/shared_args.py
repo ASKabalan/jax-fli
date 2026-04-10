@@ -122,6 +122,13 @@ def add_common_sim_args(p):
     )
     g.add_argument("--solver", choices=["kdk", "dkd", "bf"], default="kdk", help="N-body integrator (default: kdk)")
     g.add_argument(
+        "--time-stepping",
+        choices=["a", "D", "log_a"],
+        default="a",
+        dest="time_stepping",
+        help="Integrator time-stepping variable (default: a)",
+    )
+    g.add_argument(
         "--shell-spacing",
         choices=["comoving", "equal_vol", "a", "growth"],
         default="comoving",
@@ -230,7 +237,10 @@ def add_lightcone_args(p):
         help="Far scale factor edges (use with --ts-near)",
     )
     g.add_argument(
-        "--drift-on-lightcone", action="store_true", help="Apply drift correction when painting lightcone shells"
+        "--drift-on-lightcone",
+        action="store_true",
+        help="Apply drift correction when painting lightcone shells",
+        default=False,
     )
     g.add_argument(
         "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h (default: 50.0)"

@@ -31,6 +31,8 @@ def _validate_t0_cb(lpt_t0, t0):
         "nb_shells",
         "adjoint",
         "checkpoints",
+        "shell_spacing",
+        "min_width",
     ],
 )
 def nbody(
@@ -42,6 +44,8 @@ def nbody(
     ts=None,
     nb_shells: int | None = None,
     density_widths=None,
+    shell_spacing: str = "a",
+    min_width: float = 50.0,
     adjoint: AdjointType = "checkpointed",
     checkpoints: int | None = None,
 ) -> jax.Array:
@@ -111,8 +115,8 @@ def nbody(
         ts=ts,
         nb_shells=nb_shells,
         density_widths=density_widths,
-        shell_spacing=solver.shell_spacing,
-        min_width=solver.min_width,
+        shell_spacing=shell_spacing,
+        min_width=min_width,
     )
     updated_interp = solver.interp_kernel.update_geometry(
         ts=ts_resolved,

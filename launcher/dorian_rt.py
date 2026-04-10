@@ -29,12 +29,6 @@ def add_subparser(sub):
     g.add_argument("--no-parallel-transport", action="store_true")
 
     p.set_defaults(
-        constraint="cpu",
-        cpus_per_node=24,
-        tasks_per_node=4,
-        nodes=1,
-        qos="qos_cpu",
-        time_limit="01:00:00",
         func=run,
     )
 

@@ -62,13 +62,6 @@ def add_subparser(sub):
     g.add_argument("--output-dir", default="results/grid_runs")
 
     p.set_defaults(
-        time_limit="24:00:00",
-        drift_on_lightcone=True,
-        ts_near=_DEFAULT_TS_NEAR,
-        ts_far=_DEFAULT_TS_FAR,
-        box_size=[500.0, 500.0, 500.0, 1000.0, 1000.0, 1000.0],
-        Omega_c=["0.2"],
-        sigma8=["0.8"],
         func=run,
     )
 

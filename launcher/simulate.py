@@ -43,8 +43,7 @@ def add_subparser(sub):
     g.add_argument("--perf", action="store_true", default=False, help="Benchmark: warmup + N timed iterations")
     g.add_argument("--iterations", type=int, default=3, help="Number of timed iterations for --perf")
 
-    # drift-on-lightcone is ON by default
-    p.set_defaults(drift_on_lightcone=True, func=run)
+    p.set_defaults(func=run)
 
 
 def run(args):
