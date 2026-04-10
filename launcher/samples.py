@@ -34,7 +34,7 @@ def add_subparser(sub):
     g.add_argument("--chains", nargs="+", type=int, default=[0, 1, 2, 3], help="Chain IDs to run")
     g.add_argument("--batches", nargs="+", type=int, default=[0, 1, 2, 3, 4, 5], help="Batch IDs to run")
 
-    p.set_defaults(t0=0.01, nb_steps=100, func=run)
+    p.set_defaults(func=run)
 
 
 def run(args):

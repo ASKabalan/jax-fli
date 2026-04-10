@@ -141,71 +141,9 @@ class AbstractNBodySolver(eqx.Module):
     gradient_order: int = eqx.field(static=True, default=1)
     laplace_fd: bool = eqx.field(static=True, default=False)
     time_stepping: str = eqx.field(static=True, default="a")
-    shell_spacing: str = eqx.field(static=True, default="comoving")
     t0: float | None = eqx.field(static=True, default=0.001)
     t1: float = eqx.field(static=True, default=1.0)
     n_steps: int | None = eqx.field(static=True, default=None)
-    min_width: float = eqx.field(static=True, default=50.0)
-
-    def resolve_geometry(
-        self,
-        cosmo,
-        max_comoving_distance: float,
-        *,
-        ts=None,
-        nb_shells: int | None = None,
-        density_widths=None,
-        r_max_sim: float | None = None,
-    ) -> AbstractNBodySolver:
-        """Resolve lightcone geometry. Must be called outside jax.jit.
-
-        Parameters
-        ----------
-        r_max_sim : float or None
-            Maximum simulation comoving distance in Mpc/h. Required when
-            *nb_shells* is provided and ``self.n_steps`` is not already set,
-            so that the heuristic ``compute_n_steps_for_shells`` can be used.
-        """
-        from ._resolve_geometry import compute_n_steps_for_shells, resolve_geometry
-
-        ts_resolved, r_centers, dw_resolved = resolve_geometry(
-            cosmo,
-            max_comoving_distance,
-            ts=ts,
-            nb_shells=nb_shells,
-            density_widths=density_widths,
-            shell_spacing=self.shell_spacing,
-            min_width=self.min_width,
-        )
-
-        updated_interp = self.interp_kernel.update_geometry(
-            ts=ts_resolved,
-            r_centers=r_centers,
-            density_widths=dw_resolved,
-            max_comoving_distance=max_comoving_distance,
-        )
-
-        # Compute n_steps independently
-        if self.n_steps is not None:
-            n_steps_final = self.n_steps
-        elif nb_shells is not None and r_max_sim is not None:
-            n_steps_final = compute_n_steps_for_shells(
-                cosmo, self.shell_spacing, nb_shells, float(max_comoving_distance), float(r_max_sim)
-            )
-        else:
-            raise ValueError(
-                "Cannot determine n_steps: either set `n_steps` on the solver, "
-                "or provide both `nb_shells` and `r_max_sim`."
-            )
-
-        # n_steps is a static field, so we can't use eqx.tree_at.
-        # Reconstruct the concrete subclass with updated interp_kernel and n_steps.
-        import dataclasses
-
-        field_vals = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
-        field_vals["interp_kernel"] = updated_interp
-        field_vals["n_steps"] = n_steps_final
-        return type(self)(**field_vals)
 
     @abstractmethod
     def init(
