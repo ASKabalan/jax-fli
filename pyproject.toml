@@ -136,6 +136,7 @@ markers = [
     "distributed: tests requiring multi-device JAX setup (8 CPU devices or SLURM)",
     "single_device: tests that run on a single device (default)",
     "slow: tests that are too slow for CI",
+    "scripts: end-to-end CLI script validation tests (fli-simulate)",
 ]
 timeout = 9000
 timeout_method = "thread"

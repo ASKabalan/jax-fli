@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any
 
 import jax
+import jax.numpy as jnp
 import jax_cosmo as jc
 from jaxpm.distributed import uniform_particles
 from jaxpm.pm import lpt as jaxpm_lpt
@@ -113,6 +114,12 @@ def lpt(
         unit=PositionUnit.GRID_ABSOLUTE,
     )
 
+    # Sanity check: scalar ts with flat/spherical requires density_widths for lightcone output
+    if ts is not None and jnp.isscalar(ts) and painting.target in ("flat", "spherical") and density_widths is None:
+        raise ValueError(
+            f"Scalar ts={ts} with painting target {painting.target!r} requires density_widths to be set for lightcone output."
+        )
+
     ts_resolved, r_centers, density_widths = resolve_geometry(
         cosmo,
         initial_field.max_comoving_radius,
@@ -121,6 +128,7 @@ def lpt(
         density_widths=density_widths,
         shell_spacing=shell_spacing,
         min_width=min_width,
+        box_size_z=initial_field.box_size[2],
     )
 
     is_lightcone = ts_resolved.size > 1
@@ -189,6 +197,8 @@ def lpt(
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
+                comoving_centers=snapshot_r,
+                density_width=density_plane_width,
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
@@ -210,13 +220,31 @@ def lpt(
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
+                comoving_centers=snapshot_r,
+                density_width=density_plane_width,
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
         elif target == "density":
-            pass
+            # Density paints all lightcone particles into a single 3D grid (batch_size=1),
+            # so use the mean of the shells as a representative metadata value.
+            a_repr = jnp.atleast_1d(jnp.mean(a_snapshot))
+            dx_field = dx_field.replace(
+                scale_factors=a_repr,
+                z_sources=jc.utils.a2z(a_repr),
+                comoving_centers=jnp.atleast_1d(jnp.mean(snapshot_r)),
+                density_width=jnp.array([initial_field.box_size[2]]),
+            )
         elif target == "particles":
-            pass
+            # Lightcone particle field is a single non-batched array (batch_size=1),
+            # so use the mean of the shells as a representative metadata value.
+            a_repr = jnp.atleast_1d(jnp.mean(a_snapshot))
+            dx_field = dx_field.replace(
+                scale_factors=a_repr,
+                z_sources=jc.utils.a2z(a_repr),
+                comoving_centers=jnp.atleast_1d(jnp.mean(snapshot_r)),
+                density_width=jnp.array([initial_field.box_size[2]]),
+            )
         else:
             raise ValueError(f"Unknown painting target {target}.")
 
@@ -225,6 +253,8 @@ def lpt(
             raise ValueError(
                 f"Painting target {painting.target} is incompatible with snapshot mode. Use 'particles' or 'density'."
             )
+        # snapshot mode: set density_width to full box depth for catalog metadata
+        dx_field = dx_field.replace(density_width=jnp.array([initial_field.box_size[2]]))
 
     if painting.target == "density":
         dx_field = dx_field.paint(
