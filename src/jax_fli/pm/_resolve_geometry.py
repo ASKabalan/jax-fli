@@ -353,7 +353,7 @@ def resolve_geometry(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z=None):
+def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z):
     """Handle user-provided ts (scalar, 1-D, or 2-D)."""
     ts = jnp.asarray(ts)
 
@@ -364,7 +364,8 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z=N
         if density_widths is not None:
             density_widths = jnp.atleast_1d(jnp.asarray(density_widths).squeeze())
         else:
-            density_widths = jnp.array([box_size_z if box_size_z is not None else max_box_comoving])
+            assert box_size_z is not None, "box_size_z is required when ts is scalar to determine density_widths."
+            density_widths = jnp.array([box_size_z])
         return jnp.atleast_1d(ts), jnp.atleast_1d(r_center), density_widths
 
     # --- 1-D array: shell centres ---
