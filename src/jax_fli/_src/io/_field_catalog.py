@@ -215,7 +215,10 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     def _read_dynamic(key):
         val = np.asarray(item[key], dtype=np.float64)
         if unbatched:
-            return val[0] if val.ndim >= 1 else val
+            # Single-value metadata: collapse to scalar for true snapshots.
+            # Multi-value metadata on a non-batched field (e.g. LPT lightcone
+            # storing per-shell provenance) is preserved as-is.
+            return val[0] if val.ndim >= 1 and val.shape[0] == 1 else val
         return val
 
     z_sources = _read_dynamic("z_sources")
