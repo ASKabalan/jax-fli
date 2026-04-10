@@ -58,7 +58,10 @@ def _ensure_1d_metadata(value, name: str, batch_size: int) -> np.ndarray:
         arr = arr.squeeze(axis=1)
     if arr.ndim != 1:
         raise ValueError(f"Dynamic metadata '{name}' must be 0-d or 1-d, got shape {arr.shape}.")
-    if arr.shape[0] != batch_size:
+    # When batch_size == 1 (e.g. LPT lightcone: single non-batched field whose metadata
+    # carries per-shell values), we relax the length check so the catalog can store
+    # richer provenance without requiring the metadata to be collapsed to a scalar.
+    if arr.shape[0] != batch_size and batch_size != 1:
         raise ValueError(f"Dynamic metadata '{name}' length {arr.shape[0]} != batch_size {batch_size}.")
     return arr
 
