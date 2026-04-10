@@ -14,21 +14,21 @@ pytestmark = pytest.mark.scripts
 
 import jax
 import jax.numpy as jnp
+import jax_fli as jfli
 import pytest
 from numpy.testing import assert_allclose
 
-import jax_fli as jfli
 from tests.helpers import compare_fields
 from tests.scripts.conftest import (
-    LPT_ORDER_IDS,
-    LPT_ORDER_PARAMS,
-    SCHEME_IDS,
-    SCHEME_PARAMS,
     _BASE_CLI,
     _BOX,
     _HALO_SIZE,
     _RES,
     _SEED,
+    LPT_ORDER_IDS,
+    LPT_ORDER_PARAMS,
+    SCHEME_IDS,
+    SCHEME_PARAMS,
     lpt_order_cli,
     run_sim,
     scheme_cli,
@@ -37,13 +37,17 @@ from tests.scripts.conftest import (
 _NSIDE = 16
 _FLATSKY_NPIX = (_RES, _RES)
 _FIELD_SIZE = (10, 10)
-_NB_SHELLS = 2   # minimum to trigger lightcone mode (ts_resolved.size > 1)
+_NB_SHELLS = 2  # minimum to trigger lightcone mode (ts_resolved.size > 1)
 
 _COMMON_LPT_CLI = [
-    "--interp", "none",
-    "--gradient-order", "1",
-    "--nb-shells", str(_NB_SHELLS),
-    "--shell-spacing", "comoving",
+    "--interp",
+    "none",
+    "--gradient-order",
+    "1",
+    "--nb-shells",
+    str(_NB_SHELLS),
+    "--shell-spacing",
+    "comoving",
 ]
 
 
@@ -55,7 +59,8 @@ _COMMON_LPT_CLI = [
 def _api_lpt(cosmo, initial_field, lpt_order, dealiased, exact_growth, painting):
     """Call jfli.lpt and return the displacement field dx."""
     dx, _p = jfli.lpt(
-        cosmo, initial_field,
+        cosmo,
+        initial_field,
         nb_shells=_NB_SHELLS,
         shell_spacing="comoving",
         order=lpt_order,
@@ -73,7 +78,10 @@ def _make_initial_field(cosmo, *, nside=None, flatsky_npix=None, field_size=None
     mesh, box = (_RES,) * 3, (_BOX,) * 3
     key = jax.random.key(_SEED)
     return jfli.gaussian_initial_conditions(
-        key, mesh, box, cosmo=cosmo,
+        key,
+        mesh,
+        box,
+        cosmo=cosmo,
         observer_position=(0.5, 0.5, 0.5),
         nside=nside,
         flatsky_npix=flatsky_npix,
@@ -94,9 +102,16 @@ def test_lpt_density_script_vs_api(tmp_path, cosmo, lpt_order, dealiased, exact_
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "lpt", "--density"] + _BASE_CLI + _COMMON_LPT_CLI + [
-        "--output", out_file,
-    ] + lpt_order_cli(lpt_order, dealiased, exact_growth)
+    cmd = (
+        ["fli-simulate", "lpt", "--density"]
+        + _BASE_CLI
+        + _COMMON_LPT_CLI
+        + [
+            "--output",
+            out_file,
+        ]
+        + lpt_order_cli(lpt_order, dealiased, exact_growth)
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -130,9 +145,16 @@ def test_lpt_particles_script_vs_api(tmp_path, cosmo, lpt_order, dealiased, exac
 
     # --- subprocess ---
     # No output-target flag → default is particles
-    cmd = ["fli-simulate", "lpt"] + _BASE_CLI + _COMMON_LPT_CLI + [
-        "--output", out_file,
-    ] + lpt_order_cli(lpt_order, dealiased, exact_growth)
+    cmd = (
+        ["fli-simulate", "lpt"]
+        + _BASE_CLI
+        + _COMMON_LPT_CLI
+        + [
+            "--output",
+            out_file,
+        ]
+        + lpt_order_cli(lpt_order, dealiased, exact_growth)
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -169,10 +191,18 @@ def test_lpt_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = ["fli-simulate", "lpt", "--nside", str(_NSIDE)] + _BASE_CLI + _COMMON_LPT_CLI + [
-        "--lpt-order", "1",
-        "--output", out_file,
-    ] + scheme_cli(scheme, kernel_width)
+    cmd = (
+        ["fli-simulate", "lpt", "--nside", str(_NSIDE)]
+        + _BASE_CLI
+        + _COMMON_LPT_CLI
+        + [
+            "--lpt-order",
+            "1",
+            "--output",
+            out_file,
+        ]
+        + scheme_cli(scheme, kernel_width)
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -189,19 +219,32 @@ def test_lpt_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
     label = f"lpt spherical nside={_NSIDE}/{scheme}/kw={kernel_width}"
     compare_fields(script_field, api_field, label=label, rtol=1e-5, atol=1e-10, mean_atol=1e-12)
 
+
 def test_lpt_flat_script_vs_api(tmp_path, cosmo):
     """fli-simulate lpt --flatsky-npix must match direct jax_fli.lpt() call."""
     out_file = str(tmp_path / "output.parquet")
 
     # --- subprocess ---
-    cmd = [
-        "fli-simulate", "lpt",
-        "--flatsky-npix", str(_FLATSKY_NPIX[0]), str(_FLATSKY_NPIX[1]),
-        "--field-size", str(_FIELD_SIZE[0]), str(_FIELD_SIZE[1]),
-    ] + _BASE_CLI + _COMMON_LPT_CLI + [
-        "--lpt-order", "1",
-        "--output", out_file,
-    ]
+    cmd = (
+        [
+            "fli-simulate",
+            "lpt",
+            "--flatsky-npix",
+            str(_FLATSKY_NPIX[0]),
+            str(_FLATSKY_NPIX[1]),
+            "--field-size",
+            str(_FIELD_SIZE[0]),
+            str(_FIELD_SIZE[1]),
+        ]
+        + _BASE_CLI
+        + _COMMON_LPT_CLI
+        + [
+            "--lpt-order",
+            "1",
+            "--output",
+            out_file,
+        ]
+    )
     run_sim(cmd)
 
     # --- load ---
@@ -215,7 +258,9 @@ def test_lpt_flat_script_vs_api(tmp_path, cosmo):
 
     # --- compare array ---
     label = "lpt flat"
-    compare_fields(script_field.array.squeeze(), dx.array.squeeze(), label=label, rtol=1e-5, atol=1e-10, mean_atol=1e-12)
+    compare_fields(
+        script_field.array.squeeze(), dx.array.squeeze(), label=label, rtol=1e-5, atol=1e-10, mean_atol=1e-12
+    )
 
     # --- check all 4 metadata fields are set ---
     assert script_field.scale_factors is not None, f"{label}: scale_factors is None"
@@ -225,12 +270,14 @@ def test_lpt_flat_script_vs_api(tmp_path, cosmo):
     assert_allclose(
         jnp.atleast_1d(script_field.comoving_centers),
         jnp.atleast_1d(dx.comoving_centers),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: comoving_centers mismatch",
     )
     assert_allclose(
         jnp.atleast_1d(script_field.density_width),
         jnp.atleast_1d(dx.density_width),
-        rtol=1e-6, atol=1e-10,
+        rtol=1e-6,
+        atol=1e-10,
         err_msg=f"{label}: density_width mismatch",
     )
