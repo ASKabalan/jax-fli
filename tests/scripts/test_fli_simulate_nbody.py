@@ -78,7 +78,7 @@ def _build_solver(solver_name: str, time_stepping: str, painting) -> jfli.Abstra
         ("dkd", "log_a", 0, False),
         ("kdk", "a", 1, False),
     ],
-    ids=["bf-D-fd-nolaplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-fd-nolaplace"],
+    ids=["bf-D-no-fd-laplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-no-fd-laplace"],
 )
 def test_nbody_particles_script_vs_api(
     tmp_path,
@@ -203,8 +203,7 @@ def test_nbody_particles_script_vs_api(
         ("dkd", "log_a", 0, False),
         ("kdk", "a", 1, False),
     ],
-    # TODO fd-nolaplace is wrong term it is either fd-laplace or no-fd-laplace
-    ids=["bf-D-fd-nolaplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-fd-nolaplace"],
+    ids=["bf-D-no-fd-laplace", "bf-a-fd-laplace", "dkd-loga-exact-nolaplace", "kdk-a-no-fd-laplace"],
 )
 def test_nbody_density_script_vs_api(
     tmp_path,
