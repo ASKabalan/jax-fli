@@ -197,8 +197,6 @@ def lpt(
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
-                comoving_centers=snapshot_r,
-                density_width=density_plane_width,
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
@@ -220,29 +218,14 @@ def lpt(
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=z_snapshot,
-                comoving_centers=snapshot_r,
-                density_width=density_plane_width,
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
-        elif target == "density":
-            # Density paints all lightcone particles into a single 3D grid (batch_size=1),
-            # so use the mean of the shells as a representative metadata value.
-            a_repr = jnp.atleast_1d(jnp.mean(a_snapshot))
+        elif target == "density" or target == "particles":
             dx_field = dx_field.replace(
-                scale_factors=a_repr,
-                z_sources=jc.utils.a2z(a_repr),
-                comoving_centers=jnp.atleast_1d(jnp.mean(snapshot_r)),
-                density_width=jnp.array([initial_field.box_size[2]]),
-            )
-        elif target == "particles":
-            # Lightcone particle field is a single non-batched array (batch_size=1),
-            # so use the mean of the shells as a representative metadata value.
-            a_repr = jnp.atleast_1d(jnp.mean(a_snapshot))
-            dx_field = dx_field.replace(
-                scale_factors=a_repr,
-                z_sources=jc.utils.a2z(a_repr),
-                comoving_centers=jnp.atleast_1d(jnp.mean(snapshot_r)),
+                scale_factors=a_snapshot,
+                z_sources=jc.utils.a2z(a_snapshot),
+                comoving_centers=snapshot_r,
                 density_width=jnp.array([initial_field.box_size[2]]),
             )
         else:
