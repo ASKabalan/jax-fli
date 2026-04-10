@@ -13,7 +13,7 @@ import jax_healpy as jhp
 from jaxpm.growth import dGfa
 from jaxpm.growth import growth_factor as Gp
 
-from .._src.base._warn import warning_if
+from .._src.base._warn import warn_disabled, warning_if
 from ..fields import DensityUnit, FieldStatus, ParticleField, PositionUnit, SphericalDensity
 from ..fields.painting import PaintingOptions
 
@@ -215,7 +215,20 @@ class DriftInterp(AbstractInterp):
     Useful when the simulation box is large enough to cover the lightcone
     without replication, but we want to correct for the discrete time stepping
     by drifting particles to their exact lightcone crossing time.
+
+    .. warning::
+        ``drift_on_lightcone`` is currently disabled.  ``DriftInterp`` behaves
+        identically to ``NoInterp`` until the feature is re-enabled.
     """
+
+    drift_on_lightcone: bool = eqx.field(default=False, static=True)
+
+    def __check_init__(self) -> None:
+        if self.drift_on_lightcone:
+            warn_disabled(
+                "drift_on_lightcone",
+                workaround="Use NoInterp (--interp none without --drift-on-lightcone) for a plain snapshot.",
+            )
 
     def init(self) -> InterpTilerState:
         # Check geometry
@@ -321,9 +334,14 @@ class DriftInterp(AbstractInterp):
 class OnionTiler(AbstractInterp):
     """27-tile spherical painting with rotation decorrelation."""
 
-    drift_on_lightcone: bool = eqx.field(
-        default=True, static=True
-    )  # Whether to apply drift correction to the tiled painting (can be expensive)
+    drift_on_lightcone: bool = eqx.field(default=False, static=True)
+
+    def __check_init__(self) -> None:
+        if self.drift_on_lightcone:
+            warn_disabled(
+                "drift_on_lightcone",
+                workaround="Remove drift_on_lightcone=True; the feature is currently deactivated.",
+            )
 
     def init(self) -> InterpTilerState:
         if self.painting.target != "spherical":
@@ -507,9 +525,14 @@ class OnionTiler(AbstractInterp):
 class TelephotoInterp(AbstractInterp):
     """Single rotation+shift painting for narrow FOV."""
 
-    drift_on_lightcone: bool = eqx.field(
-        default=True, static=True
-    )  # Whether to apply drift correction to the tiled painting (can be expensive)
+    drift_on_lightcone: bool = eqx.field(default=False, static=True)
+
+    def __check_init__(self) -> None:
+        if self.drift_on_lightcone:
+            warn_disabled(
+                "drift_on_lightcone",
+                workaround="Remove drift_on_lightcone=True; the feature is currently deactivated.",
+            )
 
     def init(self) -> InterpTilerState:
         if self.painting.target != "spherical" and self.painting.target != "flat":
