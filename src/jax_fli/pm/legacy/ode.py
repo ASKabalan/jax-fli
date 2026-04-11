@@ -59,18 +59,16 @@ def single_ode(cosmo, reference_field: ParticleField):
     return nbody_ode
 
 
-# TODO Growth is not efficient remove the optional to use it and make it mandatory
 def symplectic_fpm(
     cosmo,
     reference_field: ParticleField,
     dt0: float,
-    use_growth: bool = False,
 ):
     """
-    Create drift, pgd, kick, and first_kick functions for FastPM-style symplectic integration.
+    Create drift, kick, and first_kick functions for FastPM-style symplectic integration.
 
-    This function returns operators for FastPM integration with optional growth factor
-    corrections and PGD correction. All operators work with ParticleField objects.
+    This function returns operators for FastPM integration using growth factor
+    corrections. All operators work with ParticleField objects.
 
     Parameters
     ----------
@@ -81,18 +79,11 @@ def symplectic_fpm(
         halo_size, etc.) needed for the integration.
     dt0 : float
         Base time step size in scale factor units.
-    pgd_kernel : AbstractCorrection
-        Correction kernel. If NoCorrection is used, returns zeros.
-    use_growth : bool, optional
-        Whether to use growth factor corrections (True) or simple scale factor
-        evolution (False). Default is False.
 
     Returns
     -------
     drift : callable
         Drift operator: (a, vel, args) -> dpos
-    pgd : callable
-        PGD correction operator: (a, pos, args) -> dpos_correction
     kick : callable
         Kick operator: (a, pos, args) -> dvel
     first_kick : callable
@@ -102,25 +93,12 @@ def symplectic_fpm(
     -----
     The FastPM integrator uses modified kick and drift factors that account for
     geometric means of scale factors between time steps. This improves accuracy
-    compared to the standard leapfrog scheme.
-
-    When use_growth=True, the integrator uses linear growth factors Gf and Gp
+    compared to the standard leapfrog scheme. Growth factors Gf and Gp are used
     for more accurate evolution in the mildly non-linear regime.
-
-    The PGD correction is applied after drift and before kick, so forces are
-    computed at PGD-corrected positions.
 
     Examples
     --------
-    >>> pgd_kernel = PGDKernel(alpha=1.0, kl=0.3, ks=1.0)
-    >>> drift, pgd, kick, first_kick = symplectic_ode_fpm(
-    ...     cosmo,
-    ...     dx_field,
-    ...     dt0=0.01,
-    ...     pgd_kernel=pgd_kernel,
-    ...     use_growth=True
-    ... )
-    >>> # Initialize with first kick
+    >>> drift, kick, first_kick = symplectic_fpm(cosmo, dx_field, dt0=0.01)
     >>> dvel = first_kick(a=0.1, pos=initial_positions, args=cosmo)
     """
     # Extract metadata from reference field
@@ -155,11 +133,7 @@ def symplectic_fpm(
         ac = (t0 * t1) ** 0.5  # Geometric mean of t0 and t1
         af = t1
 
-        if use_growth:
-            # Use growth factor to compute the drift factor
-            drift_contr = (Gp(cosmo, af) - Gp(cosmo, ai)) / dGfa(cosmo, ac)
-        else:
-            drift_contr = (af - ai) / ac
+        drift_contr = (Gp(cosmo, af) - Gp(cosmo, ai)) / dGfa(cosmo, ac)
 
         # Computes the update of position (drift)
         dpos = 1 / (ac**3 * E(cosmo, ac)) * vel.array
@@ -214,17 +188,8 @@ def symplectic_fpm(
         # Computes the update of velocity (kick)
         dvel = 1.0 / (ac**2 * E(cosmo, ac)) * forces_array
 
-        # First kick control factor
-        if use_growth:
-            # Use growth factor to compute the kick factors
-            kick_factor_1 = (Gf(cosmo, t1) - Gf(cosmo, t0t1)) / dGfa(cosmo, t1)
-            # Second kick control factor
-            kick_factor_2 = (Gf(cosmo, t1t2) - Gf(cosmo, t1)) / dGfa(cosmo, t1)
-        else:
-            # Use scale factor to compute the kick factors
-            kick_factor_1 = (t1 - t0t1) / t1
-            # Second kick control factor
-            kick_factor_2 = (t2 - t1t2) / t2
+        kick_factor_1 = (Gf(cosmo, t1) - Gf(cosmo, t0t1)) / dGfa(cosmo, t1)
+        kick_factor_2 = (Gf(cosmo, t1t2) - Gf(cosmo, t1)) / dGfa(cosmo, t1)
 
         # Wrap back into ParticleField
         return ParticleField.FromDensityMetadata(
@@ -273,11 +238,7 @@ def symplectic_fpm(
         # Computes the update of velocity (kick)
         dvel = 1.0 / (a**2 * E(cosmo, a)) * forces_array
 
-        # First kick control factor
-        if use_growth:
-            kick_factor = (Gf(cosmo, t0t1) - Gf(cosmo, t0)) / dGfa(cosmo, t0)
-        else:
-            kick_factor = (t0t1 - t0) / t0
+        kick_factor = (Gf(cosmo, t0t1) - Gf(cosmo, t0)) / dGfa(cosmo, t0)
 
         # Wrap back into ParticleField
         return ParticleField.FromDensityMetadata(

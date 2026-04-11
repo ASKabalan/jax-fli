@@ -48,7 +48,7 @@ def main() -> None:
     print(f"MPI rank={rank}, size={size}")
 
     from jax_fli.io import Catalog
-    from jax_fli.scripts._common import _resolve_nz_shear
+    from jax_fli.scripts._common import _resolve_nz_shear, _save_args_log
 
     p = parser()
     args = p.parse_args()
@@ -62,6 +62,7 @@ def main() -> None:
     if rank == 0:
         output_dir = Path(args.output)
         output_dir.mkdir(parents=True, exist_ok=True)
+        _save_args_log(args, str(output_dir), "fli-dorian-rt")
     else:
         output_dir = Path(args.output)
 

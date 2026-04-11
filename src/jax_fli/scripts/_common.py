@@ -13,7 +13,7 @@ from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
 
-__all__ = ["_try_parse_s3", "_resolve_nz_shear", "_build_sharding"]
+__all__ = ["_try_parse_s3", "_resolve_nz_shear", "_build_sharding", "_save_args_log"]
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +72,25 @@ def _resolve_nz_shear(args: Namespace):
 # ---------------------------------------------------------------------------
 # Sharding setup
 # ---------------------------------------------------------------------------
+
+
+def _save_args_log(args: Namespace, output_dir: str, prog: str) -> None:
+    """Write a formatted args summary to {output_dir}/args.log."""
+    import os
+
+    os.makedirs(output_dir, exist_ok=True)
+    width = 60
+    lines = ["=" * width, f"  {prog}", "=" * width]
+    skip = {"func", "subcommand"}
+    for key, val in sorted(vars(args).items()):
+        if key in skip:
+            continue
+        lines.append(f"  {key:<30} {val}")
+    lines.append("=" * width)
+    log_path = os.path.join(output_dir, "args.log")
+    with open(log_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"Args saved to {log_path}")
 
 
 def _build_sharding(args: Namespace):

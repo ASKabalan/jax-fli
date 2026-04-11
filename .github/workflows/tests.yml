@@ -53,6 +53,13 @@ jobs:
           pip install cython mpi4py
           pip install -r tests/requirements.txt --no-build-isolation
 
+      - name: Run non-distributed, non-scripts tests
+        env:
+          JAX_PLATFORM_NAME: cpu
+          XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+        run: |
+          pytest -m "not distributed and not scripts and not slow"
+
       - name: Run distributed tests
         env:
           JAX_PLATFORM_NAME: cpu
@@ -60,9 +67,9 @@ jobs:
         run: |
           pytest -m distributed
 
-      - name: Run non-distributed tests
+      - name: Run scripts tests
         env:
           JAX_PLATFORM_NAME: cpu
           XLA_PYTHON_CLIENT_PREALLOCATE: "false"
         run: |
-          pytest -m "not distributed and not slow"
+          pytest -m scripts
