@@ -182,12 +182,10 @@ def lpt(
     )
 
     if snapshot_r is not None:
-        target = painting.target if painting is not None else "particles"
-
         a_snapshot = jc.background.a_of_chi(cosmo, snapshot_r)
         z_snapshot = jc.utils.a2z(a_snapshot)
 
-        if target == "flat":
+        if painting.target == "flat":
             dx_field = dx_field.paint_2d(
                 center=snapshot_r,
                 density_plane_width=density_plane_width,
@@ -200,7 +198,7 @@ def lpt(
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
-        elif target == "spherical":
+        elif painting.target == "spherical":
             dx_field = dx_field.paint_spherical(
                 center=snapshot_r,
                 density_plane_width=density_plane_width,
@@ -221,7 +219,7 @@ def lpt(
             )
             if dx_field.is_batched():
                 dx_field = dx_field[::-1]
-        elif target == "density" or target == "particles":
+        elif painting.target == "density" or painting.target == "particles":
             dx_field = dx_field.replace(
                 scale_factors=a_snapshot,
                 z_sources=jc.utils.a2z(a_snapshot),
@@ -229,15 +227,34 @@ def lpt(
                 density_width=jnp.array([initial_field.box_size[2]]),
             )
         else:
-            raise ValueError(f"Unknown painting target {target}.")
+            raise ValueError(f"Unknown painting target {painting.target}.")
 
     else:
-        if painting.target not in ("particles", "density"):
-            raise ValueError(
-                f"Painting target {painting.target} is incompatible with snapshot mode. Use 'particles' or 'density'."
+        if painting.target == "flat":
+            dx_field = dx_field.paint_2d(
+                center=r_centers,
+                density_plane_width=density_widths,
+                weights=painting.weights,
+                batch_size=painting.batch_size,
             )
-        # snapshot mode: set density_width to full box depth for catalog metadata
-        dx_field = dx_field.replace(density_width=jnp.array([initial_field.box_size[2]]))
+        elif painting.target == "spherical":
+            dx_field = dx_field.paint_spherical(
+                center=r_centers,
+                density_plane_width=density_widths,
+                scheme=painting.scheme,
+                weights=painting.weights,
+                kernel_width_arcmin=painting.kernel_width_arcmin,
+                smoothing_interpretation=painting.smoothing_interpretation,
+                paint_nside=painting.paint_nside,
+                ud_grade_power=painting.ud_grade_power,
+                ud_grade_order_in=painting.ud_grade_order_in,
+                ud_grade_order_out=painting.ud_grade_order_out,
+                ud_grade_pess=painting.ud_grade_pess,
+                batch_size=painting.batch_size,
+            )
+        elif painting.target == "density" or painting.target == "particles":
+            # snapshot mode: set density_width to full box depth for catalog metadata
+            dx_field = dx_field.replace(density_width=jnp.array([initial_field.box_size[2]]))
 
     if painting.target == "density":
         dx_field = dx_field.paint(
