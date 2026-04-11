@@ -17,22 +17,14 @@ def test_scalar_ts(cosmology, small_initial_field, target, a_target):
     """Scalar ts → snapshot mode. flat/spherical should error; particles/density should succeed."""
     painting = jfli.PaintingOptions(target=target, paint_nside=PAINT_NSIDE)
 
-    if target in ("flat", "spherical"):
-        with pytest.raises(ValueError, match="is incompatible with snapshot mode"):
-            jfli.lpt(
-                cosmology,
-                small_initial_field,
-                ts=a_target,
-                painting=painting,
-            )
-        return
-
     dx_field, _ = jfli.lpt(
         cosmology,
         small_initial_field,
         ts=a_target,
         painting=painting,
+        density_widths=20.0,
     )
+    expected_density = 20.0 if target in ["flat", "spherical"] else small_initial_field.box_size[2]
 
     r_comoving = jc.background.radial_comoving_distance(cosmology, a_target)
     z_target = jc.utils.a2z(a_target)
@@ -41,20 +33,26 @@ def test_scalar_ts(cosmology, small_initial_field, target, a_target):
     assert_allclose(dx_field.scale_factors, a_target, rtol=1e-15)
     assert_allclose(dx_field.comoving_centers, r_comoving, rtol=1e-15)
     assert_allclose(dx_field.z_sources, z_target, rtol=1e-15)
+    assert_allclose(dx_field.density_width, expected_density, rtol=1e-15)
 
     if target == "particles":
         assert isinstance(dx_field, jfli.ParticleField)
-    else:
+    elif target == "density":
         assert isinstance(dx_field, jfli.DensityField)
         assert dx_field.status == jfli.FieldStatus.DENSITY_FIELD
+    elif target == "flat":
+        assert isinstance(dx_field, jfli.FlatDensity)
+        assert dx_field.status == jfli.FieldStatus.LIGHTCONE
+    elif target == "spherical":
+        assert isinstance(dx_field, jfli.SphericalDensity)
+        assert dx_field.status == jfli.FieldStatus.LIGHTCONE
+    else:
+        raise ValueError(f"Unexpected target: {target}")
 
 
 @pytest.mark.parametrize("target", ["flat", "spherical", "particles", "density"])
 def test_1d_ts(cosmology, small_initial_field, target):
     """1-D ts array → multi-shell lightcone."""
-    if target == "spherical":
-        pytest.importorskip("jax_healpy")
-
     ts = jnp.linspace(0.5, 0.9, 4)
     widths = jnp.full(4, 20.0)
     painting = jfli.PaintingOptions(target=target, paint_nside=PAINT_NSIDE)
