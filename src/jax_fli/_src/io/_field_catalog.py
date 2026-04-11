@@ -58,7 +58,10 @@ def _ensure_1d_metadata(value, name: str, batch_size: int) -> np.ndarray:
         arr = arr.squeeze(axis=1)
     if arr.ndim != 1:
         raise ValueError(f"Dynamic metadata '{name}' must be 0-d or 1-d, got shape {arr.shape}.")
-    if arr.shape[0] != batch_size:
+    # When batch_size == 1 (e.g. LPT lightcone: single non-batched field whose metadata
+    # carries per-shell values), we relax the length check so the catalog can store
+    # richer provenance without requiring the metadata to be collapsed to a scalar.
+    if arr.shape[0] != batch_size and batch_size != 1:
         raise ValueError(f"Dynamic metadata '{name}' length {arr.shape[0]} != batch_size {batch_size}.")
     return arr
 
@@ -212,7 +215,10 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     def _read_dynamic(key):
         val = np.asarray(item[key], dtype=np.float64)
         if unbatched:
-            return val[0] if val.ndim >= 1 else val
+            # Single-value metadata: collapse to scalar for true snapshots.
+            # Multi-value metadata on a non-batched field (e.g. LPT lightcone
+            # storing per-shell provenance) is preserved as-is.
+            return val[0] if val.ndim >= 1 and val.shape[0] == 1 else val
         return val
 
     z_sources = _read_dynamic("z_sources")

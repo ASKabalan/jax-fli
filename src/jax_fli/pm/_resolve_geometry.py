@@ -288,6 +288,7 @@ def resolve_geometry(
     density_widths=None,
     shell_spacing: str = "comoving",
     min_width: float = 50.0,
+    box_size_z: float | None = None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Resolve the ``ts`` / ``nb_shells`` specification into canonical geometry.
 
@@ -339,7 +340,7 @@ def resolve_geometry(
     # Path A: Manual ts
     # =====================================================================
     if ts is not None:
-        return _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving)
+        return _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z)
 
     # =====================================================================
     # Path B: Automatic generation from nb_shells
@@ -352,7 +353,7 @@ def resolve_geometry(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving):
+def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z):
     """Handle user-provided ts (scalar, 1-D, or 2-D)."""
     ts = jnp.asarray(ts)
 
@@ -363,7 +364,8 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving):
         if density_widths is not None:
             density_widths = jnp.atleast_1d(jnp.asarray(density_widths).squeeze())
         else:
-            density_widths = jnp.array([0.0])
+            assert box_size_z is not None, "box_size_z is required when ts is scalar to determine density_widths."
+            density_widths = jnp.array([box_size_z])
         return jnp.atleast_1d(ts), jnp.atleast_1d(r_center), density_widths
 
     # --- 1-D array: shell centres ---

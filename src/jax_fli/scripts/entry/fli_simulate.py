@@ -19,7 +19,7 @@ import jax_cosmo as jc
 from jax.experimental.multihost_utils import sync_global_devices
 
 import jax_fli as jfli
-from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _try_parse_s3  # noqa: F401
+from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log, _try_parse_s3  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Cosmology builder
@@ -409,6 +409,9 @@ def main() -> None:
     ts = _resolve_ts(args)
     nz_shear = _resolve_nz_shear(args)
     solver = _build_solver(args, painting)
+
+    output_dir = os.path.dirname(args.output) or "."
+    _save_args_log(args, output_dir, f"fli-simulate {args.subcommand}")
 
     mesh = tuple(args.mesh_size)
     px, py = args.pdim

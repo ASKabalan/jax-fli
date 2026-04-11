@@ -13,7 +13,7 @@ from numpyro.handlers import condition
 
 import jax_fli as jfli
 from jax_fli.fields import FlatKappaField, SphericalKappaField
-from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear
+from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log
 
 # ---------------------------------------------------------------------------
 # Observable loading
@@ -191,6 +191,7 @@ def main() -> None:
     jax.config.update("jax_enable_x64", args.enable_x64)
 
     _validate_args(args, p)
+    _save_args_log(args, args.path, "fli-infer")
     sharding = _build_sharding(args)
 
     kappa_arrays, obs_cosmo, obs_box_size, geometry, nside, flatsky_npix, field_size, n_kappas = _load_observable(

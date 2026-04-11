@@ -38,18 +38,18 @@ def r_max_sim(cosmology):
 class TestManualTs:
     def test_ts_scalar(self, cosmology):
         """Scalar ts produces single-element outputs with zero density width."""
-        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=0.5)
+        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=0.5, box_size_z=MAX_BOX * 2)
         assert ts_out.shape == (1,)
         assert r_centers.shape == (1,)
         assert dw.shape == (1,)
-        assert float(dw[0]) == 0.0
+        assert float(dw[0]) == MAX_BOX * 2
 
     def test_ts_2d(self, cosmology):
         """2-D (2, N) near/far ts produces correct output."""
         a_near = jnp.array([0.9, 0.8, 0.7])
         a_far = jnp.array([0.85, 0.75, 0.65])
         ts_input = jnp.stack([a_near, a_far])
-        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=ts_input)
+        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=ts_input, box_size_z=MAX_BOX * 2)
         assert ts_out.shape == (3,)
         assert r_centers.shape == (3,)
         assert dw.shape == (3,)
@@ -60,7 +60,9 @@ class TestManualTs:
         """1-D ts with explicit density_widths succeeds."""
         ts_input = jnp.linspace(0.3, 0.9, 5)
         widths = jnp.full(5, 100.0)
-        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=ts_input, density_widths=widths)
+        ts_out, r_centers, dw = resolve_geometry(
+            cosmology, MAX_BOX, ts=ts_input, box_size_z=MAX_BOX * 2, density_widths=widths
+        )
         assert ts_out.shape == (5,)
         assert r_centers.shape == (5,)
         assert dw.shape == (5,)
@@ -70,7 +72,7 @@ class TestManualTs:
     def test_ts_1d_without_widths(self, cosmology):
         """1-D ts without density_widths auto-computes Voronoi widths."""
         ts_input = jnp.linspace(0.3, 0.9, 5)
-        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=ts_input)
+        ts_out, r_centers, dw = resolve_geometry(cosmology, MAX_BOX, ts=ts_input, box_size_z=MAX_BOX * 2)
 
         dw_expected = distances(r_centers, MAX_BOX)
 
@@ -90,6 +92,7 @@ class TestNbShells:
             MAX_BOX,
             nb_shells=NB_SHELLS,
             shell_spacing="comoving",
+            box_size_z=MAX_BOX * 2,
         )
         assert ts.shape == (NB_SHELLS,)
         assert r_centers.shape == (NB_SHELLS,)
@@ -107,6 +110,7 @@ class TestNbShells:
             MAX_BOX,
             nb_shells=NB_SHELLS,
             shell_spacing="a",
+            box_size_z=MAX_BOX * 2,
         )
         assert ts.shape == (NB_SHELLS,)
         assert r_centers.shape == (NB_SHELLS,)
@@ -122,6 +126,7 @@ class TestNbShells:
             MAX_BOX,
             nb_shells=NB_SHELLS,
             shell_spacing="growth",
+            box_size_z=MAX_BOX * 2,
         )
         assert ts.shape == (NB_SHELLS,)
         assert r_centers.shape == (NB_SHELLS,)
@@ -139,6 +144,7 @@ class TestNbShells:
             nb_shells=NB_SHELLS,
             shell_spacing="equal_vol",
             min_width=40.0,
+            box_size_z=MAX_BOX * 2,
         )
         assert ts.shape == (NB_SHELLS,)
         assert r_centers.shape == (NB_SHELLS,)
@@ -187,6 +193,7 @@ class TestMinWidthNbShells:
                 nb_shells=200,
                 shell_spacing=shell_spacing,
                 min_width=50.0,
+                box_size_z=MAX_BOX * 2,
             )
 
     def test_comoving_min_width(self, cosmology):
@@ -267,7 +274,9 @@ class TestSimulationStepping:
         assert np.all(np.diff(a_np) > -1e-12)
         np.testing.assert_allclose(a_np[0], 0.1, atol=1e-10)
         # Should contain the resolved shell scale factors
-        shell_ts, _, _ = resolve_geometry(cosmology, MAX_BOX, nb_shells=NB_SHELLS, shell_spacing="comoving")
+        shell_ts, _, _ = resolve_geometry(
+            cosmology, MAX_BOX, nb_shells=NB_SHELLS, shell_spacing="comoving", box_size_z=MAX_BOX * 2
+        )
         for t in np.asarray(shell_ts):
             assert np.any(np.abs(a_np - t) < 1e-10), f"Shell target {t} not in output"
 

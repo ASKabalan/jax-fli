@@ -109,6 +109,11 @@ def nbody(
     if ts is None and nb_shells is None:
         ts = jnp.array([t1])  # snapshot default
 
+    # Sanity check, if ts is a scalar and painting target is flat or spherical, raise error if density_width is None because it is required for lightcone output
+    if jnp.isscalar(ts) and solver.interp_kernel.painting.target in ("flat", "spherical") and density_widths is None:
+        raise ValueError(
+            f"Scalar ts={ts} with painting target {solver.interp_kernel.painting.target} requires density_widths to be set for lightcone output."
+        )
     ts_resolved, r_centers, density_plane_width = resolve_geometry(
         cosmo,
         dx_field.max_comoving_radius,
@@ -117,6 +122,7 @@ def nbody(
         density_widths=density_widths,
         shell_spacing=shell_spacing,
         min_width=min_width,
+        box_size_z=dx_field.box_size[2],
     )
     updated_interp = solver.interp_kernel.update_geometry(
         ts=ts_resolved,
