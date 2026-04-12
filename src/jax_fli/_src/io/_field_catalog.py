@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from functools import partial
 
 import jax
@@ -18,6 +19,11 @@ from ..base._enums import ConvergenceUnit, DensityUnit, FieldStatus, PositionUni
 CATALOG_VERSION = 2
 
 all_gather = partial(process_allgather, tiled=True)
+
+# PyArrow 23 cannot write a single nested-list value exceeding INT32_MAX bytes.
+# Arrays larger than this are split into multiple named columns on write and
+# reassembled transparently on read.
+_INT32_MAX = 2**31 - 1
 
 
 def _ensure_batch_dim(array: np.ndarray, field_type: str) -> np.ndarray:
@@ -66,28 +72,58 @@ def _ensure_1d_metadata(value, name: str, batch_size: int) -> np.ndarray:
     return arr
 
 
+def _compute_split_params(array_batched):
+    """Return (num_splits, split_size) if array_batched.nbytes > INT32_MAX, else None.
+
+    Splits along axis 1 (first spatial axis N0). split_size is the uniform chunk
+    size; the last chunk may need zero-padding to fill it (handled in catalog_to_row,
+    trimmed using _original_n0 in row_to_field_cosmo).
+    """
+    if array_batched.nbytes <= _INT32_MAX:
+        return None
+    N0 = int(array_batched.shape[1])
+    plane_bytes = int(np.prod(array_batched.shape[2:])) * np.dtype(array_batched.dtype).itemsize
+    max_planes = max(1, _INT32_MAX // plane_bytes)
+    num_splits = math.ceil(N0 / max_planes)
+    split_size = math.ceil(N0 / num_splits)
+    return num_splits, split_size
+
+
+def _array_feature_for_type(field_type: str, shape: tuple, dtype_str: str):
+    """Return the appropriate Array{N}D HuggingFace feature for the given element shape."""
+    from datasets import Array2D, Array3D, Array4D, Array5D
+
+    if field_type in ("SphericalDensity", "SphericalKappaField"):
+        return Array2D(shape=(None, shape[0]), dtype=dtype_str)
+    elif field_type in ("FlatDensity", "FlatKappaField"):
+        return Array3D(shape=(None, *shape), dtype=dtype_str)
+    elif field_type == "DensityField":
+        return Array4D(shape=(None, *shape), dtype=dtype_str)
+    elif field_type == "ParticleField":
+        return Array5D(shape=(None, *shape), dtype=dtype_str)
+    else:
+        raise ValueError(f"Unknown field type: {field_type}")
+
+
 def build_features(field: AbstractField):
-    """Build HuggingFace Features schema for v2 format (batched arrays per row)."""
-    from datasets import Array2D, Array3D, Array4D, Array5D, Features, Sequence, Value
+    """Build HuggingFace Features schema for v2 format (batched arrays per row).
+
+    For arrays whose total byte size exceeds INT32_MAX, the spatial axis 0 (N0)
+    is split into multiple columns named ``array_0``, ``array_1``, … plus two
+    metadata columns ``_n_splits`` and ``_original_n0``.  Small arrays keep the
+    single ``array`` column from the original schema.
+    """
+    from datasets import Features, Sequence, Value
 
     field_type = type(field).__name__
     array = _ensure_batch_dim(field.array, field_type)
     element_shape = array.shape[1:]
     dtype_str = np.dtype(array.dtype).name
 
-    if field_type in ("SphericalDensity", "SphericalKappaField"):
-        array_feature = Array2D(shape=(None, element_shape[0]), dtype=dtype_str)
-    elif field_type in ("FlatDensity", "FlatKappaField"):
-        array_feature = Array3D(shape=(None, *element_shape), dtype=dtype_str)
-    elif field_type == "DensityField":
-        array_feature = Array4D(shape=(None, *element_shape), dtype=dtype_str)
-    elif field_type == "ParticleField":
-        array_feature = Array5D(shape=(None, *element_shape), dtype=dtype_str)
-    else:
-        raise ValueError(f"Unknown field type: {field_type}")
+    split_params = _compute_split_params(array)
 
+    # Shared (non-array) feature columns — identical for split and non-split
     feature_dict = {
-        "array": array_feature,
         "z_sources": Sequence(Value("float64")),
         "scale_factors": Sequence(Value("float64")),
         "comoving_centers": Sequence(Value("float64")),
@@ -100,6 +136,7 @@ def build_features(field: AbstractField):
         "unit": Value("string"),
         "name": Value("string"),
         "entry_type": Value("string"),
+        "array_dtype": Value("string"),
         "Omega_c": Value("float32"),
         "Omega_b": Value("float32"),
         "h": Value("float32"),
@@ -113,6 +150,18 @@ def build_features(field: AbstractField):
         "field_type": Value("string"),
     }
 
+    # Array column(s)
+    if split_params is not None:
+        num_splits, split_size = split_params
+        split_shape = (split_size,) + element_shape[1:]  # replace N0 with split_size
+        for i in range(num_splits):
+            feature_dict[f"array_{i}"] = _array_feature_for_type(field_type, split_shape, dtype_str)
+        feature_dict["_n_splits"] = Value("int32")
+        feature_dict["_original_n0"] = Value("int32")
+    else:
+        feature_dict["array"] = _array_feature_for_type(field_type, element_shape, dtype_str)
+
+    # Optional per-field-type metadata
     if field.nside is not None:
         feature_dict["nside"] = Value("int32")
     if field.flatsky_npix is not None:
@@ -147,6 +196,7 @@ def catalog_to_row(field: AbstractField, cosmology: jc.Cosmology, version: int) 
         "unit": field.unit.name,
         "name": field.name if field.name is not None else "",
         "entry_type": "field",
+        "array_dtype": np.dtype(field.array.dtype).name,
         "field_type": field_type,
         "version": int(version),
     }
@@ -171,7 +221,6 @@ def catalog_to_row(field: AbstractField, cosmology: jc.Cosmology, version: int) 
     }
 
     data = {
-        "array": [array],
         "z_sources": [z_src.tolist()],
         "scale_factors": [scale.tolist()],
         "comoving_centers": [comov.tolist()],
@@ -181,6 +230,24 @@ def catalog_to_row(field: AbstractField, cosmology: jc.Cosmology, version: int) 
         data[k] = [v]
     for k, v in cosmo.items():
         data[k] = [v]
+
+    split_params = _compute_split_params(array)
+
+    if split_params is not None:
+        num_splits, split_size = split_params
+        N0 = array.shape[1]
+        # Pad N0 to a multiple of split_size so all split columns share a uniform shape
+        padded_N0 = num_splits * split_size
+        if padded_N0 > N0:
+            pad = np.zeros((array.shape[0], padded_N0 - N0) + array.shape[2:], dtype=array.dtype)
+            array = np.concatenate([array, pad], axis=1)
+        splits = np.split(array, num_splits, axis=1)
+        for i, s in enumerate(splits):
+            data[f"array_{i}"] = [s]
+        data["_n_splits"] = [num_splits]
+        data["_original_n0"] = [N0]
+    else:
+        data["array"] = [array]
 
     return data
 
@@ -206,11 +273,27 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     def _to_static_tuple(v, _type):
         return tuple(_type(x) for x in v)
 
-    array = np.asarray(item["array"])
-    unbatched = array.shape[0] == 1
+    # Reconstruct array — handle split columns transparently
+    if "_n_splits" in item:
+        n_splits = int(np.asarray(item["_n_splits"]).flat[0])
+        original_n0 = int(np.asarray(item["_original_n0"]).flat[0])
+        parts = [np.asarray(item[f"array_{i}"]) for i in range(n_splits)]
+        # Each part: (1, split_size, N1, N2); concatenate along N0 and trim padding
+        array = np.concatenate(parts, axis=1)[:, :original_n0]
+        unbatched = array.shape[0] == 1
+        if unbatched:
+            array = array[0]
+    else:
+        array = np.asarray(item["array"])
+        unbatched = array.shape[0] == 1
+        if unbatched:
+            array = array[0]
 
-    if unbatched:
-        array = array[0]
+    # NumpyFormatter silently downcasts floats to float32; restore the original
+    # dtype using the stored "array_dtype" metadata column.
+    stored_dtype = item.get("array_dtype", None)
+    if stored_dtype is not None:
+        array = array.astype(np.dtype(str(stored_dtype)))
 
     def _read_dynamic(key):
         val = np.asarray(item[key], dtype=np.float64)
