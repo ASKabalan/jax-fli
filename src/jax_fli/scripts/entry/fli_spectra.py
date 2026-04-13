@@ -19,7 +19,6 @@ import re
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 
-
 # ---- Field types that need OVERDENSITY conversion -------------------------
 _DENSITY_TYPES = {"FlatDensity", "SphericalDensity", "DensityField"}
 # ---- Kappa/shear types — skip unit conversion -----------------------------
@@ -84,6 +83,7 @@ def _convert_to_overdensity(field, field_type: str, normalization: str):
     if field_type not in _DENSITY_TYPES:
         return field
     from jax_fli.fields.units import DensityUnit
+
     try:
         return field.to(DensityUnit.OVERDENSITY, normalization=normalization)
     except Exception as e:
@@ -155,7 +155,10 @@ def main() -> None:
 
         field = catalog.field[0]
         import numpy as np
-        field = field.apply_fn(lambda x: np.asarray(x, dtype=np.float32))  # Ensure array is in numpy for JAX compatibility
+
+        field = field.apply_fn(
+            lambda x: np.asarray(x, dtype=np.float32)
+        )  # Ensure array is in numpy for JAX compatibility
         cosmo = catalog.cosmology[0]
         field_type = type(field).__name__
 
@@ -173,6 +176,7 @@ def main() -> None:
         print("  Computing spectra...")
         try:
             import jax
+
             ps = jax.block_until_ready(_compute_spectra(field, field_type, args))
         except Exception as e:
             msg = f"  ERROR computing spectra: {e}"
