@@ -11,9 +11,9 @@ def main():
     )
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
-    from . import born_rt, dorian_rt, extract, grid, infer, samples, simulate
+    from . import born_rt, dorian_rt, extract, infer, samples, simulate
 
-    for mod in [simulate, grid, samples, infer, born_rt, extract, dorian_rt]:
+    for mod in [simulate, samples, infer, born_rt, extract, dorian_rt]:
         mod.add_subparser(sub)
 
     args = parser.parse_args()

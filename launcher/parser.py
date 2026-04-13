@@ -84,7 +84,7 @@ def _print_dryrun(job_name, args, fli_cmd):
     print()
 
 
-def dispatch(args, job_name, tag, fli_cmd, *, use_gpu=True, always_mpirun=False, env=None):
+def dispatch(args, job_name, tag, fli_cmd, *, use_gpu=True):
     """Dispatch *fli_cmd* according to args.mode.
 
     Parameters
@@ -93,11 +93,6 @@ def dispatch(args, job_name, tag, fli_cmd, *, use_gpu=True, always_mpirun=False,
         When False, sbatch omits ``--gres=gpu`` and ``-C constraint``, and
         the MPI task count is ``tasks_per_node * nodes`` rather than
         ``gpus_per_node * nodes``.
-    always_mpirun:
-        When True, local mode always wraps with ``mpirun`` regardless of
-        the GPU/task count (used by dorian-rt which is always MPI).
-    env:
-        Optional environment dict passed to ``subprocess.run``.
     """
     tpn, cpt, total_gpus = _slurm_params(args)
 
@@ -107,11 +102,11 @@ def dispatch(args, job_name, tag, fli_cmd, *, use_gpu=True, always_mpirun=False,
 
     if args.mode == "local":
         n = total_gpus if use_gpu else tpn * args.nodes
-        if always_mpirun or n > 1:
+        if n > 1:
             prefix = ["mpirun", "-n", str(n), "--oversubscribe"]
         else:
             prefix = []
-        subprocess.run(prefix + fli_cmd, check=True, env=env)
+        subprocess.run(prefix + fli_cmd, check=True)
         return
 
     # ---- sbatch mode ----
