@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
-from .._src.base._enums import FieldStatus
+from .._src.base._enums import FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_flat_density, plot_spherical_density, prepare_axes
 from ..power import PowerSpectrum, angular_cl_flat, angular_cl_spherical, cross_angular_cl_spherical
@@ -241,7 +241,21 @@ class FlatDensity(AbstractField):
         ell_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = ell_stack[0]
         spectra = spectra_stack if self.array.ndim == 3 else spectra_stack[0]
-        return PowerSpectrum(wavenumber=wavenumber, array=spectra, name="cl", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=spectra,
+            name="cl",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
+        )
 
     def cross_angular_cl(
         self,
@@ -323,7 +337,21 @@ class FlatDensity(AbstractField):
         # Extract ell from first result (all pairs share same ell-bins)
         wavenumber = ell_stack[0]
 
-        return PowerSpectrum(wavenumber=wavenumber, array=cl_stack, name="cross_cl", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=cl_stack,
+            name="cross_cl",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
+        )
 
     def transfer(
         self,
@@ -371,7 +399,16 @@ class FlatDensity(AbstractField):
             wavenumber=cl_self.wavenumber,
             array=transfer_ratio,
             name="transfer",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
             scale_factors=self.scale_factors,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
         )
 
     def coherence(
@@ -427,7 +464,16 @@ class FlatDensity(AbstractField):
             wavenumber=cl_self.wavenumber,
             array=coherence_ratio,
             name="coherence",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
             scale_factors=self.scale_factors,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
         )
 
     @classmethod
@@ -693,7 +739,20 @@ class SphericalDensity(AbstractField):
             assert ell is not None, "ell should have been set in loop"
             spectra = jnp.stack(spectras, axis=0)
             spectra = spectra if self.array.ndim == 2 else spectra[0]
-            return PowerSpectrum(wavenumber=ell, array=spectra, name="cl", scale_factors=self.scale_factors)
+            return PowerSpectrum(
+                wavenumber=ell,
+                array=spectra,
+                name="cl",
+                mesh_size=self.mesh_size,
+                box_size=self.box_size,
+                comoving_centers=self.comoving_centers,
+                density_width=self.density_width,
+                z_sources=self.z_sources,
+                scale_factors=self.scale_factors,
+                nside=self.nside,
+                status=FieldStatus.SPECTRA,
+                unit=SpectralUnit.ANGULAR_CL,
+            )
 
         if data2 is not None and data2.shape != data1.shape:
             raise ValueError("mesh2 must match shape for cross Cl")
@@ -701,7 +760,20 @@ class SphericalDensity(AbstractField):
         ell_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = ell_stack[0]
         spectra = spectra_stack if self.array.ndim == 2 else spectra_stack[0]
-        return PowerSpectrum(wavenumber=wavenumber, array=spectra, name="cl", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=spectra,
+            name="cl",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            nside=self.nside,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
+        )
 
     def cross_angular_cl(
         self,
@@ -771,7 +843,20 @@ class SphericalDensity(AbstractField):
         # Call the power module function
         ell, cls = cross_angular_cl_spherical(data, lmax=lmax, method=method)
 
-        return PowerSpectrum(wavenumber=ell, array=cls, name="cross_cl", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=ell,
+            array=cls,
+            name="cross_cl",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            nside=self.nside,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
+        )
 
     def transfer(
         self,
@@ -814,7 +899,15 @@ class SphericalDensity(AbstractField):
             wavenumber=cl_self.wavenumber,
             array=transfer_ratio,
             name="transfer",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
             scale_factors=self.scale_factors,
+            nside=self.nside,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
         )
 
     def coherence(
@@ -864,7 +957,15 @@ class SphericalDensity(AbstractField):
             wavenumber=cl_self.wavenumber,
             array=coherence_ratio,
             name="coherence",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
             scale_factors=self.scale_factors,
+            nside=self.nside,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
         )
 
     @classmethod
