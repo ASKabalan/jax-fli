@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 from .._src.base._core import AbstractField
-from .._src.base._enums import DensityUnit, FieldStatus
+from .._src.base._enums import DensityUnit, FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_3d_density, prepare_axes
 from ..power import PowerSpectrum, coherence, transfer
@@ -324,7 +324,16 @@ class DensityField(AbstractField):
 
         k, pk = jax.lax.map(_power_fn, (data1, data2), batch_size=batch_size)
         k, pk = k[0], pk.squeeze()
-        return PowerSpectrum(wavenumber=k, array=pk, name="pk", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=k,
+            array=pk,
+            name="pk",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            scale_factors=self.scale_factors,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.POWER_SPECTRA,
+        )
 
     @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size"])
     def cross_power(
@@ -409,7 +418,16 @@ class DensityField(AbstractField):
         # Extract wavenumber from first result (all pairs share same k-bins)
         wavenumber = k_stack[0]
 
-        return PowerSpectrum(wavenumber=wavenumber, array=pk_stack, name="cross_pk", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=pk_stack,
+            name="cross_pk",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            scale_factors=self.scale_factors,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.POWER_SPECTRA,
+        )
 
     @partial(jax.jit, static_argnames=["kedges", "batch_size"])
     def transfer(
@@ -445,7 +463,16 @@ class DensityField(AbstractField):
         k_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = k_stack[0]
         spectra = spectra_stack if self.array.ndim == 4 else spectra_stack[0]
-        return PowerSpectrum(wavenumber=wavenumber, array=spectra, name="transfer", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=spectra,
+            name="transfer",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            scale_factors=self.scale_factors,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.POWER_SPECTRA,
+        )
 
     @partial(jax.jit, static_argnames=["batch_size"])
     def coherence(
@@ -481,7 +508,16 @@ class DensityField(AbstractField):
         k_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = k_stack[0]
         spectra = spectra_stack if self.array.ndim == 4 else spectra_stack[0]
-        return PowerSpectrum(wavenumber=wavenumber, array=spectra, name="coherence", scale_factors=self.scale_factors)
+        return PowerSpectrum(
+            wavenumber=wavenumber,
+            array=spectra,
+            name="coherence",
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            scale_factors=self.scale_factors,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.POWER_SPECTRA,
+        )
 
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> DensityField:

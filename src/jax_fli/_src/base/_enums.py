@@ -14,6 +14,7 @@ class FieldStatus(str, Enum):
     LIGHTCONE = auto()
     KAPPA = auto()
     GAMMA = auto()
+    SPECTRA = auto()
 
 
 class PhysicalUnit(str, Enum):
@@ -36,3 +37,10 @@ class DensityUnit(str, Enum):
 class ConvergenceUnit(str, Enum):
     DIMENSIONLESS = auto()
     EFFECTIVE_DENSITY = auto()
+
+
+class SpectralUnit(str, Enum):
+    """Unit type for power spectrum objects."""
+
+    ANGULAR_CL = auto()
+    POWER_SPECTRA = auto()
