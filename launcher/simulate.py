@@ -51,7 +51,6 @@ def add_subparser(sub):
 
 
 def run(args):
-
     mesh_list = args.mesh_size
     if len(mesh_list) % 3 != 0:
         raise ValueError(f"--mesh-size must be a multiple of 3 values, got {len(mesh_list)}")
