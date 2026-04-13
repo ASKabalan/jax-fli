@@ -81,11 +81,17 @@ def _compute_split_params(array_batched):
     """
     if array_batched.nbytes <= _INT32_MAX:
         return None
-    N0 = int(array_batched.shape[1])
-    plane_bytes = int(np.prod(array_batched.shape[2:])) * np.dtype(array_batched.dtype).itemsize
-    max_planes = max(1, _INT32_MAX // plane_bytes)
-    num_splits = math.ceil(N0 / max_planes)
-    split_size = math.ceil(N0 / num_splits)
+
+    # A split column stores the full batch, so batch size must be included.
+    bytes_per_n0_plane = (
+        int(array_batched.shape[0])
+        * int(np.prod(array_batched.shape[2:]))
+        * np.dtype(array_batched.dtype).itemsize
+    )
+
+    max_planes_per_split = _INT32_MAX // bytes_per_n0_plane
+    num_splits = math.ceil(int(array_batched.shape[1]) / max_planes_per_split)
+    split_size = math.ceil(int(array_batched.shape[1]) / num_splits)
     return num_splits, split_size
 
 
