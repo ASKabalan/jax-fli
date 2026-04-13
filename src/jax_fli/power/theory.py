@@ -241,8 +241,10 @@ def compute_theory_cl_for_density(
     Parameters
     ----------
     cosmo : jc.Cosmology
-    lightcone : FlatDensity or SphericalDensity
+    lightcone : FlatDensity, SphericalDensity, or PowerSpectrum
         Must have .comoving_centers and .density_width of shape (n_shells,).
+        A PowerSpectrum with status=FieldStatus.SPECTRA is also accepted — its
+        stored AbstractField metadata is used for the theory computation.
     ells : jnp.ndarray
         Multipole moments.
     nonlinear_fn : str or callable, optional

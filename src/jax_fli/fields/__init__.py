@@ -1,4 +1,4 @@
-from .._src.base import AbstractField, DensityUnit, FieldMetadata, FieldStatus, PhysicalUnit, PositionUnit
+from .._src.base import AbstractField, DensityUnit, FieldMetadata, FieldStatus, PhysicalUnit, PositionUnit, SpectralUnit
 from .density import DensityField
 from .lensing_maps import FlatKappaField, FlatShearField, SphericalKappaField, SphericalShearField
 from .lightcone import FlatDensity, SphericalDensity
@@ -21,6 +21,7 @@ __all__ = [
     "DensityUnit",
     "PhysicalUnit",
     "PositionUnit",
+    "SpectralUnit",
     "PaintingOptions",
     "convert_units",
 ]

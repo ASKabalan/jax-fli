@@ -269,3 +269,120 @@ def add_output_target_args(p):
         dest="field_size",
         help="Angular field size in degrees H×W (use with --flatsky-npix)",
     )
+
+
+# ---------------------------------------------------------------------------
+# Spectra computation argument groups (used by fli-spectra)
+# ---------------------------------------------------------------------------
+
+
+def add_spectra_scan_args(p):
+    """Scan and filter arguments for fli-spectra."""
+    g = p.add_argument_group("scan")
+    g.add_argument(
+        "folder",
+        help="Folder to scan for parquet files",
+    )
+    g.add_argument(
+        "-r",
+        "--regex",
+        default=r".*\.parquet$",
+        dest="regex",
+        metavar="PATTERN",
+        help="Regex pattern to match parquet filenames (default: all .parquet files)",
+    )
+    g.add_argument(
+        "-R",
+        "--recursive",
+        action="store_true",
+        help="Recurse into subdirectories (default: False)",
+    )
+    g.add_argument(
+        "--normalization",
+        choices=["global", "per_plane"],
+        default="global",
+        dest="normalization",
+        help="Overdensity normalization: 'global' divides by array mean, "
+        "'per_plane' normalises each shell independently (default: global)",
+    )
+
+
+def add_spectra_flat_args(p):
+    """Flat-sky spectra arguments for fli-spectra.
+
+    Note: field_size and pixel_size are read from the stored field metadata.
+    """
+    g = p.add_argument_group("flat-sky spectra")
+    g.add_argument(
+        "--ell-edges",
+        type=float,
+        nargs="+",
+        default=None,
+        dest="ell_edges",
+        metavar="E",
+        help="Ell bin edges for flat-sky angular Cl (default: auto)",
+    )
+
+
+def add_spectra_spherical_args(p):
+    """Spherical (HEALPix) spectra arguments for fli-spectra."""
+    g = p.add_argument_group("spherical spectra")
+    g.add_argument(
+        "--lmax",
+        type=int,
+        default=None,
+        help="Maximum multipole lmax for spherical Cl (default: 3*nside-1)",
+    )
+    g.add_argument(
+        "--method",
+        choices=["healpy", "jax"],
+        default="healpy",
+        help="SHT method for spherical Cl computation (default: healpy)",
+    )
+
+
+def add_spectra_density_args(p):
+    """3D density P(k) arguments for fli-spectra."""
+    g = p.add_argument_group("3D P(k)")
+    g.add_argument(
+        "--kedges",
+        type=float,
+        nargs="+",
+        default=None,
+        metavar="K",
+        help="k bin edges for P(k) (default: auto)",
+    )
+    g.add_argument(
+        "--multipoles",
+        type=int,
+        nargs="+",
+        default=[0],
+        metavar="L",
+        help="Multipole moments to compute (default: 0 = monopole only)",
+    )
+    g.add_argument(
+        "--los",
+        type=float,
+        nargs=3,
+        default=[0.0, 0.0, 1.0],
+        metavar=("LX", "LY", "LZ"),
+        help="Line-of-sight direction for multipole decomposition (default: 0 0 1)",
+    )
+
+
+def add_spectra_common_args(p):
+    """Common arguments shared across all fli-spectra field types."""
+    g = p.add_argument_group("common")
+    g.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        dest="batch_size",
+        help="Batch size for jax.lax.map (default: None = no batching)",
+    )
+    g.add_argument(
+        "--enable-x64",
+        action="store_true",
+        dest="enable_x64",
+        help="Enable JAX 64-bit floating-point precision (default: False)",
+    )
