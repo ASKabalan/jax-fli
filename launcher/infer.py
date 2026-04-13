@@ -55,8 +55,6 @@ def add_subparser(sub):
 def run(args):
     os.makedirs(args.output_dir, exist_ok=True)
 
-    env = {**os.environ, "JAX_PLATFORMS": "cpu", "JAX_TRACEBACK_FILTERING": "off"}
-
     px, py = args.pdim
     obs_path = f"{args.observable_dir}/{args.observable}"
     obs_name = os.path.splitext(args.observable)[0]
@@ -151,4 +149,4 @@ def run(args):
         fli_cmd.append("--enable-x64")
     fli_cmd += ["--seed", str(args.seed)]
 
-    dispatch(args, job_name, "FLI_INFERENCE", fli_cmd, env=env)
+    dispatch(args, job_name, "FLI_INFERENCE", fli_cmd)

@@ -28,7 +28,7 @@ def add_mesh_args(p, nargs=3):
     ----------
     nargs : int or str
         Use ``3`` for fixed 3-element meshes (entry-point scripts).
-        Use ``"+"`` for flat multi-mesh lists (launcher / fli-grid).
+        Use ``"+"`` for flat multi-mesh lists (launcher).
     """
     if nargs == 3:
         p.add_argument(
