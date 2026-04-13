@@ -56,14 +56,17 @@ def requires_datasets(func: Callable[Param, ReturnType]) -> Callable[Param, Retu
 
 
 def _detect_backend(entries: list) -> str:
-    """Return 'field' or 'power_spec' based on the first entry type."""
+    """Return 'field' or 'power_spec' based on the first entry type.
+
+    PowerSpectrum is checked first because it now inherits AbstractField.
+    """
     if not entries:
         raise ValueError("Cannot determine backend from an empty list.")
     first = entries[0]
-    if isinstance(first, AbstractField):
-        return "field"
-    elif isinstance(first, PowerSpectrum):
+    if isinstance(first, PowerSpectrum):  # must precede AbstractField check
         return "power_spec"
+    elif isinstance(first, AbstractField):
+        return "field"
     else:
         raise TypeError(
             f"Catalog entries must be AbstractField or PowerSpectrum instances, got {type(first).__name__}."
@@ -72,13 +75,21 @@ def _detect_backend(entries: list) -> str:
 
 def _validate_homogeneous(entries: list, backend: str) -> None:
     """Raise TypeError if entries are not all the same backend type."""
-    expected = AbstractField if backend == "field" else PowerSpectrum
-    for i, entry in enumerate(entries):
-        if not isinstance(entry, expected):
-            raise TypeError(
-                f"Catalog must be homogeneous: entry 0 is a {backend}, "
-                f"but entry {i} is {type(entry).__name__}. Mixed catalogs are not supported."
-            )
+    if backend == "field":
+        for i, entry in enumerate(entries):
+            # Explicitly reject PowerSpectrum since it is now a subclass of AbstractField
+            if isinstance(entry, PowerSpectrum) or not isinstance(entry, AbstractField):
+                raise TypeError(
+                    f"Catalog must be homogeneous: entry 0 is a field, "
+                    f"but entry {i} is {type(entry).__name__}. Mixed catalogs are not supported."
+                )
+    else:
+        for i, entry in enumerate(entries):
+            if not isinstance(entry, PowerSpectrum):
+                raise TypeError(
+                    f"Catalog must be homogeneous: entry 0 is a power_spec, "
+                    f"but entry {i} is {type(entry).__name__}. Mixed catalogs are not supported."
+                )
 
 
 class Catalog(eqx.Module):
@@ -103,8 +114,12 @@ class Catalog(eqx.Module):
     version: int = eqx.field(static=True, default=CATALOG_VERSION)
 
     def __init__(self, field, cosmology, version=CATALOG_VERSION):
-        # Normalise single-entry inputs
-        if isinstance(field, AbstractField) and isinstance(cosmology, jc.Cosmology):
+        # Normalise single-entry inputs.
+        # PowerSpectrum must be checked before AbstractField since it now subclasses it.
+        if isinstance(field, PowerSpectrum) and isinstance(cosmology, jc.Cosmology):
+            field = [field]
+            cosmology = [cosmology]
+        elif isinstance(field, AbstractField) and isinstance(cosmology, jc.Cosmology):
             cosmo_n = int(np.asarray(cosmology.Omega_c).size)
             cosmo_is_batched = int(np.asarray(cosmology.Omega_c).ndim) > 0
             if cosmo_is_batched:
@@ -122,11 +137,8 @@ class Catalog(eqx.Module):
             else:
                 field = [field]
                 cosmology = [cosmology]
-        elif isinstance(field, PowerSpectrum) and isinstance(cosmology, jc.Cosmology):
-            field = [field]
-            cosmology = [cosmology]
         else:
-            if isinstance(field, (AbstractField | PowerSpectrum)):
+            if isinstance(field, AbstractField):
                 field = [field]
             if isinstance(cosmology, jc.Cosmology):
                 cosmology = [cosmology]

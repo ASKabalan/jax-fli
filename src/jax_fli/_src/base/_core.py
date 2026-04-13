@@ -22,7 +22,7 @@ from jaxpm.distributed import get_sharding_for_shape
 from jaxtyping import Array
 from typing_extensions import Self
 
-from ._enums import FieldStatus, PhysicalUnit
+from ._enums import FieldStatus, PhysicalUnit, SpectralUnit
 
 
 class AbstractPytree(eqx.Module):
@@ -199,7 +199,7 @@ class AbstractField(AbstractPytree):
     flatsky_npix: tuple[int, int] | None = eqx.field(static=True, default=None)
     field_size: float | None = eqx.field(static=True, default=None)
     status: FieldStatus = eqx.field(static=True, default=FieldStatus.UNKNOWN)
-    unit: PhysicalUnit = eqx.field(static=True, default=PhysicalUnit.INVALID_UNIT)
+    unit: PhysicalUnit | SpectralUnit = eqx.field(static=True, default=PhysicalUnit.INVALID_UNIT)
     name: str | None = eqx.field(static=True, default=None)
 
     STATUS_ENUM = FieldStatus

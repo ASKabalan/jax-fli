@@ -5,6 +5,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from .._src.power import _coherence, _cross_spherical_cl, _flat_cl, _power, _spherical_cl, _transfer
 
@@ -21,7 +22,7 @@ def power(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Array-only 3D power spectrum. Returns (wavenumber, spectra)."""
     box_shape = tuple(box_shape)
-    los_array = None if multipoles == 0 else tuple(jnp.asarray(los))
+    los_array = None if multipoles == 0 else tuple(np.asarray(los))
     wavenumber, spectra = _power(
         mesh,
         mesh2,
