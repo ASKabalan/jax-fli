@@ -32,7 +32,11 @@ def add_subparser(sub):
     g = p.add_argument_group("simulate")
     g.add_argument("--nb-shells", type=int, default=10, help="Number of lightcone shells (default: 10)")
     g.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision")
-    g.add_argument("--output-dir", default="results/cosmology_runs")
+    g.add_argument(
+        "--output-dir",
+        default="results/cosmology_runs",
+        help="Directory to store output parquet files, Placeholders: %%constraint%%, %%mesh_size%%, %%box_size%%, %%nb_steps%%, %%omega_c%%, %%sigma8%%, %%seed%%",
+    )
     g.add_argument(
         "--name-template",
         default=DEFAULT_NAME_TEMPLATE,
@@ -47,8 +51,6 @@ def add_subparser(sub):
 
 
 def run(args):
-    os.makedirs(args.output_dir, exist_ok=True)
-
     mesh_list = args.mesh_size
     if len(mesh_list) % 3 != 0:
         raise ValueError(f"--mesh-size must be a multiple of 3 values, got {len(mesh_list)}")
@@ -82,7 +84,19 @@ def run(args):
                             .replace("%sigma8%", str(s8))
                             .replace("%seed%", str(sd))
                         )
-                        out_file = f"{args.output_dir}/{job_name}.parquet"
+                        out_folder = args.output_dir
+                        out_folder = (
+                            out_folder.replace("%constraint%", str(args.constraint))
+                            .replace("%mesh_size%", mesh_name)
+                            .replace("%box_size%", box_name)
+                            .replace("%nb_steps%", str(args.nb_steps))
+                            .replace("%omega_c%", str(oc))
+                            .replace("%sigma8%", str(s8))
+                            .replace("%seed%", str(sd))
+                        )
+                        os.makedirs(out_folder, exist_ok=True)
+
+                        out_file = f"{out_folder}/{job_name}.parquet"
 
                         fli_cmd = [
                             "fli-simulate",
