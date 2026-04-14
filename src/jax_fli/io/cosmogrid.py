@@ -36,58 +36,13 @@ def requires_h5py(func):
 
 
 from .._src.base._enums import FieldStatus
+from ..data.nz import get_stage3_nz_shear
 from ..fields import SphericalDensity
 from ..fields.lensing_maps import SphericalKappaField
 from ..fields.units import ConvergenceUnit, DensityUnit
 from .catalog import Catalog
 
 PathLike = Union[str, Path]
-
-
-def get_stage3_nz_shear(
-    gals_per_arcmin2: list[float] | None = None,
-    bw: float = 0.01,
-    zmax: float | None = None,
-) -> list:
-    """Load Stage 3 weak lensing redshift distributions.
-
-    Parameters
-    ----------
-    gals_per_arcmin2 : list of float, optional
-        Galaxy densities for each of the 4 tomographic bins.
-        Default: [7, 8.5, 7.5, 6]
-    bw : float, default=0.01
-        KDE bandwidth parameter.
-    zmax : float, optional
-        Maximum redshift. If None, uses max from data files.
-
-    Returns
-    -------
-    list of jc.redshift.kde_nz
-        List of 4 redshift distribution objects.
-    """
-    from importlib.resources import files
-
-    if gals_per_arcmin2 is None:
-        gals_per_arcmin2 = [7.0, 8.5, 7.5, 6.0]
-
-    data_dir = files("jax_fli.io").joinpath("data")
-    nz_files = sorted(data_dir.glob("nz_stage3_*.txt"))
-
-    nz_shear = []
-    for nz_file, g in zip(nz_files, gals_per_arcmin2):
-        z, nz = np.loadtxt(nz_file, unpack=True)
-        nz_shear.append(
-            jc.redshift.kde_nz(
-                jnp.asarray(z),
-                jnp.asarray(nz),
-                bw=bw,
-                zmax=zmax if zmax is not None else float(z.max()),
-                gals_per_arcmin2=g,
-            )
-        )
-
-    return nz_shear
 
 
 def load_cosmogrid_lc(

@@ -60,4 +60,4 @@ def run(args):
     if args.no_parallel_transport:
         fli_cmd.append("--no-parallel-transport")
 
-    dispatch(args, job_name, "FLI_DORIAN_RT", fli_cmd, use_gpu=False, always_mpirun=True)
+    dispatch(args, job_name, "FLI_DORIAN_RT", fli_cmd, use_gpu=False)
