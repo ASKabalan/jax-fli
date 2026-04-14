@@ -131,4 +131,4 @@ def dispatch(args, job_name, tag, fli_cmd, *, use_gpu=True):
         os.path.expandvars(args.slurm_script),
         tag,
     ]
-    subprocess.run(sbatch + fli_cmd, check=True, env=env)
+    subprocess.run(sbatch + fli_cmd, check=True)
