@@ -298,6 +298,11 @@ def add_spectra_scan_args(p):
         help="Recurse into subdirectories (default: False)",
     )
     g.add_argument(
+        "--force-regen",
+        action="store_true",
+        help="Force regeneration of spectra even if output files already exist (default: False)",
+    )
+    g.add_argument(
         "--normalization",
         choices=["global", "per_plane"],
         default="global",
