@@ -1,0 +1,53 @@
+{
+  "survey": "DES_Y3",
+  "description": "DES Year 3 weak lensing source galaxy n(z) (fiducial, METACALIBRATION)",
+  "reference": "Abbott et al. 2022 (arXiv:2105.13549), Myles et al. 2021 (arXiv:2012.08566)",
+  "n_bins": 4,
+  "total_neff_arcmin2": 5.59,
+  "area_deg2": 4143,
+  "z_phot_bin_edges": [
+    0.0,
+    0.358,
+    0.631,
+    0.872,
+    2.0
+  ],
+  "bins": {
+    "bin1": {
+      "file": "nz_des_y3_1.txt",
+      "gals_per_arcmin2": 1.476,
+      "z_mean": 0.3344,
+      "z_phot_range": [
+        0.0,
+        0.358
+      ]
+    },
+    "bin2": {
+      "file": "nz_des_y3_2.txt",
+      "gals_per_arcmin2": 1.479,
+      "z_mean": 0.5193,
+      "z_phot_range": [
+        0.358,
+        0.631
+      ]
+    },
+    "bin3": {
+      "file": "nz_des_y3_3.txt",
+      "gals_per_arcmin2": 1.484,
+      "z_mean": 0.741,
+      "z_phot_range": [
+        0.631,
+        0.872
+      ]
+    },
+    "bin4": {
+      "file": "nz_des_y3_4.txt",
+      "gals_per_arcmin2": 1.461,
+      "z_mean": 0.934,
+      "z_phot_range": [
+        0.872,
+        2.0
+      ]
+    }
+  }
+}

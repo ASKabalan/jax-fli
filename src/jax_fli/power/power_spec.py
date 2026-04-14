@@ -137,10 +137,26 @@ class PowerSpectrum(AbstractField):
         else:
             array_out = self.array[k_sel, spec_sel]
 
-        if self.scale_factors is not None and self.array.squeeze().ndim == 1:
+        # for attr scale_factors, comoving_centers, z_sources, density_width if they exist then index them with k_sel
+        if self.scale_factors is not None and self.scale_factors.ndim == 1:
             sf_new = jnp.atleast_1d(self.scale_factors[k_sel])
         else:
             sf_new = self.scale_factors
+
+        if self.comoving_centers is not None and self.comoving_centers.ndim == 1:
+            cc_new = jnp.atleast_1d(self.comoving_centers[k_sel])
+        else:
+            cc_new = self.comoving_centers
+
+        if self.z_sources is not None and self.z_sources.ndim == 1:
+            zs_new = jnp.atleast_1d(self.z_sources[k_sel])
+        else:
+            zs_new = self.z_sources
+
+        if self.density_width is not None and self.density_width.ndim == 1:
+            dw_new = jnp.atleast_1d(self.density_width[k_sel])
+        else:
+            dw_new = self.density_width
 
         return PowerSpectrum(
             wavenumber=k_new,
@@ -149,9 +165,9 @@ class PowerSpectrum(AbstractField):
             scale_factors=sf_new,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
-            comoving_centers=self.comoving_centers,
-            density_width=self.density_width,
-            z_sources=self.z_sources,
+            comoving_centers=cc_new,
+            density_width=dw_new,
+            z_sources=zs_new,
             nside=self.nside,
             flatsky_npix=self.flatsky_npix,
             field_size=self.field_size,
