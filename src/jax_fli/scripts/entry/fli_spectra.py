@@ -56,7 +56,7 @@ def parser() -> ArgumentParser:
     return p
 
 
-def _find_parquet_files(folder: str, regex: str, recursive: bool) -> list[Path]:
+def _find_parquet_files(folder: str, regex: str, recursive: bool, force_regen: bool) -> list[Path]:
     """Scan *folder* for parquet files whose **name** matches *regex*.
 
     Files already starting with ``spectra_`` are silently skipped so that
@@ -70,7 +70,11 @@ def _find_parquet_files(folder: str, regex: str, recursive: bool) -> list[Path]:
     files = []
     for p in sorted(glob_fn("*")):
         if p.is_file() and pattern.match(p.name) and not p.name.startswith("spectra_"):
-            files.append(p)
+            # if the same file name exist with spectra_ prefix, skip to avoid re-processing outputs
+            if (p.parent / f"spectra_{p.name}").exists() and not force_regen:
+                print(f"  SKIP (output exists): {p.name}")
+            else:
+                files.append(p)
     return files
 
 
@@ -134,7 +138,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Discover files
     # ------------------------------------------------------------------
-    files = _find_parquet_files(args.folder, args.regex, args.recursive)
+    files = _find_parquet_files(args.folder, args.regex, args.recursive, args.force_regen)
     if not files:
         print("No matching parquet files found.")
         return
