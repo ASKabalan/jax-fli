@@ -147,3 +147,6 @@ scripts/**
 snippets/**
 DEBUGGING/**
 *.parquet
+
+# IDE
+.vscode/
