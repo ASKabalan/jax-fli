@@ -87,7 +87,7 @@ where = ["src", "."]
 include = ["jax_fli*", "launcher*"]
 
 [tool.setuptools.package-data]
-"jax_fli.io" = ["data/*.txt"]
+"jax_fli.data" = ["stage3_nz/*.txt", "des_y3_nz/*.txt", "des_y3_nz/*.json"]
 
 [tool.ruff]
 line-length = 120
