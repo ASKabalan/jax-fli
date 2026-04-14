@@ -12,6 +12,8 @@ from jax.tree_util import register_pytree_node_class
 from jax_cosmo.redshift import redshift_distribution
 from jaxtyping import Array
 
+from jax_fli.data.metadata import _max_z_source
+
 from .power_spec import PowerSpectrum
 
 __all__ = ["compute_theory_cl", "compute_theory_cl_for_density", "tophat_z"]
@@ -53,6 +55,9 @@ def _normalize_z_source(
     """Normalize z_source to a list of redshift distributions."""
     # Handle single values
     if isinstance(z_source, numbers.Real):
+        return [jc.redshift.delta_nz(z_source)]
+    # 0-d JAX/numpy array (e.g. a Python float converted by jit tracing)
+    if hasattr(z_source, "shape") and z_source.shape == ():
         return [jc.redshift.delta_nz(z_source)]
     if isinstance(z_source, jc.redshift.redshift_distribution):
         return [z_source]
@@ -199,27 +204,37 @@ def compute_theory_cl(
     # cl_matrix shape: (n_cls, n_ell) where n_cls = n_bins*(n_bins+1)//2
     # Ordering: (0,0), (0,1), ..., (1,1), (1,2), ..., (n-1,n-1)
 
-    # Build pair indices for scale_factors
-    all_pairs = tuple((i, j) for i in range(n_bins) for j in range(i, n_bins))
-
     if not cross and n_bins > 1:
         # Extract only auto-spectra
         auto_indices = _get_auto_indices(n_bins)
         cl_matrix = cl_matrix[auto_indices]
-        pair_indices = tuple((i, i) for i in range(n_bins))
-    else:
-        pair_indices = all_pairs
 
     # Handle single z_source case - squeeze to 1D
     if n_bins == 1:
         cl_matrix = cl_matrix.squeeze()
-        pair_indices = None  # Single spectrum, no need for pair info
+
+    # Compute per-bin effective source redshift.
+    # delta_nz (point source): use the z value directly.
+    # Any other distribution: compute weighted mean z via numerical integration.
+    z_sources_list = []
+    for nz in nz_list:
+        if isinstance(nz, jc.redshift.delta_nz):
+            z_sources_list.append(jnp.asarray(nz.params[0]))
+        else:
+            z_sources_list.append(_max_z_source(nz, min_z=0.0, max_z=float(nz.zmax)))
+    z_sources = jnp.stack(z_sources_list)
+    scale_factors = jc.utils.z2a(z_sources)
+    comoving_centers = jc.background.radial_comoving_distance(cosmo, scale_factors)
+    density_width = jnp.zeros(n_bins)
 
     return PowerSpectrum(
         array=cl_matrix,
         wavenumber=ell,
         name="Cl",
-        scale_factors=pair_indices,
+        scale_factors=scale_factors,
+        comoving_centers=comoving_centers,
+        density_width=density_width,
+        z_sources=z_sources,
     )
 
 
@@ -276,7 +291,7 @@ def compute_theory_cl_for_density(
 
     nz_list = [tophat_z(zn, zf, gals_per_arcmin2=1.0, zmax=nz_zmax) for zn, zf in zip(z_near, z_far)]
 
-    return compute_theory_cl(
+    theory_cl = compute_theory_cl(
         cosmo,
         ell=ells,
         z_source=nz_list,
@@ -284,3 +299,11 @@ def compute_theory_cl_for_density(
         nonlinear_fn=nonlinear_fn,
         cross=cross,
     )
+
+    theory_cl = theory_cl.replace(
+        scale_factors=lightcone.scale_factors,
+        comoving_centers=lightcone.comoving_centers,
+        density_width=lightcone.density_width,
+        z_sources=lightcone.z_sources,
+    )
+    return theory_cl
