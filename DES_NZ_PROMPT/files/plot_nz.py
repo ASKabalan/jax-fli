@@ -1,12 +1,14 @@
 """
 Visualize DES Y3 n(z) source distributions and compare with Stage 3.
 """
-import numpy as np
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from pathlib import Path
 import json
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 
 
 def plot_nz(data_dir, survey_name, ax=None, colors=None, linestyle="-"):
@@ -74,9 +76,11 @@ def main():
         neff = meta["bins"][f"bin{i+1}"]["gals_per_arcmin2"]
         z, nz = np.loadtxt(Path(y3_dir) / fname, unpack=True)
         ax.plot(
-            z, nz,
+            z,
+            nz,
             label=f"Bin {i+1} (<z>={zmean:.2f}, n$_{{eff}}$={neff})",
-            color=colors_y3[i], linewidth=1.8,
+            color=colors_y3[i],
+            linewidth=1.8,
         )
     ax.set_xlabel("Redshift", fontsize=13)
     ax.set_ylabel("n(z)", fontsize=13)
