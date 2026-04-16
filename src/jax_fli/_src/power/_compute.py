@@ -20,7 +20,7 @@ def _legendre(mu, ell: int):
     return P1
 
 
-def _initialize_pk(mesh_shape, box_shape, kedges, los):
+def _initialize_pk(mesh_shape, box_shape, kedges, kmax, los):
     """Initialize k-bins and meshes; kedges may be None (handled internally)."""
     mesh_shape = tuple(mesh_shape)
     box_shape = tuple(box_shape)
@@ -29,7 +29,8 @@ def _initialize_pk(mesh_shape, box_shape, kedges, los):
     box_shape_np = np.array(box_shape)
 
     if kedges is None:
-        kmax = np.pi * np.min(mesh_shape_np / box_shape_np)
+        if kmax is None:
+            kmax = np.pi * np.min(mesh_shape_np / box_shape_np)
         dk = 2 * np.pi / np.min(box_shape_np) * 2  # twice fundamental
         kedges_np = np.arange(dk, kmax, dk) + dk / 2
         if kedges_np.size < 2:
@@ -71,6 +72,7 @@ def _power(
     *,
     box_shape=None,
     kedges=None,
+    kmax=None,
     multipoles=0,
     los=jnp.array([0.0, 0.0, 1.0]),
 ):
@@ -85,7 +87,7 @@ def _power(
 
     meshk = jnp.fft.fftn(mesh, norm="ortho")
 
-    dig, kcount, kavg, mumesh, kedges = _initialize_pk(mesh_shape, box_shape, kedges, los)
+    dig, kcount, kavg, mumesh, kedges = _initialize_pk(mesh_shape, box_shape, kedges, kmax, los)
     n_bins = kedges.shape[0] + 1
 
     if mesh2 is None:
@@ -236,16 +238,16 @@ def _cross_spherical_cl(maps, *, lmax=None, method="healpy"):
     return jnp.asarray(ell_out), jnp.asarray(cls)
 
 
-def _transfer(mesh0, mesh1, *, box_shape, kedges=None):
+def _transfer(mesh0, mesh1, *, box_shape, kedges=None, kmax=None):
     """Monopole transfer function sqrt(P1/P0)."""
-    k, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, multipoles=0)
-    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, multipoles=0)
+    k, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, kmax=kmax, multipoles=0)
+    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, kmax=kmax, multipoles=0)
     return k, (pk1 / pk0) ** 0.5
 
 
-def _coherence(mesh0, mesh1, *, box_shape, kedges=None):
+def _coherence(mesh0, mesh1, *, box_shape, kedges=None, kmax=None):
     """Monopole coherence pk01 / sqrt(pk0 pk1)."""
-    k, pk01 = _power(mesh0, mesh1, box_shape=box_shape, kedges=kedges, multipoles=0)
-    _, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, multipoles=0)
-    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, multipoles=0)
+    k, pk01 = _power(mesh0, mesh1, box_shape=box_shape, kedges=kedges, kmax=kmax, multipoles=0)
+    _, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, kmax=kmax, multipoles=0)
+    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, kmax=kmax, multipoles=0)
     return k, pk01 / (pk0 * pk1) ** 0.5

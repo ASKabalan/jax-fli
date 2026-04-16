@@ -10,13 +10,14 @@ import numpy as np
 from .._src.power import _coherence, _cross_spherical_cl, _flat_cl, _power, _spherical_cl, _transfer
 
 
-@partial(jax.jit, static_argnames=["box_shape", "multipoles", "los"])
+@partial(jax.jit, static_argnames=["box_shape", "multipoles", "los", "kmax"])
 def power(
     mesh,
     mesh2=None,
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    kmax: float | None = None,
     multipoles: int | Iterable[int] = 0,
     los: jnp.ndarray | Iterable[float] = jnp.array([0.0, 0.0, 1.0]),
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -28,6 +29,7 @@ def power(
         mesh2,
         box_shape=box_shape,
         kedges=kedges,
+        kmax=kmax,
         multipoles=multipoles,
         los=los_array,
     )
