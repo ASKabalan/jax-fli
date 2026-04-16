@@ -24,6 +24,7 @@ def parser() -> argparse.ArgumentParser:
         add_lensing_args,
         add_lightcone_args,
         add_mesh_args,
+        add_prior_args,
     )
 
     p = argparse.ArgumentParser(
@@ -43,6 +44,7 @@ def parser() -> argparse.ArgumentParser:
     add_common_sim_args(p)
     add_lightcone_args(p)
     add_lensing_args(p)
+    add_prior_args(p)
 
     # Geometry (mutually exclusive)
     geom_group = p.add_mutually_exclusive_group()
@@ -66,6 +68,13 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
     p.add_argument("--path", type=str, required=True, help="Output directory")
     p.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
+    p.add_argument(
+        "--initial-condition",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Parquet Catalog with IC DensityField (required when 'ic' is not in --sample).",
+    )
     p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
     return p
@@ -93,10 +102,13 @@ def main() -> None:
     # --- resolve nz_shear ---
     nz_shear = _resolve_nz_shear(args)
 
-    priors = {
-        "Omega_c": jfli.infer.PreconditionnedUniform(0.1, 0.5),
-        "sigma8": jfli.infer.PreconditionnedUniform(0.6, 1.0),
-    }
+    # --- build priors from CLI args ---
+    sample_set = set(args.sample)
+    priors = {}
+    if "cosmo" in sample_set:
+        priors["Omega_c"] = jfli.infer.PreconditionnedUniform(*args.prior_omega_c)
+        priors["sigma8"] = jfli.infer.PreconditionnedUniform(*args.prior_sigma8)
+        priors["h"] = jfli.infer.PreconditionnedUniform(*args.prior_h)
 
     # --- determine geometry ---
     if args.flatsky_npix is not None:

@@ -11,9 +11,9 @@ def main():
     )
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
-    from . import born_rt, dorian_rt, extract, infer, samples, simulate
+    from . import born_rt, dorian_rt, extract, infer, samples, simulate, spectra, twopcf
 
-    for mod in [simulate, samples, infer, born_rt, extract, dorian_rt]:
+    for mod in [simulate, samples, infer, born_rt, extract, dorian_rt, spectra, twopcf]:
         mod.add_subparser(sub)
 
     args = parser.parse_args()

@@ -71,6 +71,7 @@ def parser() -> argparse.ArgumentParser:
         add_distributed_args,
         add_lensing_args,
         add_lightcone_args,
+        add_prior_args,
     )
 
     p = argparse.ArgumentParser(
@@ -106,6 +107,7 @@ def parser() -> argparse.ArgumentParser:
     add_common_sim_args(p)
     add_lightcone_args(p)
     add_lensing_args(p)
+    add_prior_args(p)
 
     # Infer-specific
     p.add_argument("--nb-shells", type=int, default=8, metavar="INT", help="Number of lightcone shells (default: 8)")
@@ -120,14 +122,6 @@ def parser() -> argparse.ArgumentParser:
         "--init-cosmo",
         action="store_true",
         help="Warm-start cosmological parameters from the observable's stored cosmology.",
-    )
-    p.add_argument(
-        "--sample",
-        nargs="+",
-        default=["cosmo", "ic"],
-        choices=["cosmo", "ic"],
-        metavar="WHAT",
-        help="Space-separated subset of {cosmo, ic} to sample (default: cosmo ic).",
     )
     p.add_argument("--sigma-e", type=float, default=0.26, help="Shape noise dispersion (default: 0.26)")
     p.add_argument(
@@ -237,10 +231,11 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    priors = {
-        "Omega_c": jfli.infer.PreconditionnedUniform(0.1, 0.5),
-        "sigma8": jfli.infer.PreconditionnedUniform(0.6, 1.0),
-    }
+    priors = {}
+    if "cosmo" in sample_set:
+        priors["Omega_c"] = jfli.infer.PreconditionnedUniform(*args.prior_omega_c)
+        priors["sigma8"] = jfli.infer.PreconditionnedUniform(*args.prior_sigma8)
+        priors["h"] = jfli.infer.PreconditionnedUniform(*args.prior_h)
 
     mesh = tuple(args.mesh_size)
     px, py = args.pdim
