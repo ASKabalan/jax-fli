@@ -286,12 +286,13 @@ class DensityField(AbstractField):
         plt.show()
 
     # -------------------------------------------------------- power-spectrum API
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size"])
+    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax"])
     def power(
         self,
         mesh2: DensityField | None = None,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        kmax: float | None = None,
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
         batch_size: int | None = None,
@@ -322,6 +323,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=box_shape,
                 kedges=kedges,
+                kmax=kmax,
                 multipoles=multipoles,
                 los=los,
             )
@@ -339,11 +341,12 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size"])
+    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax"])
     def cross_power(
         self,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        kmax: float | None = None,
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
         batch_size: int | None = None,
@@ -410,6 +413,7 @@ class DensityField(AbstractField):
                 mesh_j,
                 box_shape=box_shape,
                 kedges=kedges,
+                kmax=kmax,
                 multipoles=multipoles_static,
                 los=los_tuple,
             )
@@ -433,12 +437,13 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["kedges", "batch_size"])
+    @partial(jax.jit, static_argnames=["kedges", "batch_size", "kmax"])
     def transfer(
         self,
         other: DensityField,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        kmax: float | None = None,
         batch_size: int | None = None,
     ) -> PowerSpectrum:
         """Monopole transfer function sqrt(P_other / P_self)."""
@@ -450,6 +455,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=self.box_size,
                 kedges=kedges,
+                kmax=kmax,
             )
 
         data1 = self.array
@@ -478,12 +484,13 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size"])
+    @partial(jax.jit, static_argnames=["batch_size", "kmax"])
     def coherence(
         self,
         other: DensityField,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        kmax: float | None = None,
         batch_size: int | None = None,
     ) -> PowerSpectrum:
         """Monopole coherence pk01 / sqrt(pk0 pk1)."""
@@ -495,6 +502,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=self.box_size,
                 kedges=kedges,
+                kmax=kmax,
             )
 
         data1 = self.array

@@ -276,6 +276,58 @@ def add_output_target_args(p):
 # ---------------------------------------------------------------------------
 
 
+def add_prior_args(p):
+    """Prior bounds for cosmological and IC sampling.
+
+    Used by fli-samples, fli-infer, and fli-2pcf.
+    """
+    g = p.add_argument_group("priors")
+    g.add_argument(
+        "--sample",
+        nargs="+",
+        choices=["cosmo", "ic"],
+        default=["cosmo", "ic"],
+        metavar="WHAT",
+        help="Space-separated subset of {cosmo, ic} to sample (default: cosmo ic).",
+    )
+    g.add_argument(
+        "--prior-omega-c",
+        type=float,
+        nargs=2,
+        default=[0.1, 0.5],
+        dest="prior_omega_c",
+        metavar=("MIN", "MAX"),
+        help="Uniform prior bounds for Omega_c (default: 0.1 0.5)",
+    )
+    g.add_argument(
+        "--prior-sigma8",
+        type=float,
+        nargs=2,
+        default=[0.6, 1.0],
+        dest="prior_sigma8",
+        metavar=("MIN", "MAX"),
+        help="Uniform prior bounds for sigma8 (default: 0.6 1.0)",
+    )
+    g.add_argument(
+        "--prior-h",
+        type=float,
+        nargs=2,
+        default=[0.5, 0.9],
+        dest="prior_h",
+        metavar=("MIN", "MAX"),
+        help="Uniform prior bounds for h (default: 0.5 0.9)",
+    )
+    g.add_argument(
+        "--prior-ic-gaussian",
+        type=float,
+        nargs=2,
+        default=[0.0, 1.0],
+        dest="prior_ic_gaussian",
+        metavar=("MIN", "MAX"),
+        help="Gaussian prior bounds for initial conditions (default: 0.0 1.0)",
+    )
+
+
 def add_spectra_scan_args(p):
     """Scan and filter arguments for fli-spectra."""
     g = p.add_argument_group("scan")
@@ -356,6 +408,12 @@ def add_spectra_density_args(p):
         default=None,
         metavar="K",
         help="k bin edges for P(k) (default: auto)",
+    )
+    p.add_argument(
+        "--kmax",
+        type=float,
+        default=None,
+        help="Maximum k for P(k) (default: Nyquist frequency based on mesh size)",
     )
     g.add_argument(
         "--multipoles",
