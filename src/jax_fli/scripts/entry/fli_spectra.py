@@ -20,11 +20,12 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 
 # ---- Field types that need OVERDENSITY conversion -------------------------
-_DENSITY_TYPES = {"FlatDensity", "SphericalDensity", "DensityField"}
+_DENSITY3D_TYPE = {"DensityField"}
+_DENSITY_TYPES = {"FlatDensity", "SphericalDensity"}
 # ---- Kappa/shear types — skip unit conversion -----------------------------
 _KAPPA_TYPES = {"FlatKappaField", "SphericalKappaField"}
 # ---- All supported types --------------------------------------------------
-_SUPPORTED_TYPES = _DENSITY_TYPES | _KAPPA_TYPES
+_SUPPORTED_TYPES = _DENSITY_TYPES | _KAPPA_TYPES | _DENSITY3D_TYPE
 
 
 def parser() -> ArgumentParser:

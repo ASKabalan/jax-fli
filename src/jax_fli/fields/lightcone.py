@@ -12,6 +12,8 @@ from jax.image import resize
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
+from warnings import warn
+
 from .._src.base._core import AbstractField
 from .._src.base._enums import FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
@@ -46,10 +48,12 @@ class FlatDensity(AbstractField):
 
     def __getitem__(self, key) -> FlatDensity:
         if self.array.ndim < 3:
-            raise ValueError(
+            warn(
                 f"Indexing only supported for batched FlatDensity (3D or 4D array), "
                 f"got array with {self.array.ndim} dimensions"
+                "Returning self without indexing."
             )
+            return self
         return super().__getitem__(key)
 
     def to(
@@ -528,10 +532,12 @@ class SphericalDensity(AbstractField):
 
     def __getitem__(self, key) -> SphericalDensity:
         if self.array.ndim < 2:
-            raise ValueError(
+            warn(
                 f"Indexing only supported for batched SphericalDensity (2D or 3D array), "
                 f"got array with {self.array.ndim} dimensions"
+                "Returning self without indexing."
             )
+            return self
         return super().__getitem__(key)
 
     def to(
