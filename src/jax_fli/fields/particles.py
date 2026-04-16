@@ -14,6 +14,8 @@ from jaxtyping import Array, Float
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
+from warnings import warn
+
 from .._src.base._core import AbstractField
 from .._src.fields._painting import (
     _single_paint,
@@ -61,10 +63,12 @@ class ParticleField(AbstractField):
                 or (len(array_shape) == 6 and array_shape[-1] == 3)
                 or array_shape == ()  # diffrax term compatibility traces shape ()
             ):
-                raise ValueError(
+                warn(
                     f"ParticleField array must have shape (X, Y, Z, 3), (S, X, Y, Z, 3), or (N, S, X, Y, Z, 3); "
                     f"got shape {array_shape}"
+                    "Returning self without indexing."
                 )
+                return self
 
             if not isinstance(self.unit, PositionUnit):
                 raise TypeError(f"ParticleField.unit must be a PositionUnit, got {self.unit!r}")

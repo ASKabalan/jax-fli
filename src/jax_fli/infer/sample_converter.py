@@ -125,6 +125,7 @@ def sample2catalog(config: Configurations):
                 )
 
             initial_conditions = initial_conditions.replace(
+                name=f"initial_conditions_batch_{batch_id}",
                 z_sources=jnp.zeros(initial_conditions.shape[0]),
                 comoving_centers=jnp.zeros(initial_conditions.shape[0]),
                 scale_factors=jnp.zeros(initial_conditions.shape[0]),
@@ -155,12 +156,18 @@ def sample2catalog(config: Configurations):
                 cosmo_s = jax.tree.map(lambda p: p[s_idx], cosmo)
                 meta_s = kappa_meta_data[s_idx]
                 kappa_s = jnp.stack([samples[f"kappa_{i}"][s_idx] for i in range(n_bins)], axis=0)
-                fields_list.append(KappaFieldCls.FromDensityMetadata(array=kappa_s, field=meta_s))
+                fields_list.append(
+                    KappaFieldCls.FromDensityMetadata(
+                        array=kappa_s, field=meta_s, name=f"kappa_fields_batch_{batch_id}_sample_{s_idx}"
+                    )
+                )
                 cosmo_list.append(cosmo_s)
             kappa_catalog = Catalog(field=fields_list, cosmology=cosmo_list)
         else:
             kappa_array = jnp.stack([samples[f"kappa_{i}"] for i in range(n_bins)], axis=0)
-            kappa_field = KappaFieldCls.FromDensityMetadata(array=kappa_array, field=kappa_meta_data)
+            kappa_field = KappaFieldCls.FromDensityMetadata(
+                array=kappa_array, field=kappa_meta_data, name=f"kappa_fields_batch_{batch_id}"
+            )
             kappa_catalog = Catalog(field=kappa_field, cosmology=cosmo)
         kappa_catalog.to_parquet(os.path.join(fields_dir, f"fields_{batch_id}.parquet"))
 
@@ -168,6 +175,7 @@ def sample2catalog(config: Configurations):
             lightcone_dir = os.path.join(path, "lightcones")
             os.makedirs(lightcone_dir, exist_ok=True)
             lightcone = samples["lightcone"]
+            lightcone = lightcone.replace(name=f"lightcone_batch_{batch_id}")
             lightcone_catalog = Catalog(field=lightcone, cosmology=cosmo)
             lightcone_catalog.to_parquet(os.path.join(lightcone_dir, f"lightcone_{batch_id}.parquet"))
 

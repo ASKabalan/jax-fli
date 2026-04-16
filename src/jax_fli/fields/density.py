@@ -13,6 +13,8 @@ from jaxtyping import Array
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
+from warnings import warn
+
 from .._src.base._core import AbstractField
 from .._src.base._enums import DensityUnit, FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
@@ -56,10 +58,12 @@ class DensityField(AbstractField):
         For a 5D array (N, S, X, Y, Z), slices the simulation-batch dimension.
         """
         if self.array.ndim not in (4, 5):
-            raise ValueError(
+            warn(
                 "Indexing only supported for batched DensityField with 4D or 5D array, "
                 f"got array with {self.array.ndim} dimensions"
+                "Returning self without indexing."
             )
+            return self
         # Use the AbstractField __getitem__ implementation (tree.map).
         return super().__getitem__(key)
 
