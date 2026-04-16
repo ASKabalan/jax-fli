@@ -42,6 +42,7 @@ def transfer(
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    kmax: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Monopole transfer function sqrt(P1/P0)."""
     wavenumber, tr = _transfer(
@@ -49,6 +50,7 @@ def transfer(
         mesh1,
         box_shape=box_shape,
         kedges=kedges,
+        kmax=kmax,
     )
     return wavenumber, tr
 
@@ -59,6 +61,7 @@ def coherence(
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    kmax: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Monopole coherence pk01 / sqrt(pk0 pk1)."""
     wavenumber, coh = _coherence(
@@ -66,6 +69,7 @@ def coherence(
         mesh1,
         box_shape=box_shape,
         kedges=kedges,
+        kmax=kmax,
     )
     return wavenumber, coh
 
