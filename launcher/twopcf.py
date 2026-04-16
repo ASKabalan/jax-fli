@@ -18,7 +18,9 @@ def add_subparser(sub):
 
     g = p.add_argument_group("2pcf")
     g.add_argument("--observable", required=True, metavar="PATH", help="Parquet Catalog with observed C_ell")
-    g.add_argument("--path", default="results/2pcf_inference", help="Output directory (default: results/2pcf_inference)")
+    g.add_argument(
+        "--path", default="results/2pcf_inference", help="Output directory (default: results/2pcf_inference)"
+    )
 
     geom = p.add_mutually_exclusive_group()
     geom.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE")
@@ -78,8 +80,10 @@ def run(args):
 
     fli_cmd = [
         "fli-2pcf",
-        "--observable", args.observable,
-        "--path", out_path,
+        "--observable",
+        args.observable,
+        "--path",
+        out_path,
     ]
 
     if args.nside is not None:
@@ -90,25 +94,47 @@ def run(args):
             fli_cmd += ["--field-size", str(args.field_size[0]), str(args.field_size[1])]
 
     fli_cmd += [
-        "--lmax", str(args.lmax),
-        "--f-sky", str(args.f_sky),
-        "--sigma-e", str(args.sigma_e),
-        "--nonlinear-fn", args.nonlinear_fn,
-        "--nz-shear", *[str(v) for v in args.nz_shear],
-        "--min-z", str(args.min_z),
-        "--max-z", str(args.max_z),
-        "--n-integrate", str(args.n_integrate),
-        "--num-warmup", str(args.num_warmup),
-        "--num-samples", str(args.num_samples),
-        "--batch-count", str(args.batch_count),
-        "--sampler", args.sampler,
-        "--backend", args.backend,
-        "--sample", *args.sample,
-        "--prior-omega-c", str(args.prior_omega_c[0]), str(args.prior_omega_c[1]),
-        "--prior-sigma8", str(args.prior_sigma8[0]), str(args.prior_sigma8[1]),
-        "--prior-h", str(args.prior_h[0]), str(args.prior_h[1]),
-        "--chain-index", str(args.chain_index),
-        "--seed", str(args.seed),
+        "--lmax",
+        str(args.lmax),
+        "--f-sky",
+        str(args.f_sky),
+        "--sigma-e",
+        str(args.sigma_e),
+        "--nonlinear-fn",
+        args.nonlinear_fn,
+        "--nz-shear",
+        *[str(v) for v in args.nz_shear],
+        "--min-z",
+        str(args.min_z),
+        "--max-z",
+        str(args.max_z),
+        "--n-integrate",
+        str(args.n_integrate),
+        "--num-warmup",
+        str(args.num_warmup),
+        "--num-samples",
+        str(args.num_samples),
+        "--batch-count",
+        str(args.batch_count),
+        "--sampler",
+        args.sampler,
+        "--backend",
+        args.backend,
+        "--sample",
+        *args.sample,
+        "--prior-omega-c",
+        str(args.prior_omega_c[0]),
+        str(args.prior_omega_c[1]),
+        "--prior-sigma8",
+        str(args.prior_sigma8[0]),
+        str(args.prior_sigma8[1]),
+        "--prior-h",
+        str(args.prior_h[0]),
+        str(args.prior_h[1]),
+        "--chain-index",
+        str(args.chain_index),
+        "--seed",
+        str(args.seed),
     ]
     if args.enable_x64:
         fli_cmd.append("--enable-x64")

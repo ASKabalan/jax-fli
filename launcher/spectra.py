@@ -31,7 +31,9 @@ def add_subparser(sub):
         help="Overdensity normalization (default: global)",
     )
     # Flat-sky spectra
-    g.add_argument("--ell-edges", type=float, nargs="+", default=None, metavar="E", help="Ell bin edges for flat-sky Cl")
+    g.add_argument(
+        "--ell-edges", type=float, nargs="+", default=None, metavar="E", help="Ell bin edges for flat-sky Cl"
+    )
     # Spherical spectra
     g.add_argument("--lmax", type=int, default=None, help="Max multipole lmax (default: 3*nside-1)")
     g.add_argument("--method", choices=["healpy", "jax"], default="healpy", help="SHT method (default: healpy)")

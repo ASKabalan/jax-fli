@@ -20,7 +20,6 @@ from numpyro.handlers import condition
 import jax_fli as jfli
 from jax_fli.scripts._common import _resolve_nz_shear, _save_args_log
 
-
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -117,28 +116,27 @@ def parser() -> argparse.ArgumentParser:
     add_prior_args(p)
 
     # MCMC
-    p.add_argument("--chain-index", type=int, default=0, dest="chain_index",
-                   help="Chain index written into output filenames (default: 0)")
-    p.add_argument("--num-warmup", type=int, default=100, dest="num_warmup",
-                   help="MCMC warmup iterations (default: 100)")
-    p.add_argument("--num-samples", type=int, default=500, dest="num_samples",
-                   help="Samples per batch (default: 500)")
-    p.add_argument("--batch-count", type=int, default=10, dest="batch_count",
-                   help="Number of sequential batches (default: 10)")
     p.add_argument(
-        "--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS",
-        help="MCMC sampler (default: NUTS)"
+        "--chain-index",
+        type=int,
+        default=0,
+        dest="chain_index",
+        help="Chain index written into output filenames (default: 0)",
     )
     p.add_argument(
-        "--backend", choices=["numpyro", "blackjax"], default="blackjax",
-        help="Sampling backend (default: blackjax)"
+        "--num-warmup", type=int, default=100, dest="num_warmup", help="MCMC warmup iterations (default: 100)"
     )
-    p.add_argument("--seed", type=int, default=0,
-                   help="JAX PRNGKey seed (default: 0)")
-    p.add_argument("--no-progress-bar", action="store_true",
-                   help="Suppress tqdm progress bars")
-    p.add_argument("--enable-x64", action="store_true",
-                   help="Enable JAX 64-bit precision (default: False)")
+    p.add_argument("--num-samples", type=int, default=500, dest="num_samples", help="Samples per batch (default: 500)")
+    p.add_argument(
+        "--batch-count", type=int, default=10, dest="batch_count", help="Number of sequential batches (default: 10)"
+    )
+    p.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    p.add_argument(
+        "--backend", choices=["numpyro", "blackjax"], default="blackjax", help="Sampling backend (default: blackjax)"
+    )
+    p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
+    p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
+    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
     return p
 
@@ -172,7 +170,7 @@ def main() -> None:
     # --- load observed C_ell from parquet ---
     catalog = jfli.io.Catalog.from_parquet(args.observable)
     obs_ps = catalog.field[0]
-    obs_cell = jnp.asarray(obs_ps.array)      # shape: (N_pairs, N_ell) or (N_ell,)
+    obs_cell = jnp.asarray(obs_ps.array)  # shape: (N_pairs, N_ell) or (N_ell,)
     obs_ells = jnp.asarray(obs_ps.wavenumber)  # ells at which Cl was measured
 
     # --- resolve nz_shear ---
@@ -206,7 +204,7 @@ def main() -> None:
 
     # --- build Configurations ---
     config = jfli.ppl.Configurations(
-        mesh_size=(1, 1, 1),    # unused by power-spectrum model
+        mesh_size=(1, 1, 1),  # unused by power-spectrum model
         box_size=(1.0, 1.0, 1.0),  # unused by power-spectrum model
         nside=nside,
         flatsky_npix=flatsky_npix,
