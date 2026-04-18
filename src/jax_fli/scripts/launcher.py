@@ -55,7 +55,6 @@ from pathlib import Path
 
 from jax_fli.scripts.parser import add_slurm_args
 
-
 # Flags whose first value should feed the template lookup table.
 _TEMPLATE_KEYS = {
     "--mesh-size": "mesh_size",
@@ -113,11 +112,12 @@ def _job_name(cmd_name: str, payload: list[str]) -> str:
 
 # ── Template substitution ───────────────────────────────────────────────────
 
+
 def _collect_template_vars(payload: list[str], args: argparse.Namespace) -> dict[str, str]:
     """Build the ``%key% → value`` table from the payload + launcher args.
 
     For multi-value flags (--mesh-size, --box-size), values are joined with ``x``
-    so ``--mesh-size 64 64 64`` → ``64x64x64``.
+    so ``--mesh-size 256 256 256`` → ``64x64x64``.
     """
     table: dict[str, str] = {"constraint": str(args.constraint)}
     i = 0
@@ -153,6 +153,7 @@ def _apply_templates(payload: list[str], table: dict[str, str]) -> list[str]:
 
 # ── Log / output-dir resolution ─────────────────────────────────────────────
 
+
 def _resolve_output_dir(payload: list[str]) -> Path | None:
     """Find the directory to drop ``args.log`` into.
 
@@ -179,10 +180,11 @@ def _write_log(out_dir: Path, cmd: list[str], launcher_args: argparse.Namespace)
     log_path = out_dir / "args.log"
     with log_path.open("a") as f:
         f.write(f"# {datetime.now().isoformat(timespec='seconds')} mode={launcher_args.mode}\n")
-        f.write(shlex.join(["fli-launcher", *sys.argv[1:sys.argv.index('--')], "--"] + cmd) + "\n")
+        f.write(shlex.join(["fli-launcher", *sys.argv[1 : sys.argv.index("--")], "--"] + cmd) + "\n")
 
 
 # ── Dispatch ────────────────────────────────────────────────────────────────
+
 
 def _print_dryrun(args: argparse.Namespace, cmd: list[str]) -> None:
     tpn, cpt, total_gpus = _resolve_slurm_params(args)
@@ -249,10 +251,7 @@ def main() -> None:
     argv = sys.argv[1:]
     launcher_argv, payload = _split_on_separator(argv)
     if not payload:
-        sys.exit(
-            "Error: missing command payload. Usage:\n"
-            "  fli-launcher [SLURM OPTS] -- <cmd> [cmd args...]"
-        )
+        sys.exit("Error: missing command payload. Usage:\n" "  fli-launcher [SLURM OPTS] -- <cmd> [cmd args...]")
 
     parser = argparse.ArgumentParser(
         prog="fli-launcher",
@@ -269,8 +268,11 @@ def main() -> None:
     resolved_payload = _apply_templates(payload, table)
 
     cmd = list(resolved_payload) + [
-        "--nodes", str(args.nodes),
-        "--pdim", str(args.pdim[0]), str(args.pdim[1]),
+        "--nodes",
+        str(args.nodes),
+        "--pdim",
+        str(args.pdim[0]),
+        str(args.pdim[1]),
     ]
 
     # Write a per-run log in the resolved output directory (when there is one).

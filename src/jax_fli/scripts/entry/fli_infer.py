@@ -213,7 +213,6 @@ def main() -> None:
         nz_shear=nz_shear,
         priors=priors,
         sigma_e=args.sigma_e,
-        density_plane_smoothing=args.density_plane_smoothing,
         halo_size=halo_size,
         t0=args.t0,
         nb_steps=args.nb_steps,

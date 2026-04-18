@@ -115,29 +115,55 @@ def glass_cosmo(cosmology):
 
 @pytest.fixture(scope="session")
 def born_kappa_single(cosmology, lensing_lightcone):
-    """Born convergence map at z_source=0.5."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE)
+    """Born convergence map at z_source=0.5, global normalization."""
+    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global")
 
 
 @pytest.fixture(scope="session")
 def born_kappa_multi(cosmology, lensing_lightcone):
-    """Born convergence maps at z_source=[0.5, 1.0]."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI)
+    """Born convergence maps at z_source=[0.5, 1.0], global normalization."""
+    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global")
+
+
+@pytest.fixture(scope="session")
+def born_kappa_single_per_plane(cosmology, lensing_lightcone):
+    """Born convergence map at z_source=0.5, per-plane normalization."""
+    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="per_plane")
+
+
+@pytest.fixture(scope="session")
+def born_kappa_multi_per_plane(cosmology, lensing_lightcone):
+    """Born convergence maps at z_source=[0.5, 1.0], per-plane normalization."""
+    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="per_plane")
 
 
 @pytest.fixture(scope="session")
 def raytrace_born_kappa_single(cosmology, lensing_lightcone):
-    """Raytrace(born=True) convergence at z=0.5 (requires dorian)."""
+    """Raytrace(born=True) convergence at z=0.5, global normalization (requires dorian)."""
     pytest.importorskip("dorian")
-    _, born_field = jfli.raytrace(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, born=True, raytrace=False)
+    _, born_field = jfli.raytrace(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, born=True, raytrace=False, normalization="global"
+    )
     return born_field
 
 
 @pytest.fixture(scope="session")
 def raytrace_born_kappa_multi(cosmology, lensing_lightcone):
-    """Raytrace(born=True) convergence at z=[0.5, 1.0] (requires dorian)."""
+    """Raytrace(born=True) convergence at z=[0.5, 1.0], global normalization (requires dorian)."""
     pytest.importorskip("dorian")
-    _, born_field = jfli.raytrace(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, born=True, raytrace=False)
+    _, born_field = jfli.raytrace(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, born=True, raytrace=False, normalization="global"
+    )
+    return born_field
+
+
+@pytest.fixture(scope="session")
+def raytrace_born_kappa_multi_per_plane(cosmology, lensing_lightcone):
+    """Raytrace(born=True) convergence at z=[0.5, 1.0], per-plane normalization (requires dorian)."""
+    pytest.importorskip("dorian")
+    _, born_field = jfli.raytrace(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, born=True, raytrace=False, normalization="per_plane"
+    )
     return born_field
 
 

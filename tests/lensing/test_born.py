@@ -67,12 +67,12 @@ def _plot_ratio(ells, ratio_list, z_sources, ref_label, path):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-def test_born_vs_glass(born_kappa_multi, glass_kappa_maps):
-    """Compare jfli Born vs glass: maps and power spectra."""
+def test_born_vs_glass(born_kappa_multi_per_plane, glass_kappa_maps):
+    """Compare jfli Born (per-plane normalization) vs glass: maps and power spectra."""
     os.makedirs(PLOT_DIR, exist_ok=True)
 
-    jfli_arr = np.asarray(born_kappa_multi.array)
-    z_sources = np.asarray(born_kappa_multi.z_sources)
+    jfli_arr = np.asarray(born_kappa_multi_per_plane.array)
+    z_sources = np.asarray(born_kappa_multi_per_plane.z_sources)
 
     # --- maps ---
     for i, z in enumerate(z_sources):
@@ -88,7 +88,7 @@ def test_born_vs_glass(born_kappa_multi, glass_kappa_maps):
         )
 
     # --- spectra ---
-    jfli_ps = born_kappa_multi.angular_cl(method="healpy")
+    jfli_ps = born_kappa_multi_per_plane.angular_cl(method="healpy")
     jfli_cls_all = np.asarray(jfli_ps.spectra)
 
     ells_list, jfli_list, glass_list = [], [], []
@@ -118,28 +118,25 @@ def test_born_vs_glass(born_kappa_multi, glass_kappa_maps):
     _plot_ratio(ells_list, ratio_list, z_sources, "glass", os.path.join(PLOT_DIR, "glass_spectra_ratio.png"))
 
 
-def test_born_vs_dorian(born_kappa_multi, raytrace_born_kappa_multi):
-    """Compare jfli Born vs dorian raytrace(born=True): maps and power spectra."""
-    pytest.importorskip("dorian")
+def _compare_born_vs_dorian(born_field, rt_field, label, plot_suffix):
+    """Shared logic for born-vs-dorian comparison (maps + spectra + plots)."""
     os.makedirs(PLOT_DIR, exist_ok=True)
 
-    born_arr = np.asarray(born_kappa_multi.array)
-    rt_arr = np.asarray(raytrace_born_kappa_multi.array)
-    z_sources = np.asarray(born_kappa_multi.z_sources)
+    born_arr = np.asarray(born_field.array)
+    rt_arr = np.asarray(rt_field.array)
+    z_sources = np.asarray(born_field.z_sources)
 
-    # --- maps ---
     compare_fields(
         rt_arr,
         born_arr,
-        "dorian map",
+        f"dorian map ({label})",
         atol=DORIAN_MAP_ATOL,
         rtol=DORIAN_MAP_RTOL,
         mean_atol=DORIAN_MAP_MEAN_ATOL,
     )
 
-    # --- spectra ---
-    born_ps = born_kappa_multi.angular_cl(method="healpy")
-    rt_ps = raytrace_born_kappa_multi.angular_cl(method="healpy")
+    born_ps = born_field.angular_cl(method="healpy")
+    rt_ps = rt_field.angular_cl(method="healpy")
     born_cls = np.asarray(born_ps.spectra)
     rt_cls = np.asarray(rt_ps.spectra)
     n = min(born_cls.shape[-1], rt_cls.shape[-1])
@@ -148,7 +145,7 @@ def test_born_vs_dorian(born_kappa_multi, raytrace_born_kappa_multi):
     compare_fields(
         rt_cls[:, 2:n],
         born_cls[:, 2:n],
-        "dorian Cl",
+        f"dorian Cl ({label})",
         atol=DORIAN_CLS_ATOL,
         rtol=DORIAN_CLS_RTOL,
         mean_atol=DORIAN_CLS_MEAN_ATOL,
@@ -157,7 +154,31 @@ def test_born_vs_dorian(born_kappa_multi, raytrace_born_kappa_multi):
     ells_list = [ell] * len(z_sources)
     jfli_list = [np.asarray(born_cls[i, 2:n]) for i in range(len(z_sources))]
     dorian_list = [np.asarray(rt_cls[i, 2:n]) for i in range(len(z_sources))]
-
-    _plot_spectra(ells_list, jfli_list, dorian_list, z_sources, "dorian", os.path.join(PLOT_DIR, "dorian_spectra.png"))
+    _plot_spectra(
+        ells_list,
+        jfli_list,
+        dorian_list,
+        z_sources,
+        f"dorian_{label}",
+        os.path.join(PLOT_DIR, f"dorian_spectra_{plot_suffix}.png"),
+    )
     ratio_list = [j / (d + 1e-30) for j, d in zip(jfli_list, dorian_list)]
-    _plot_ratio(ells_list, ratio_list, z_sources, "dorian", os.path.join(PLOT_DIR, "dorian_spectra_ratio.png"))
+    _plot_ratio(
+        ells_list,
+        ratio_list,
+        z_sources,
+        f"dorian_{label}",
+        os.path.join(PLOT_DIR, f"dorian_spectra_ratio_{plot_suffix}.png"),
+    )
+
+
+def test_born_vs_dorian_global(born_kappa_multi, raytrace_born_kappa_multi):
+    """Compare jfli Born vs dorian (both global normalization): maps and power spectra."""
+    pytest.importorskip("dorian")
+    _compare_born_vs_dorian(born_kappa_multi, raytrace_born_kappa_multi, "global", "global")
+
+
+def test_born_vs_dorian_per_plane(born_kappa_multi_per_plane, raytrace_born_kappa_multi_per_plane):
+    """Compare jfli Born vs dorian (both per-plane normalization): maps and power spectra."""
+    pytest.importorskip("dorian")
+    _compare_born_vs_dorian(born_kappa_multi_per_plane, raytrace_born_kappa_multi_per_plane, "per_plane", "per_plane")

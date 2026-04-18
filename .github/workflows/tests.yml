@@ -49,7 +49,7 @@ jobs:
           echo "CMAKE_PREFIX_PATH=$(python -m pybind11 --cmakedir)" >> $GITHUB_ENV
 
           pip install "jax[cpu]"
-          pip install -e ".[dev,catalog,sampling]"
+          pip install -e ".[dev,catalog,sampling,raytrace]"
           pip install cython mpi4py
           pip install -r tests/requirements.txt --no-build-isolation
 

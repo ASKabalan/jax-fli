@@ -102,6 +102,7 @@ def angular_cl_spherical(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Spherical (HEALPix) angular Cl. Returns (ell, spectra)."""
     ell_out, spectra = _spherical_cl(map_sphere, map_sphere2, lmax=lmax, method=method)
+    print(f"shape of spectra: {spectra.shape} shape of ell_out: {ell_out.shape}")
     return ell_out, spectra
 
 

@@ -75,7 +75,9 @@ def add_integration_settings_args(p):
         dest="sim_mode",
         help="Simulation pipeline: lpt, pm (N-body), or lensing (N-body + Born)",
     )
-    g.add_argument("--nb-shells", type=int, default=8, dest="nb_shells", help="Number of lightcone shells (default: 8)")
+    g.add_argument(
+        "--nb-shells", type=int, default=None, dest="nb_shells", help="Number of lightcone shells (default: 8)"
+    )
     g.add_argument("--lpt-order", type=int, default=2, choices=[1, 2], dest="lpt_order", help="LPT order (default: 2)")
     g.add_argument("--t0", type=float, default=0.001, help="LPT starting scale factor (default: 0.001)")
     g.add_argument("--t1", type=float, default=1.0, help="Final scale factor (default: 1.0)")
