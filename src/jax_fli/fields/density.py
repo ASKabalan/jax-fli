@@ -330,10 +330,11 @@ class DensityField(AbstractField):
 
         k, pk = jax.lax.map(_power_fn, (data1, data2), batch_size=batch_size)
         k, pk = k[0], pk.squeeze()
+        name = self.name + "_pk" if self.name else "power_spectrum"
         return PowerSpectrum(
+            name=name,
             wavenumber=k,
             array=pk,
-            name="pk",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             scale_factors=self.scale_factors,
@@ -426,10 +427,11 @@ class DensityField(AbstractField):
         # Extract wavenumber from first result (all pairs share same k-bins)
         wavenumber = k_stack[0]
 
+        name = self.name + "_cross_pk" if self.name else "cross_power_spectrum"
         return PowerSpectrum(
+            name=name,
             wavenumber=wavenumber,
             array=pk_stack,
-            name="cross_pk",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             scale_factors=self.scale_factors,
@@ -473,10 +475,11 @@ class DensityField(AbstractField):
         k_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = k_stack[0]
         spectra = spectra_stack if self.array.ndim == 4 else spectra_stack[0]
+        name = self.name + "_transfer" if self.name else "transfer_function"
         return PowerSpectrum(
+            name=name,
             wavenumber=wavenumber,
             array=spectra,
-            name="transfer",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             scale_factors=self.scale_factors,
@@ -520,10 +523,11 @@ class DensityField(AbstractField):
         k_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
         wavenumber = k_stack[0]
         spectra = spectra_stack if self.array.ndim == 4 else spectra_stack[0]
+        name = self.name + "_coherence" if self.name else "coherence"
         return PowerSpectrum(
+            name=name,
             wavenumber=wavenumber,
             array=spectra,
-            name="coherence",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             scale_factors=self.scale_factors,

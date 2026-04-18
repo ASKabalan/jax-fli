@@ -505,6 +505,8 @@ class ParticleField(AbstractField):
         if not jax.core.is_concrete(self.array):
             raise ValueError("Cannot plot traced arrays. Use outside of jit context.")
 
+        self = self.to(PositionUnit.GRID_ABSOLUTE)  # ensure absolute for plotting
+
         data = np.asarray(self.array)
 
         # Handle batch dimension
@@ -535,7 +537,7 @@ class ParticleField(AbstractField):
         if ticks is None:
             ticks = ([], [], [])
 
-        for idx, ax_i in enumerate(axes):
+        for idx, ax_i in enumerate(axes[:n_plots]):
             plot_3d_particles(
                 ax_i,
                 data[idx],
@@ -556,6 +558,9 @@ class ParticleField(AbstractField):
             )
             if titles and idx < len(titles):
                 ax_i.set_title(titles[idx])
+
+        for ax_i in axes[n_plots:]:
+            fig.delaxes(ax_i)
 
         fig.tight_layout()
         return fig, axes

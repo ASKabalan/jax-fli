@@ -76,15 +76,13 @@ Repository = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 Issues = "https://github.com/DifferentiableUniverseInitiative/jax-fli/issues"
 
 
-[project.scripts]
-fli-launcher = "launcher.main:main"
-
+# Scripts have to be outside of the package since we don't want to import the package (and thus jax before running the jax.distributed init
 [tool.setuptools]
-script-files = ["bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-extract", "bin/fli-spectra", "bin/fli-2pcf"]
+script-files = ["bin/fli-launcher", "bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-extract", "bin/fli-spectra", "bin/fli-2pcf"]
 
 [tool.setuptools.packages.find]
-where = ["src", "."]
-include = ["jax_fli*", "launcher*"]
+where = ["src"]
+include = ["jax_fli*"]
 
 [tool.setuptools.package-data]
 "jax_fli.data" = ["stage3_nz/*.txt", "des_y3_nz/*.txt", "des_y3_nz/*.json"]

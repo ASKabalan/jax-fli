@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+"""fli-launcher: thin wrapper for jax_fli.scripts.launcher.main.
+
+Unlike the other bin/ scripts, this one does NOT touch JAX — the launcher
+is pure subprocess plumbing (argparse + sbatch/mpirun).
+"""
+from jax_fli.scripts.launcher import main
+
+# TODO the launcher must probably live here so it does not import the package
+
+if __name__ == "__main__":
+    main()

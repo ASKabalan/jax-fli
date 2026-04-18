@@ -1,10 +1,8 @@
-"""Shared argument-group builders used by both entry-point scripts and the launcher.
+"""Shared argument-group builders used by entry-point scripts and the launcher.
 
 All functions are pure argparse — no jax_fli imports.
 """
 from __future__ import annotations
-
-DEFAULT_NAME_TEMPLATE = "%constraint%_cosmo_M%mesh_size%_B%box_size%_STEPS%nb_steps%_c%omega_c%_S8%sigma8%_s%seed%"
 
 
 def add_distributed_args(p):
@@ -21,60 +19,65 @@ def add_distributed_args(p):
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
 
 
-def add_mesh_args(p, nargs=3):
-    """Mesh resolution and box size.
+def add_slurm_args(p):
+    """SLURM / cluster arguments owned by fli-launcher.
 
-    Parameters
-    ----------
-    nargs : int or str
-        Use ``3`` for fixed 3-element meshes (entry-point scripts).
-        Use ``"+"`` for flat multi-mesh lists (launcher).
+    ``--pdim`` and ``--nodes`` are duplicated here so the launcher can validate
+    ``gpus_per_node * nodes == prod(pdim)`` and then forward them to the
+    entry-script command after the ``--`` separator.
     """
-    if nargs == 3:
-        p.add_argument(
-            "--mesh-size",
-            type=int,
-            nargs=3,
-            default=[64, 64, 64],
-            metavar=("NX", "NY", "NZ"),
-            help="Mesh resolution (default: 64 64 64)",
-        )
-        p.add_argument(
-            "--box-size",
-            type=float,
-            nargs=3,
-            default=[200.0, 200.0, 200.0],
-            metavar=("LX", "LY", "LZ"),
-            help="Box side lengths in Mpc/h (default: 200 200 200)",
-        )
-    else:
-        p.add_argument(
-            "--mesh-size",
-            type=int,
-            nargs="+",
-            default=[64, 64, 64, 32, 32, 32],
-            metavar="N",
-            help="Flat list of mesh sizes grouped into triples (e.g. 64 64 64 32 32 32)",
-        )
-        p.add_argument(
-            "--box-size",
-            type=float,
-            nargs="+",
-            default=[200.0, 200.0, 200.0],
-            metavar="L",
-            help="Flat list of box sizes grouped into triples (e.g. 200 200 200)",
-        )
+    g = p.add_argument_group("SLURM / cluster")
+    g.add_argument(
+        "--mode", choices=["local", "sbatch", "dryrun"], default="dryrun", help="Execution mode (default: dryrun)"
+    )
+    g.add_argument("--account", default="XXX", help="SLURM account")
+    g.add_argument("--constraint", default="h100", help="Node constraint (set to 'cpu' for CPU-only jobs)")
+    g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
+    g.add_argument("--gpus-per-node", type=int, default=4, dest="gpus_per_node", help="GPUs per node (default: 4)")
+    g.add_argument("--cpus-per-node", type=int, default=16, dest="cpus_per_node", help="CPUs per node (default: 16)")
+    g.add_argument(
+        "--tasks-per-node",
+        type=int,
+        default=None,
+        dest="tasks_per_node",
+        help="MPI tasks per node (defaults to --gpus-per-node)",
+    )
+    g.add_argument("--qos", default="qos_gpu_h100-t3", help="SLURM QoS")
+    g.add_argument("--time-limit", default="00:30:00", dest="time_limit", help="SLURM time limit (HH:MM:SS)")
+    g.add_argument(
+        "--slurm-script",
+        default=None,
+        dest="slurm_script",
+        help="Path to the SLURM wrapper script (required when --mode=sbatch)",
+    )
+    g.add_argument("--output-logs", default="SLURM_LOGS", dest="output_logs", help="Directory for SLURM log files")
+    g.add_argument(
+        "--pdim",
+        type=int,
+        nargs=2,
+        default=[1, 1],
+        metavar=("PX", "PY"),
+        help="JAX process mesh dimensions; forwarded to the command (default: 1 1)",
+    )
 
 
-def add_common_sim_args(p):
-    """Simulation parameters shared across all subcommands.
+def add_integration_settings_args(p):
+    """Integration / lightcone / lensing parameters.
 
-    Excludes: ``--enable-x64`` (added inline per script), ``--nb-shells``
-    (each script adds it inline with the appropriate type).
+    Covers everything shown in the Integration Settings form: physics,
+    shell timing, and lensing source-distribution parameters.
     """
-    g = p.add_argument_group("simulation")
-    g.add_argument("--lpt-order", type=int, default=2, choices=[1, 2], help="LPT order (default: 2)")
-    g.add_argument("--t0", type=float, default=0.1, help="LPT starting scale factor (default: 0.1)")
+    g = p.add_argument_group("integration")
+    p.add_argument(
+        "--sim-mode",
+        choices=["lpt", "pm", "lensing"],
+        required=True,
+        dest="sim_mode",
+        help="Simulation pipeline: lpt, pm (N-body), or lensing (N-body + Born)",
+    )
+    g.add_argument("--nb-shells", type=int, default=8, dest="nb_shells", help="Number of lightcone shells (default: 8)")
+    g.add_argument("--lpt-order", type=int, default=2, choices=[1, 2], dest="lpt_order", help="LPT order (default: 2)")
+    g.add_argument("--t0", type=float, default=0.001, help="LPT starting scale factor (default: 0.001)")
     g.add_argument("--t1", type=float, default=1.0, help="Final scale factor (default: 1.0)")
     g.add_argument(
         "--nb-steps", type=int, default=30, dest="nb_steps", help="Number of integration steps (default: 30)"
@@ -82,25 +85,13 @@ def add_common_sim_args(p):
     g.add_argument(
         "--interp", choices=["none", "onion", "telephoto"], default="none", help="Interpolation kernel (default: none)"
     )
+    g.add_argument("--solver", choices=["kdk", "dkd", "bf"], default="kdk", help="N-body integrator (default: kdk)")
     g.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    g.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside for spherical painting (default: same as --nside)",
-    )
-    g.add_argument(
-        "--kernel-width-arcmin",
-        type=float,
-        default=None,
-        dest="kernel_width_arcmin",
-        help="RBF smoothing kernel width in arcmin (default: None)",
+        "--time-stepping",
+        choices=["a", "D", "log_a"],
+        default="a",
+        dest="time_stepping",
+        help="Integrator time-stepping variable (default: a)",
     )
     g.add_argument("--dealiased", action="store_true", help="Enable dealiased mode (default: False)")
     g.add_argument(
@@ -120,14 +111,6 @@ def add_common_sim_args(p):
     g.add_argument(
         "--laplace-fd", action="store_true", dest="laplace_fd", help="Use finite-difference Laplacian (default: False)"
     )
-    g.add_argument("--solver", choices=["kdk", "dkd", "bf"], default="kdk", help="N-body integrator (default: kdk)")
-    g.add_argument(
-        "--time-stepping",
-        choices=["a", "D", "log_a"],
-        default="a",
-        dest="time_stepping",
-        help="Integrator time-stepping variable (default: a)",
-    )
     g.add_argument(
         "--shell-spacing",
         choices=["comoving", "equal_vol", "a", "growth"],
@@ -138,84 +121,7 @@ def add_common_sim_args(p):
     g.add_argument(
         "--density-widths", type=float, nargs="+", default=None, metavar="W", help="Override shell widths in Mpc/h"
     )
-
-
-def add_cosmo_args(p, sweep=False):
-    """Cosmological parameters.
-
-    Parameters
-    ----------
-    sweep : bool
-        When ``False`` (single-run scripts), ``--Omega-c``, ``--sigma8``,
-        and ``--seed`` accept single scalar values.  When ``True``
-        (grid / launcher), they accept one or more values or
-        ``start:stop:step`` range strings.
-    """
-    g = p.add_argument_group("cosmology")
-    g.add_argument("--Omega-b", type=float, default=0.0486, dest="Omega_b", help="Baryon density (default: 0.0486)")
-    g.add_argument("--h", type=float, default=0.6774, help="Dimensionless Hubble parameter (default: 0.6774)")
-    g.add_argument("--n-s", type=float, default=0.9667, dest="n_s", help="Spectral index (default: 0.9667)")
-    g.add_argument("--Omega-k", type=float, default=0.0, dest="Omega_k", help="Curvature density (default: 0.0)")
-    g.add_argument("--w0", type=float, default=-1.0, help="Dark energy EOS w0 (default: -1.0)")
-    g.add_argument("--wa", type=float, default=0.0, help="Dark energy EOS wa (default: 0.0)")
-    g.add_argument("--Omega-nu", type=float, default=0.0, dest="Omega_nu", help="Neutrino density (default: 0.0)")
-    if sweep:
-        g.add_argument(
-            "--Omega-c",
-            nargs="+",
-            type=str,
-            default=["0.2589"],
-            dest="Omega_c",
-            help="Omega_c values or range strings (e.g. 0.2:0.4:0.05)",
-        )
-        g.add_argument("--sigma8", nargs="+", type=str, default=["0.8159"], help="sigma8 values or range strings")
-        g.add_argument("--seed", nargs="+", type=str, default=["0"], help="Seed values or range strings")
-    else:
-        g.add_argument(
-            "--Omega-c", type=float, default=0.2589, dest="Omega_c", help="Cold dark matter density (default: 0.2589)"
-        )
-        g.add_argument("--sigma8", type=float, default=0.8159, help="sigma8 (default: 0.8159)")
-        g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
-
-
-def add_lensing_args(p):
-    """Lensing / source-distribution parameters."""
-    g = p.add_argument_group("lensing")
-    g.add_argument(
-        "--nz-shear",
-        nargs="+",
-        default=["s3"],
-        metavar="Z",
-        help="Source redshifts or 's3' for Stage-3 preset (default: s3)",
-    )
-    g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
-    g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
-    g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
-
-
-def add_lightcone_args(p):
-    """Lightcone / shell geometry parameters.
-
-    Does **not** include ``--nb-shells`` — each script adds it inline with
-    the appropriate type (``int`` for single-run, ``str nargs='+'`` for grid).
-    """
-    g = p.add_argument_group("lightcone")
-    g.add_argument(
-        "--halo-multiplier",
-        type=float,
-        default=0.5,
-        dest="halo_multiplier",
-        metavar="M",
-        help="Halo size as local_mesh × multiplier (default: 0.5)",
-    )
-    g.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=[0.5, 0.5, 0.5],
-        metavar=("OX", "OY", "OZ"),
-        help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
-    )
+    # Lightcone timing
     ts_group = p.add_mutually_exclusive_group()
     ts_group.add_argument(
         "--ts", type=float, nargs="+", default=None, metavar="A", help="Scale factors for snapshot/shell output"
@@ -237,16 +143,88 @@ def add_lightcone_args(p):
         help="Far scale factor edges (use with --ts-near)",
     )
     g.add_argument(
-        "--drift-on-lightcone", action="store_true", help="Apply drift correction when painting lightcone shells"
+        "--drift-on-lightcone",
+        action="store_true",
+        dest="drift_on_lightcone",
+        help="Apply drift correction when painting lightcone shells",
     )
     g.add_argument(
         "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h (default: 50.0)"
     )
-    g.add_argument("--equal-vol", action="store_true", help="Use equal-volume shell partitioning")
+    add_lensing_args(p)
 
 
-def add_output_target_args(p):
-    """Output-target flags (mutually exclusive painting targets + companion field-size)."""
+def add_cosmo_args(p):
+    """Cosmological parameters (Omega_c, sigma8, Omega_b, h, n_s, etc.).
+
+    Note: ``--seed`` is part of ``add_simulation_settings_args``, not here.
+    """
+    g = p.add_argument_group("cosmology")
+    g.add_argument("--Omega-b", type=float, default=0.0486, dest="Omega_b", help="Baryon density (default: 0.0486)")
+    g.add_argument("--h", type=float, default=0.6774, help="Dimensionless Hubble parameter (default: 0.6774)")
+    g.add_argument("--n-s", type=float, default=0.9667, dest="n_s", help="Spectral index (default: 0.9667)")
+    g.add_argument("--Omega-k", type=float, default=0.0, dest="Omega_k", help="Curvature density (default: 0.0)")
+    g.add_argument("--w0", type=float, default=-1.0, help="Dark energy EOS w0 (default: -1.0)")
+    g.add_argument("--wa", type=float, default=0.0, help="Dark energy EOS wa (default: 0.0)")
+    g.add_argument("--Omega-nu", type=float, default=0.0, dest="Omega_nu", help="Neutrino density (default: 0.0)")
+    g.add_argument(
+        "--Omega-c", type=float, default=0.2589, dest="Omega_c", help="Cold dark matter density (default: 0.2589)"
+    )
+    g.add_argument("--sigma8", type=float, default=0.8159, help="sigma8 (default: 0.8159)")
+
+
+def add_lensing_args(p):
+    """Lensing / source-distribution parameters."""
+    g = p.add_argument_group("lensing")
+    g.add_argument(
+        "--nz-shear",
+        nargs="+",
+        default=["s3"],
+        metavar="Z",
+        help="Source redshifts or 's3' for Stage-3 (default: s3)",
+    )
+    g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
+    g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
+    g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
+
+
+def add_simulation_settings_args(p):
+    """Simulation settings: mesh, box, halo, observer, seed, painting scheme, x64."""
+    g = p.add_argument_group("simulation settings")
+    g.add_argument(
+        "--mesh-size",
+        type=int,
+        nargs=3,
+        default=[64, 64, 64],
+        metavar=("NX", "NY", "NZ"),
+        help="Mesh resolution (default: 64 64 64)",
+    )
+    g.add_argument(
+        "--box-size",
+        type=float,
+        nargs=3,
+        default=[200.0, 200.0, 200.0],
+        metavar=("LX", "LY", "LZ"),
+        help="Box side lengths in Mpc/h (default: 200 200 200)",
+    )
+    g.add_argument(
+        "--halo-multiplier",
+        type=float,
+        default=0.5,
+        dest="halo_multiplier",
+        metavar="M",
+        help="Halo size as local_mesh × multiplier (default: 0.5)",
+    )
+    g.add_argument(
+        "--observer-position",
+        type=float,
+        nargs=3,
+        default=[0.5, 0.5, 0.5],
+        metavar=("OX", "OY", "OZ"),
+        help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
+    )
+    g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
+
     g = p.add_argument_group("output target")
     ex = g.add_mutually_exclusive_group()
     ex.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
@@ -268,6 +246,32 @@ def add_output_target_args(p):
         metavar=("H", "W"),
         dest="field_size",
         help="Angular field size in degrees H×W (use with --flatsky-npix)",
+    )
+    g.add_argument(
+        "--scheme",
+        choices=["ngp", "bilinear", "rbf_neighbor"],
+        default="bilinear",
+        help="Spherical painting interpolation scheme (default: bilinear)",
+    )
+    g.add_argument(
+        "--paint-nside",
+        type=int,
+        default=None,
+        dest="paint_nside",
+        help="Override nside for spherical painting (default: same as --nside)",
+    )
+    g.add_argument(
+        "--kernel-width-arcmin",
+        type=float,
+        default=None,
+        dest="kernel_width_arcmin",
+        help="RBF smoothing kernel width in arcmin (default: None)",
+    )
+    g.add_argument(
+        "--enable-x64",
+        action="store_true",
+        dest="enable_x64",
+        help="Enable JAX 64-bit floating-point precision (default: False)",
     )
 
 
@@ -326,6 +330,52 @@ def add_prior_args(p):
         metavar=("MIN", "MAX"),
         help="Gaussian prior bounds for initial conditions (default: 0.0 1.0)",
     )
+
+
+def add_infer_args(p):
+    """Sampling configuration shared between fli-infer and launcher/infer.
+
+    Does NOT include path args (--observable, --path) — those differ between
+    the entry script (full paths, required) and the launcher (constructed from
+    --observable-dir / --output-dir / --chain-index).
+    """
+    g = p.add_argument_group("inference")
+    g.add_argument(
+        "--initial-condition",
+        type=str,
+        default=None,
+        metavar="PATH",
+        dest="initial_condition",
+        help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
+    )
+    g.add_argument(
+        "--init-cosmo",
+        action="store_true",
+        dest="init_cosmo",
+        help="Warm-start cosmological parameters from the observable's stored cosmology.",
+    )
+    g.add_argument("--sigma-e", type=float, default=0.26, dest="sigma_e", help="Shape noise dispersion (default: 0.26)")
+    g.add_argument(
+        "--num-warmup", type=int, default=500, dest="num_warmup", help="MCMC warmup iterations (default: 500)"
+    )
+    g.add_argument(
+        "--num-samples", type=int, default=1000, dest="num_samples", help="Samples per batch (default: 1000)"
+    )
+    g.add_argument(
+        "--batch-count", type=int, default=5, dest="batch_count", help="Number of sequential batches (default: 5)"
+    )
+    g.add_argument(
+        "--adjoint",
+        choices=["checkpointed", "recursive"],
+        default="checkpointed",
+        help="Gradient strategy for NUTS (default: checkpointed)",
+    )
+    g.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")
+    g.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    g.add_argument(
+        "--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend (default: numpyro)"
+    )
+    g.add_argument("--no-progress-bar", action="store_true", dest="no_progress_bar", help="Suppress tqdm progress bars")
 
 
 def add_spectra_scan_args(p):
