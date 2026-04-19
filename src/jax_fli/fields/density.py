@@ -443,7 +443,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["kedges", "batch_size", "kmax", "dk"])
+    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk"])
     def transfer(
         self,
         other: DensityField,
@@ -493,7 +493,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax"])
+    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk"])
     def coherence(
         self,
         other: DensityField,

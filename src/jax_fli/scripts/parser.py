@@ -429,7 +429,7 @@ def add_spectra_density_args(p):
         "--dk",
         type=float,
         default=None,
-        help="k bin width for P(k) (default: auto, overrides --kedges if set)",
+        help="k bin width for P(k) (default: auto based on box size and kmax)",
     )
     g.add_argument(
         "--multipoles",
