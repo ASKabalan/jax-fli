@@ -35,8 +35,6 @@ def _initialize_pk(mesh_shape, box_shape, kedges, dk, kmax, los):
             dk = 2 * np.pi / np.min(box_shape_np) * 2  # twice fundamental
         if dk <= 0:
             raise ValueError("dk must be positive and non-zero")
-        if dk >= kmax:
-            raise ValueError("dk must be smaller than kmax")
         kedges_np = np.arange(dk, kmax, dk) + dk / 2
         if kedges_np.size < 2:
             kedges_np = np.linspace(kmax / 4, kmax * 0.9, 2)
