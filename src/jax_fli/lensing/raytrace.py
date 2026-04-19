@@ -62,6 +62,7 @@ def _raytrace_z_grid(
     shell_widths: np.ndarray | None = None,
     nufft_threads: int = 4,
     comm=None,
+    normalization: str = "global",
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Run dorian ray-tracing for each source redshift.
 
@@ -120,6 +121,7 @@ def _raytrace_z_grid(
         shell_widths=list(shell_widths),
         parallel_transport=parallel_transport,
         comm=comm,
+        normalization=normalization,
     )
     if comm is not None and comm.Get_rank() != 0:  # type: ignore
         return None, None  # Only rank 0 has the results in this case
@@ -180,6 +182,7 @@ def raytrace(
     born=False,
     raytrace=True,
     comm=None,
+    normalization="global",
 ) -> tuple[SphericalKappaField | None, SphericalKappaField | None]:
     """Multi-plane ray-tracing using dorian.
 
@@ -332,6 +335,7 @@ def raytrace(
             raytrace=raytrace,
             shell_widths=density_widths_np,
             comm=comm,
+            normalization=normalization,
         )
         if comm is not None and comm.Get_rank() != 0:  # type: ignore
             return None, None  # Only rank 0 has the results in this case
@@ -361,6 +365,7 @@ def raytrace(
             raytrace=raytrace,
             shell_widths=density_widths_np,
             comm=comm,
+            normalization=normalization,
         )
         if comm is not None and comm.Get_rank() != 0:  # type: ignore
             return None, None  # Only rank 0 has the results in this case

@@ -246,9 +246,9 @@ class FlatDensity(AbstractField):
         wavenumber = ell_stack[0]
         spectra = spectra_stack if self.array.ndim == 3 else spectra_stack[0]
         return PowerSpectrum(
+            name=self.name,
             wavenumber=wavenumber,
             array=spectra,
-            name="cl",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -341,10 +341,11 @@ class FlatDensity(AbstractField):
         # Extract ell from first result (all pairs share same ell-bins)
         wavenumber = ell_stack[0]
 
+        name = self.name + "_cross_cl" if self.name else "cross_cl"
         return PowerSpectrum(
+            name=name,
             wavenumber=wavenumber,
             array=cl_stack,
-            name="cross_cl",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -399,10 +400,11 @@ class FlatDensity(AbstractField):
             batch_size=batch_size,
         )
         transfer_ratio = (cl_other.array / cl_self.array) ** 0.5
+        name = self.name + "_transfer" if self.name else "transfer"
         return PowerSpectrum(
+            name=name,
             wavenumber=cl_self.wavenumber,
             array=transfer_ratio,
-            name="transfer",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -464,10 +466,11 @@ class FlatDensity(AbstractField):
             batch_size=batch_size,
         )
         coherence_ratio = cl_cross.array / (cl_self.array * cl_other.array) ** 0.5
+        name = self.name + "_coherence" if self.name else "coherence"
         return PowerSpectrum(
+            name=name,
             wavenumber=cl_self.wavenumber,
             array=coherence_ratio,
-            name="coherence",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -746,9 +749,9 @@ class SphericalDensity(AbstractField):
             spectra = jnp.stack(spectras, axis=0)
             spectra = spectra if self.array.ndim == 2 else spectra[0]
             return PowerSpectrum(
+                name=self.name,
                 wavenumber=ell,
                 array=spectra,
-                name="cl",
                 mesh_size=self.mesh_size,
                 box_size=self.box_size,
                 comoving_centers=self.comoving_centers,
@@ -767,9 +770,9 @@ class SphericalDensity(AbstractField):
         wavenumber = ell_stack[0]
         spectra = spectra_stack if self.array.ndim == 2 else spectra_stack[0]
         return PowerSpectrum(
+            name=self.name,
             wavenumber=wavenumber,
             array=spectra,
-            name="cl",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -847,12 +850,12 @@ class SphericalDensity(AbstractField):
             )
 
         # Call the power module function
-        ell, cls = cross_angular_cl_spherical(data, lmax=lmax, method=method)
+        ell, angular_cls = cross_angular_cl_spherical(data, lmax=lmax, method=method)
 
         return PowerSpectrum(
+            name=self.name,
             wavenumber=ell,
-            array=cls,
-            name="cross_cl",
+            array=angular_cls,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -901,10 +904,11 @@ class SphericalDensity(AbstractField):
             batch_size=batch_size,
         )
         transfer_ratio = (cl_other.array / cl_self.array) ** 0.5
+        name = "transfer" if self.name is None else self.name + "_transfer"
         return PowerSpectrum(
+            name=name,
             wavenumber=cl_self.wavenumber,
             array=transfer_ratio,
-            name="transfer",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -959,10 +963,11 @@ class SphericalDensity(AbstractField):
             batch_size=batch_size,
         )
         coherence_ratio = cl_cross.array / (cl_self.array * cl_other.array) ** 0.5
+        name = "coherence" if self.name is None else self.name + "_coherence"
         return PowerSpectrum(
+            name=name,
             wavenumber=cl_self.wavenumber,
             array=coherence_ratio,
-            name="coherence",
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,

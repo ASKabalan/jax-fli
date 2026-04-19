@@ -1,7 +1,6 @@
 """
 jax_fli: Forward-modeling and sampling on top of JAXPM + JAX-Decomp.
 """
-
 from . import fields, infer, initial, io, lensing, pm, utils
 from . import probabilistic_models as ppl
 
@@ -71,7 +70,6 @@ from .power import (
 from .utils import (
     centers,
     compute_box_size_from_redshift,
-    compute_lightcone_shells,
     compute_max_redshift_from_box_size,
     compute_particle_scale_factors,
     distances,
@@ -146,7 +144,6 @@ __all__ = [
     # From utils
     "compute_box_size_from_redshift",
     "compute_max_redshift_from_box_size",
-    "compute_lightcone_shells",
     "compute_particle_scale_factors",
     "edges",
     "distances",

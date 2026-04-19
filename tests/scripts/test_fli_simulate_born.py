@@ -124,7 +124,7 @@ def test_born_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "lensing", "--nside", str(_NSIDE)]
+        ["fli-simulate", "--sim-mode", "lensing", "--nside", str(_NSIDE)]
         + _BASE_CLI
         + _COMMON_BORN_CLI
         + [
@@ -173,7 +173,7 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "lensing", "--flatsky-npix", npix, npix, "--field-size", fsize, fsize]
+        ["fli-simulate", "--sim-mode", "lensing", "--flatsky-npix", npix, npix, "--field-size", fsize, fsize]
         + _BASE_CLI
         + _COMMON_BORN_CLI
         + ["--output", out_file]

@@ -18,6 +18,7 @@ def born(
     min_z=0.01,
     max_z=1.5,
     n_integrate=32,
+    normalization="global",
 ):
     if nz_shear is None:
         raise ValueError("nz_shear must be provided for lensing")
@@ -47,6 +48,7 @@ def born(
             min_z,
             max_z,
             n_integrate,
+            normalization,
         )
     else:
         source_map = _born_flat(
@@ -59,6 +61,7 @@ def born(
             min_z,
             max_z,
             n_integrate,
+            normalization,
         )
 
     base_field = lightcone.replace(status=FieldStatus.KAPPA)

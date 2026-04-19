@@ -1,8 +1,8 @@
 """fli-simulate: CLI entry point for the jax_fli pipeline.
 
-Provides subcommands:
+Use --sim-mode to select the pipeline:
   lpt      — IC → LPT → lightcone / particles
-  nbody    — IC → LPT(particles) → NBody → lightcone / particles
+  pm       — IC → LPT(particles) → NBody → lightcone / particles
   lensing  — IC → LPT → NBody → Born → kappa
 
 JAX is imported lazily (after argument parsing) so --help is instantaneous.
@@ -158,34 +158,25 @@ def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> N
 
 
 def parser() -> ArgumentParser:
-    """Build the full argparse tree with subcommands."""
+    """Build the flat argument parser with --sim-mode."""
     from jax_fli.scripts.parser import (
-        add_common_sim_args,
         add_cosmo_args,
         add_distributed_args,
-        add_lensing_args,
-        add_lightcone_args,
-        add_mesh_args,
-        add_output_target_args,
+        add_integration_settings_args,
+        add_simulation_settings_args,
     )
 
-    # Single shared parent for all three subcommands
-    shared = ArgumentParser(add_help=False)
-    add_mesh_args(shared, nargs=3)
-    add_distributed_args(shared)
-    add_cosmo_args(shared, sweep=False)
-    add_output_target_args(shared)
-    add_common_sim_args(shared)
-    add_lightcone_args(shared)
-
-    # fli-simulate-specific args
-    shared.add_argument("--nb-shells", type=int, default=None, help="Number of lightcone shells")
-    shared.add_argument(
+    p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
+    add_distributed_args(p)
+    add_simulation_settings_args(p)
+    add_integration_settings_args(p)
+    add_cosmo_args(p)
+    p.add_argument(
         "--output", "-o", default="sim_output.parquet", help="Output file path (default: sim_output.parquet)"
     )
-    shared.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
-    shared.add_argument("--perf", action="store_true", help="Benchmark: warmup + N timed iterations")
-    shared.add_argument(
+    p.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
+    p.add_argument("--perf", action="store_true", help="Benchmark: warmup + N timed iterations")
+    p.add_argument(
         "--iterations",
         "-i",
         type=int,
@@ -193,35 +184,6 @@ def parser() -> ArgumentParser:
         metavar="N",
         help="Number of timed iterations for --perf (default: 5)",
     )
-    shared.add_argument("--trace", action="store_true", help="Run with JAX profiler trace")
-    shared.add_argument(
-        "--trace-dir", default="/tmp/jax_trace", help="Directory for profiler trace (default: /tmp/jax_trace)"
-    )
-    shared.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
-
-    # Top-level parser
-    p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
-    subparsers = p.add_subparsers(dest="subcommand", required=True)
-
-    subparsers.add_parser(
-        "lpt",
-        parents=[shared],
-        help="Run IC → LPT only",
-        description="Generate initial conditions and apply LPT displacements.",
-    )
-    subparsers.add_parser(
-        "nbody",
-        parents=[shared],
-        help="Run IC → LPT(particles) → NBody",
-        description="Run full N-body integration from LPT initial conditions.",
-    )
-    lensing_p = subparsers.add_parser(
-        "lensing",
-        parents=[shared],
-        help="Run IC → LPT → NBody → Born lensing",
-        description="Run full pipeline including weak lensing convergence maps.",
-    )
-    add_lensing_args(lensing_p)
 
     return p
 
@@ -246,16 +208,11 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
             )
 
     # lensing requires a projection target
-    if args.subcommand == "lensing":
+    if args.sim_mode == "lensing":
         nside = getattr(args, "nside", None)
         flatsky_npix = getattr(args, "flatsky_npix", None)
         if nside is None and flatsky_npix is None:
-            parser.error("lensing subcommand requires --nside or --flatsky-npix")
-
-    # --perf and --trace are mutually exclusive (perf wins)
-    if getattr(args, "perf", False) and getattr(args, "trace", False):
-        print("Warning: --perf and --trace both specified; --perf takes precedence, --trace ignored", file=sys.stderr)
-        args.trace = False
+            parser.error("--sim-mode lensing requires --nside or --flatsky-npix")
 
     # --interp onion requires --nside
     interp = getattr(args, "interp", "none")
@@ -376,7 +333,7 @@ def run_simulations(
         shell_spacing=shell_spacing,
         min_width=min_width,
     )
-    if sim_type == "nbody":
+    if sim_type == "pm":
         return lightcone
 
     # Run lensing
@@ -389,13 +346,7 @@ def run_simulations(
 def main() -> None:
     """CLI entry point registered as fli-simulate."""
     p = parser()
-    args, unknown = p.parse_known_args()
-    if unknown:
-        print(
-            f"Warning: the following arguments are not recognized by the "
-            f"'{args.subcommand}' subcommand and will be ignored: {unknown}",
-            file=sys.stderr,
-        )
+    args = p.parse_args()
     jax.config.update("jax_enable_x64", args.enable_x64)
     _validate_args(args, p)
 
@@ -411,7 +362,7 @@ def main() -> None:
     solver = _build_solver(args, painting)
 
     output_dir = os.path.dirname(args.output) or "."
-    _save_args_log(args, output_dir, f"fli-simulate {args.subcommand}")
+    _save_args_log(args, output_dir, f"fli-simulate {args.sim_mode}")
 
     mesh = tuple(args.mesh_size)
     px, py = args.pdim
@@ -432,9 +383,9 @@ def main() -> None:
         halo_size=halo_size,
     )
 
-    sim_type = args.subcommand
+    sim_type = args.sim_mode
     lpt_order = args.lpt_order
-    if args.subcommand == "lensing":
+    if args.sim_mode == "lensing":
         sim_type = "born"
 
     density_widths = jnp.array(args.density_widths) if args.density_widths is not None else None

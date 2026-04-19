@@ -317,7 +317,6 @@ class DistributedNormal(Normal):
     def sample(self, key: Key, sample_shape=()):
         assert is_prng_key(key)
         eps_shape = sample_shape + self.batch_shape + self.event_shape
-        print(f"Sampling with shape {eps_shape} and sharding {self.field_sharding}")
         eps = normal_field(key, eps_shape, self.field_sharding)
         arr = self.loc + eps * self.scale
 

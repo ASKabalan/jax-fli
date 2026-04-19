@@ -13,7 +13,7 @@ from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
 
-__all__ = ["_try_parse_s3", "_resolve_nz_shear", "_build_sharding", "_save_args_log"]
+__all__ = ["_try_parse_s3", "_try_parse_des_y3", "_resolve_nz_shear", "_build_sharding", "_save_args_log"]
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +50,35 @@ def _try_parse_s3(token: str):
     raise ValueError(f"Cannot parse s3 selector '[{selector}]'. Use s3[i] or s3[start:stop[:step]].")
 
 
+def _try_parse_des_y3(token: str):
+    """Parse des_y3 with an optional bin selector. Returns None if token is not des_y3.
+
+    Supported forms:
+      des_y3            → all 4 DES Y3 bins
+      des_y3[0]         → first bin only (wrapped in a list)
+      des_y3[1:3]       → bins 1 and 2
+      des_y3[:2]        → first two bins
+      des_y3[::2]       → every other bin
+    """
+    m = re.fullmatch(r"(?:des_y3|desy3)(?:\[([^\]]*)\])?", token, re.IGNORECASE)
+    if m is None:
+        return None
+    distributions = jfli.io.get_des_y3_nz_shear()
+    selector = m.group(1)
+    if selector is None:
+        return distributions
+    # Integer index → wrap in list for uniform downstream handling
+    if re.fullmatch(r"-?\d+", selector):
+        return [distributions[int(selector)]]
+    # Slice notation  start:stop  or  start:stop:step
+    parts = selector.split(":")
+    if 2 <= len(parts) <= 3:
+        opt = lambda s: int(s) if s else None  # noqa: E731
+        slc = slice(opt(parts[0]), opt(parts[1]), opt(parts[2]) if len(parts) == 3 else None)
+        return distributions[slc]
+    raise ValueError(f"Cannot parse des_y3 selector '[{selector}]'. Use des_y3[i] or des_y3[start:stop[:step]].")
+
+
 def _resolve_nz_shear(args: Namespace):
     """Return nz_shear list from CLI --nz-shear values."""
     nz_shear = getattr(args, "nz_shear", None)
@@ -60,13 +89,18 @@ def _resolve_nz_shear(args: Namespace):
         s3 = _try_parse_s3(values[0])
         if s3 is not None:
             return s3
+        des_y3 = _try_parse_des_y3(values[0])
+        if des_y3 is not None:
+            return des_y3
     # Otherwise parse as floats
     try:
         import jax.numpy as jnp
 
         return jnp.array(values, dtype=jnp.float32)
     except ValueError as exc:
-        raise ValueError(f"--nz-shear values must be floats or s3/s3[i]/s3[start:stop]: {values}") from exc
+        raise ValueError(
+            f"--nz-shear values must be floats or s3/s3[i]/s3[start:stop] or des_y3/des_y3[i]/des_y3[start:stop]: {values}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------

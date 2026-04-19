@@ -103,7 +103,7 @@ def test_lpt_density_script_vs_api(tmp_path, cosmo, lpt_order, dealiased, exact_
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "lpt", "--density"]
+        ["fli-simulate", "--sim-mode", "lpt", "--density"]
         + _BASE_CLI
         + _COMMON_LPT_CLI
         + [
@@ -146,7 +146,7 @@ def test_lpt_particles_script_vs_api(tmp_path, cosmo, lpt_order, dealiased, exac
     # --- subprocess ---
     # No output-target flag → default is particles
     cmd = (
-        ["fli-simulate", "lpt"]
+        ["fli-simulate", "--sim-mode", "lpt"]
         + _BASE_CLI
         + _COMMON_LPT_CLI
         + [
@@ -192,7 +192,7 @@ def test_lpt_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "lpt", "--nside", str(_NSIDE)]
+        ["fli-simulate", "--sim-mode", "lpt", "--nside", str(_NSIDE)]
         + _BASE_CLI
         + _COMMON_LPT_CLI
         + [
@@ -228,6 +228,7 @@ def test_lpt_flat_script_vs_api(tmp_path, cosmo):
     cmd = (
         [
             "fli-simulate",
+            "--sim-mode",
             "lpt",
             "--flatsky-npix",
             str(_FLATSKY_NPIX[0]),

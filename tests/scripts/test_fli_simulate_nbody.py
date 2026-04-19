@@ -96,7 +96,7 @@ def test_nbody_particles_script_vs_api(
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "nbody", "--ts", str(_A_END)]
+        ["fli-simulate", "--sim-mode", "pm", "--ts", str(_A_END)]
         + _BASE_CLI
         + [
             "--t0",
@@ -221,7 +221,7 @@ def test_nbody_density_script_vs_api(
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "nbody", "--density", "--ts", str(_A_END)]
+        ["fli-simulate", "--sim-mode", "pm", "--density", "--ts", str(_A_END)]
         + _BASE_CLI
         + [
             "--t0",
@@ -319,7 +319,7 @@ def test_nbody_spherical_script_vs_api(
 
     # --- subprocess ---
     cmd = (
-        ["fli-simulate", "nbody", "--nside", str(_NSIDE), "--ts", str(_A_END)]
+        ["fli-simulate", "--sim-mode", "pm", "--nside", str(_NSIDE), "--ts", str(_A_END)]
         + _BASE_CLI
         + [
             "--t0",
@@ -403,7 +403,8 @@ def test_nbody_flat_script_vs_api(
     cmd = (
         [
             "fli-simulate",
-            "nbody",
+            "--sim-mode",
+            "pm",
             "--flatsky-npix",
             str(_FLATSKY_NPIX[0]),
             str(_FLATSKY_NPIX[1]),

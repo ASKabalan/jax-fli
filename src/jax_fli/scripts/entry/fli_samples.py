@@ -19,11 +19,10 @@ from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_ar
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-samples."""
     from jax_fli.scripts.parser import (
-        add_common_sim_args,
         add_distributed_args,
-        add_lensing_args,
-        add_lightcone_args,
-        add_mesh_args,
+        add_integration_settings_args,
+        add_prior_args,
+        add_simulation_settings_args,
     )
 
     p = argparse.ArgumentParser(
@@ -31,42 +30,31 @@ def parser() -> argparse.ArgumentParser:
         description="Generate prior-predictive samples from a probabilistic model.",
     )
 
-    p.add_argument(
+    add_distributed_args(p)
+    add_simulation_settings_args(p)
+    add_integration_settings_args(p)
+    add_prior_args(p)
+
+    g = p.add_argument_group("Sampling settings")
+    g.add_argument(
         "--model",
         choices=["full", "mock"],
         default="full",
         help="Probabilistic model to sample from: 'full' or 'mock' (default: full)",
     )
 
-    add_mesh_args(p, nargs=3)
-    add_distributed_args(p)
-    add_common_sim_args(p)
-    add_lightcone_args(p)
-    add_lensing_args(p)
-
-    # Geometry (mutually exclusive)
-    geom_group = p.add_mutually_exclusive_group()
-    geom_group.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
-    geom_group.add_argument(
-        "--flatsky-npix",
-        type=int,
-        nargs=2,
-        default=None,
-        metavar=("H", "W"),
-        help="Flat-sky pixel resolution (height width)",
-    )
-
     # Samples-specific
-    p.add_argument("--nb-shells", type=int, default=8, help="Number of lightcone shells (default: 8)")
-    p.add_argument("--sigma-e", type=float, default=0.26, help="Shape-noise dispersion (default: 0.26)")
-    p.add_argument(
-        "--density-plane-smoothing", type=float, default=0.0, help="Density plane smoothing scale (default: 0.0)"
+    g.add_argument("--sigma-e", type=float, default=0.26, help="Shape-noise dispersion (default: 0.26)")
+    g.add_argument("--num-samples", type=int, default=100, help="Number of prior-predictive samples (default: 100)")
+    g.add_argument("--path", required=True, metavar="PATH", help="Output directory for samples and catalogs.")
+    g.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
+    g.add_argument(
+        "--initial-condition",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Parquet Catalog with IC DensityField (required when 'ic' is not in --sample).",
     )
-    p.add_argument("--num-samples", type=int, default=100, help="Number of prior-predictive samples (default: 100)")
-    p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
-    p.add_argument("--path", type=str, required=True, help="Output directory")
-    p.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
     return p
 
@@ -93,10 +81,13 @@ def main() -> None:
     # --- resolve nz_shear ---
     nz_shear = _resolve_nz_shear(args)
 
-    priors = {
-        "Omega_c": jfli.infer.PreconditionnedUniform(0.1, 0.5),
-        "sigma8": jfli.infer.PreconditionnedUniform(0.6, 1.0),
-    }
+    # --- build priors from CLI args ---
+    sample_set = set(args.sample)
+    priors = {}
+    if "cosmo" in sample_set:
+        priors["Omega_c"] = jfli.infer.PreconditionnedUniform(*args.prior_omega_c)
+        priors["sigma8"] = jfli.infer.PreconditionnedUniform(*args.prior_sigma8)
+        priors["h"] = jfli.infer.PreconditionnedUniform(*args.prior_h)
 
     # --- determine geometry ---
     if args.flatsky_npix is not None:
@@ -118,11 +109,11 @@ def main() -> None:
         box_size=tuple(args.box_size),
         nside=nside,
         flatsky_npix=flatsky_npix,
+        field_size=args.field_size,
         fiducial_cosmology=jc.Planck18,
         nz_shear=nz_shear,
         priors=priors,
         sigma_e=args.sigma_e,
-        density_plane_smoothing=args.density_plane_smoothing,
         halo_size=halo_size,
         observer_position=tuple(args.observer_position),
         t0=args.t0,
@@ -150,7 +141,8 @@ def main() -> None:
         model = jfli.ppl.mock_probmodel(config)
 
     # --- sample with NumPyro Predictive ---
-    rng_key = jax.random.PRNGKey(args.seed)
+    chain_key = jax.random.PRNGKey(args.seed)
+    rng_key = jax.random.fold_in(chain_key, args.batch_id)
     pred = Predictive(model, num_samples=args.num_samples)
     samples = pred(rng_key)
 

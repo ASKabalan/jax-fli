@@ -32,7 +32,6 @@ class Configurations:
     flatsky_npix: tuple[int, int] = None
     field_size: tuple[float, float] = None
     # Lensing parameters
-    density_plane_smoothing: float = 0.0
     min_redshift: float = 0.01
     max_redshift: float = 1.5
     lensing: str = "born"

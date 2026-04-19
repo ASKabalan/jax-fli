@@ -67,10 +67,11 @@ def _load_initial_condition(path: str):
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-infer."""
     from jax_fli.scripts.parser import (
-        add_common_sim_args,
         add_distributed_args,
-        add_lensing_args,
-        add_lightcone_args,
+        add_infer_args,
+        add_integration_settings_args,
+        add_prior_args,
+        add_simulation_settings_args,
     )
 
     p = argparse.ArgumentParser(
@@ -79,7 +80,6 @@ def parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # Required args
     p.add_argument(
         "--observable",
         type=str,
@@ -94,62 +94,12 @@ def parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Output directory for MCMC checkpoints and parquet catalogs.",
     )
-    p.add_argument(
-        "--mesh-size", type=int, nargs=3, required=True, metavar=("NX", "NY", "NZ"), help="Inference mesh resolution."
-    )
-    p.add_argument(
-        "--box-size", type=float, nargs=3, required=True, metavar=("LX", "LY", "LZ"), help="Box side lengths in Mpc/h."
-    )
 
-    # Shared arg groups
     add_distributed_args(p)
-    add_common_sim_args(p)
-    add_lightcone_args(p)
-    add_lensing_args(p)
-
-    # Infer-specific
-    p.add_argument("--nb-shells", type=int, default=8, metavar="INT", help="Number of lightcone shells (default: 8)")
-    p.add_argument(
-        "--initial-condition",
-        type=str,
-        default=None,
-        metavar="PATH",
-        help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
-    )
-    p.add_argument(
-        "--init-cosmo",
-        action="store_true",
-        help="Warm-start cosmological parameters from the observable's stored cosmology.",
-    )
-    p.add_argument(
-        "--sample",
-        nargs="+",
-        default=["cosmo", "ic"],
-        choices=["cosmo", "ic"],
-        metavar="WHAT",
-        help="Space-separated subset of {cosmo, ic} to sample (default: cosmo ic).",
-    )
-    p.add_argument("--sigma-e", type=float, default=0.26, help="Shape noise dispersion (default: 0.26)")
-    p.add_argument(
-        "--density-plane-smoothing", type=float, default=0.0, help="Density plane smoothing scale (default: 0.0)"
-    )
-    p.add_argument(
-        "--adjoint",
-        choices=["checkpointed", "recursive"],
-        default="checkpointed",
-        help="Gradient strategy for NUTS (default: checkpointed)",
-    )
-    p.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")
-    p.add_argument("--num-warmup", type=int, default=500, help="MCMC warmup iterations (default: 500)")
-    p.add_argument("--num-samples", type=int, default=1000, help="Samples per batch (default: 1000)")
-    p.add_argument("--batch-count", type=int, default=5, help="Number of sequential batches (default: 5)")
-    p.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
-    p.add_argument(
-        "--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend (default: numpyro)"
-    )
-    p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
-    p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
+    add_simulation_settings_args(p)
+    add_integration_settings_args(p)
+    add_prior_args(p)
+    add_infer_args(p)
 
     return p
 
@@ -161,6 +111,10 @@ def parser() -> argparse.ArgumentParser:
 
 def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
     """Validate argument combinations before running JAX."""
+    if args.mesh_size is None:
+        p.error("--mesh-size is required for fli-infer.")
+    if args.box_size is None:
+        p.error("--box-size is required for fli-infer.")
     if not args.sample:
         p.error("--sample must contain at least one of 'cosmo' or 'ic'.")
 
@@ -237,10 +191,11 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    priors = {
-        "Omega_c": jfli.infer.PreconditionnedUniform(0.1, 0.5),
-        "sigma8": jfli.infer.PreconditionnedUniform(0.6, 1.0),
-    }
+    priors = {}
+    if "cosmo" in sample_set:
+        priors["Omega_c"] = jfli.infer.PreconditionnedUniform(*args.prior_omega_c)
+        priors["sigma8"] = jfli.infer.PreconditionnedUniform(*args.prior_sigma8)
+        priors["h"] = jfli.infer.PreconditionnedUniform(*args.prior_h)
 
     mesh = tuple(args.mesh_size)
     px, py = args.pdim
@@ -258,7 +213,6 @@ def main() -> None:
         nz_shear=nz_shear,
         priors=priors,
         sigma_e=args.sigma_e,
-        density_plane_smoothing=args.density_plane_smoothing,
         halo_size=halo_size,
         t0=args.t0,
         nb_steps=args.nb_steps,
