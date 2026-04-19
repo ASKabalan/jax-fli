@@ -118,6 +118,7 @@ def _compute_spectra(field, field_type: str, args):
     elif field_type == "DensityField":
         return field.power(
             kedges=kedges,
+            dk=args.dk,
             kmax=args.kmax,
             multipoles=tuple(args.multipoles),
             los=tuple(args.los),
