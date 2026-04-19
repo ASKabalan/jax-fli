@@ -286,12 +286,13 @@ class DensityField(AbstractField):
         plt.show()
 
     # -------------------------------------------------------- power-spectrum API
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax"])
+    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax", "dk"])
     def power(
         self,
         mesh2: DensityField | None = None,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        dk: float | None = None,
         kmax: float | None = None,
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
@@ -323,6 +324,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=box_shape,
                 kedges=kedges,
+                dk=dk,
                 kmax=kmax,
                 multipoles=multipoles,
                 los=los,
@@ -342,11 +344,12 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax"])
+    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax", "dk"])
     def cross_power(
         self,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        dk: float | None = None,
         kmax: float | None = None,
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
@@ -414,6 +417,7 @@ class DensityField(AbstractField):
                 mesh_j,
                 box_shape=box_shape,
                 kedges=kedges,
+                dk=dk,
                 kmax=kmax,
                 multipoles=multipoles_static,
                 los=los_tuple,
@@ -439,12 +443,13 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["kedges", "batch_size", "kmax"])
+    @partial(jax.jit, static_argnames=["kedges", "batch_size", "kmax", "dk"])
     def transfer(
         self,
         other: DensityField,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        dk: float | None = None,
         kmax: float | None = None,
         batch_size: int | None = None,
     ) -> PowerSpectrum:
@@ -457,6 +462,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=self.box_size,
                 kedges=kedges,
+                dk=dk,
                 kmax=kmax,
             )
 
@@ -493,6 +499,7 @@ class DensityField(AbstractField):
         other: DensityField,
         *,
         kedges: Array | jnp.ndarray | None = None,
+        dk: float | None = None,
         kmax: float | None = None,
         batch_size: int | None = None,
     ) -> PowerSpectrum:
@@ -505,6 +512,7 @@ class DensityField(AbstractField):
                 arr2,
                 box_shape=self.box_size,
                 kedges=kedges,
+                dk=dk,
                 kmax=kmax,
             )
 
