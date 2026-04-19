@@ -1,4 +1,4 @@
-"""Shared argument-group builders used by entry-point scripts and the launcher.
+"""Shared argument-group builders used by entry-point scripts.
 
 All functions are pure argparse — no jax_fli imports.
 """
@@ -17,48 +17,6 @@ def add_distributed_args(p):
         help="Process mesh dimensions (default: 1 1 = single device)",
     )
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
-
-
-def add_slurm_args(p):
-    """SLURM / cluster arguments owned by fli-launcher.
-
-    ``--pdim`` and ``--nodes`` are duplicated here so the launcher can validate
-    ``gpus_per_node * nodes == prod(pdim)`` and then forward them to the
-    entry-script command after the ``--`` separator.
-    """
-    g = p.add_argument_group("SLURM / cluster")
-    g.add_argument(
-        "--mode", choices=["local", "sbatch", "dryrun"], default="dryrun", help="Execution mode (default: dryrun)"
-    )
-    g.add_argument("--account", default="XXX", help="SLURM account")
-    g.add_argument("--constraint", default="h100", help="Node constraint (set to 'cpu' for CPU-only jobs)")
-    g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
-    g.add_argument("--gpus-per-node", type=int, default=4, dest="gpus_per_node", help="GPUs per node (default: 4)")
-    g.add_argument("--cpus-per-node", type=int, default=16, dest="cpus_per_node", help="CPUs per node (default: 16)")
-    g.add_argument(
-        "--tasks-per-node",
-        type=int,
-        default=None,
-        dest="tasks_per_node",
-        help="MPI tasks per node (defaults to --gpus-per-node)",
-    )
-    g.add_argument("--qos", default="qos_gpu_h100-t3", help="SLURM QoS")
-    g.add_argument("--time-limit", default="00:30:00", dest="time_limit", help="SLURM time limit (HH:MM:SS)")
-    g.add_argument(
-        "--slurm-script",
-        default=None,
-        dest="slurm_script",
-        help="Path to the SLURM wrapper script (required when --mode=sbatch)",
-    )
-    g.add_argument("--output-logs", default="SLURM_LOGS", dest="output_logs", help="Directory for SLURM log files")
-    g.add_argument(
-        "--pdim",
-        type=int,
-        nargs=2,
-        default=[1, 1],
-        metavar=("PX", "PY"),
-        help="JAX process mesh dimensions; forwarded to the command (default: 1 1)",
-    )
 
 
 def add_integration_settings_args(p):
