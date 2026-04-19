@@ -124,7 +124,7 @@ def add_integration_settings_args(p):
         "--density-widths", type=float, nargs="+", default=None, metavar="W", help="Override shell widths in Mpc/h"
     )
     # Lightcone timing
-    ts_group = p.add_mutually_exclusive_group()
+    ts_group = g.add_mutually_exclusive_group()
     ts_group.add_argument(
         "--ts", type=float, nargs="+", default=None, metavar="A", help="Scale factors for snapshot/shell output"
     )

@@ -141,7 +141,8 @@ def main() -> None:
         model = jfli.ppl.mock_probmodel(config)
 
     # --- sample with NumPyro Predictive ---
-    rng_key = jax.random.PRNGKey(args.seed)
+    chain_key = jax.random.PRNGKey(args.seed)
+    rng_key = jax.random.fold_in(chain_key, args.batch_id)
     pred = Predictive(model, num_samples=args.num_samples)
     samples = pred(rng_key)
 
