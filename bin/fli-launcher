@@ -278,6 +278,7 @@ def _run_sbatch(args: argparse.Namespace, cmd: list[str]) -> None:
         f"--output={args.output_logs}/%x_%j.out",
         f"--error={args.output_logs}/%x_%j.err",
         os.path.expandvars(args.slurm_script),
+        "TRACES_DIR"
     ]
     subprocess.run(sbatch + cmd, check=True)
 
