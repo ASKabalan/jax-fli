@@ -425,6 +425,12 @@ def add_spectra_density_args(p):
         default=None,
         help="Maximum k for P(k) (default: Nyquist frequency based on mesh size)",
     )
+    p.add_argument(
+        "--dk",
+        type=float,
+        default=None,
+        help="k bin width for P(k) (default: auto based on box size and kmax)",
+    )
     g.add_argument(
         "--multipoles",
         type=int,

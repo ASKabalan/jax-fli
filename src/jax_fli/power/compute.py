@@ -10,13 +10,14 @@ import numpy as np
 from .._src.power import _coherence, _cross_spherical_cl, _flat_cl, _power, _spherical_cl, _transfer
 
 
-@partial(jax.jit, static_argnames=["box_shape", "multipoles", "los", "kmax"])
+@partial(jax.jit, static_argnames=["box_shape", "multipoles", "los", "kmax", "dk"])
 def power(
     mesh,
     mesh2=None,
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    dk: float | None = None,
     kmax: float | None = None,
     multipoles: int | Iterable[int] = 0,
     los: jnp.ndarray | Iterable[float] = jnp.array([0.0, 0.0, 1.0]),
@@ -29,6 +30,7 @@ def power(
         mesh2,
         box_shape=box_shape,
         kedges=kedges,
+        dk=dk,
         kmax=kmax,
         multipoles=multipoles,
         los=los_array,
@@ -42,6 +44,7 @@ def transfer(
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    dk: float | None = None,
     kmax: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Monopole transfer function sqrt(P1/P0)."""
@@ -50,6 +53,7 @@ def transfer(
         mesh1,
         box_shape=box_shape,
         kedges=kedges,
+        dk=dk,
         kmax=kmax,
     )
     return wavenumber, tr
@@ -61,6 +65,7 @@ def coherence(
     *,
     box_shape: tuple[float, float, float],
     kedges: int | float | Iterable[float] | None = None,
+    dk: float | None = None,
     kmax: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Monopole coherence pk01 / sqrt(pk0 pk1)."""
@@ -69,6 +74,7 @@ def coherence(
         mesh1,
         box_shape=box_shape,
         kedges=kedges,
+        dk=dk,
         kmax=kmax,
     )
     return wavenumber, coh

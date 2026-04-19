@@ -116,8 +116,11 @@ def _compute_spectra(field, field_type: str, args):
             batch_size=args.batch_size,
         )
     elif field_type == "DensityField":
+        if args.kedges is not None and args.dk is not None:
+            raise ValueError("Cannot specify both kedges and dk. Please choose one.")
         return field.power(
             kedges=kedges,
+            dk=args.dk,
             kmax=args.kmax,
             multipoles=tuple(args.multipoles),
             los=tuple(args.los),
