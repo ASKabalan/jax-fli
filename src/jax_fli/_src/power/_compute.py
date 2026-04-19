@@ -20,7 +20,7 @@ def _legendre(mu, ell: int):
     return P1
 
 
-def _initialize_pk(mesh_shape, box_shape, kedges, dk , kmax, los):
+def _initialize_pk(mesh_shape, box_shape, kedges, dk, kmax, los):
     """Initialize k-bins and meshes; kedges may be None (handled internally)."""
     mesh_shape = tuple(mesh_shape)
     box_shape = tuple(box_shape)
@@ -89,7 +89,7 @@ def _power(
 
     meshk = jnp.fft.fftn(mesh, norm="ortho")
 
-    dig, kcount, kavg, mumesh, kedges = _initialize_pk(mesh_shape, box_shape, kedges,dk, kmax, los)
+    dig, kcount, kavg, mumesh, kedges = _initialize_pk(mesh_shape, box_shape, kedges, dk, kmax, los)
     n_bins = kedges.shape[0] + 1
 
     if mesh2 is None:
