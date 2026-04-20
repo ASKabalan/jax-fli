@@ -69,6 +69,18 @@ class TestManualTs:
         np.testing.assert_allclose(ts_out, ts_input)
         np.testing.assert_allclose(dw, 100.0)
 
+    def test_ts_1d_unsorted_widths_follow_sort(self, cosmology):
+        """density_widths are reordered to match sorted ts, not kept in input order."""
+        ts_input = jnp.array([0.9, 0.3, 0.6])
+        widths_input = jnp.array([100.0, 200.0, 150.0])
+        ts_out, _, dw = resolve_geometry(
+            cosmology, MAX_BOX, ts=ts_input, box_size_z=MAX_BOX * 2, density_widths=widths_input
+        )
+        # ts must come out sorted ascending
+        assert np.all(np.diff(np.asarray(ts_out)) > 0)
+        # widths must follow the same permutation as ts: argsort([0.9,0.3,0.6])=[1,2,0]
+        np.testing.assert_allclose(dw, jnp.array([200.0, 150.0, 100.0]))
+
     def test_ts_1d_without_widths(self, cosmology):
         """1-D ts without density_widths auto-computes Voronoi widths."""
         ts_input = jnp.linspace(0.3, 0.9, 5)
