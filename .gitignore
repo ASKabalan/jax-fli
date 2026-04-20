@@ -102,6 +102,7 @@ celerybeat.pid
 out
 traces
 *.npy
+!des_y3_footprint_mask_nside2048.npy
 *.out
 # SageMath parsed files
 *.sage.py

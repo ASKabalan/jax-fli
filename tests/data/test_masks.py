@@ -1,6 +1,5 @@
-import numpy as np
-
 import jax_fli.data as jfli_data
+import numpy as np
 
 FULL_SKY_DEG2 = 4 * np.pi * (180 / np.pi) ** 2  # ~41253 deg²
 
