@@ -85,7 +85,7 @@ where = ["src"]
 include = ["jax_fli*"]
 
 [tool.setuptools.package-data]
-"jax_fli.data" = ["stage3_nz/*.txt", "des_y3_nz/*.txt", "des_y3_nz/*.json"]
+"jax_fli.data" = ["stage3_nz/*.txt", "des_y3_nz/*.txt", "des_y3_nz/*.json", "masks/*.npy"]
 
 [tool.ruff]
 line-length = 120
