@@ -370,11 +370,13 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z):
 
     # --- 1-D array: shell centres ---
     if ts.ndim == 1:
-        ts = jnp.sort(ts)
+        indices_sorted = jnp.argsort(ts)
+        ts = ts[indices_sorted]
         r_centers = jc.background.radial_comoving_distance(cosmo, ts)
         if density_widths is not None:
             try:
                 density_widths = jnp.broadcast_to(density_widths, r_centers.shape)
+                density_widths = density_widths[indices_sorted]
             except ValueError:
                 raise ValueError("density_widths must be broadcastable to the shape of ts.")
         else:
