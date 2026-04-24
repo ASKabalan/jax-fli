@@ -153,14 +153,13 @@ def load_cosmogrid_lc(
     box_size = d_box_size
 
     # Create mask based on filter
+    mask = np.ones(len(lower_z), dtype=bool)
     if max_shells is not None:
         mask = np.arange(len(lower_z)) < max_shells
-    elif max_redshift is not None:
-        mask = lower_z <= max_redshift
-    elif max_comoving_distance is not None:
-        mask = lower_com <= max_comoving_distance
-    else:
-        mask = np.ones(len(lower_z), dtype=bool)
+    if max_redshift is not None:
+        mask = mask & (lower_z <= max_redshift)
+    if max_comoving_distance is not None:
+        mask = mask & (lower_com <= max_comoving_distance)
 
     # Apply mask
     indices = np.where(mask)[0]

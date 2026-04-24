@@ -89,14 +89,13 @@ def load_gowerstreet(
 
     # Creating mask
     # If max_shells, take the last max_shells shells
+    mask = np.ones_like(z_far, dtype=bool)
     if max_shells is not None and max_shells > 0:
         mask = np.arange(len(z_far)) >= (len(z_far) - max_shells)
-    elif max_redshift is not None:
-        mask = z_near <= max_redshift
-    elif max_comoving_distance is not None:
-        mask = comoving_near <= max_comoving_distance
-    else:
-        mask = np.ones_like(z_far, dtype=bool)
+    if max_redshift is not None:
+        mask = mask & (z_near <= max_redshift)
+    if max_comoving_distance is not None:
+        mask = mask & (comoving_near <= max_comoving_distance)
 
     print(f"[{z_far.shape}, {z_near.shape}, {comoving_far.shape}, {comoving_near.shape}, {density_widths.shape}]")
     (indices,) = np.where(mask)
