@@ -108,10 +108,15 @@ class PowerSpectrum(AbstractField):
             "PowerSpectrum("
             f"wavenumber=Array{tuple(self.wavenumber.shape)}, "  # type: ignore[reportOptionalMemberAccess]
             f"array=Array{tuple(self.array.shape)}, "
-            f"name={self.name!r}, "
-            f"status={self.status.name}, "
-            f"unit={self.unit.name}, "
-            f"scale_factors={self.scale_factors})"
+            f"dtype={self.array.dtype}, "
+            f"  mesh_size         ={self.mesh_size}, "
+            f"  box_size          ={self.box_size}, "
+            f"  nside             ={self.nside}, "
+            f"  flatsky_npix      ={self.flatsky_npix}, "
+            f"  field_size        ={self.field_size}, "
+            f"  name={self.name!r}, "
+            f"  status={self.status.name}, "
+            f"  unit={self.unit.name}, "
         )
 
     def __getitem__(self, key) -> PowerSpectrum:
