@@ -33,7 +33,13 @@ __all__ = [
 ]
 
 
-def _forces(pos: ParticleField, gradient_order: int = 1, laplace_fd: bool = False) -> ParticleField:
+def _forces(
+    pos: ParticleField,
+    gradient_order: int = 1,
+    laplace_fd: bool = False,
+    order: str = "cic",
+    deconvolution: bool = False,
+) -> ParticleField:
     """Compute raw PM forces (gradient of gravitational potential).
 
     Parameters
@@ -41,15 +47,24 @@ def _forces(pos: ParticleField, gradient_order: int = 1, laplace_fd: bool = Fals
     gradient_order : int
         0 = exact ik kernel, 4 = 4th-order finite-difference, 1 = alias for 4
         (backward-compatible with jaxpm's order=1 which is 4th-order FD).
+    order : int or str
+        Mass-assignment order for the paint/readout (NGP=1, CIC=2, TSC=3, PCS=4).
+    deconvolution : bool
+        Deconvolve the assignment window from the painted density (Fourier space).
     """
     # Map to jaxpm convention: 0→0 (exact ik), 4→1 (4th-order FD), 1→1 (backward compat)
     jaxpm_gradient_order = 1 if gradient_order == 4 else gradient_order
+    # initial_particles is derived from the position unit, not a user knob:
+    # absolute coords -> None, displacements from the uniform grid -> 'uniform'.
+    initial_particles = None if pos.unit == PositionUnit.GRID_ABSOLUTE else "uniform"
     forces_array = pm_forces(
         pos.array,
         mesh_shape=pos.mesh_size,
-        paint_absolute_pos=(pos.unit == PositionUnit.GRID_ABSOLUTE),
+        initial_particles=initial_particles,
         halo_size=pos.halo_size,
         sharding=pos.field_sharding,
+        order=order,
+        deconvolution=deconvolution,
         gradient_order=jaxpm_gradient_order,
         laplace_fd=laplace_fd,
     )
@@ -140,6 +155,8 @@ class AbstractNBodySolver(eqx.Module):
     pgd_kernel: AbstractCorrection = NoCorrection()
     gradient_order: int = eqx.field(static=True, default=1)
     laplace_fd: bool = eqx.field(static=True, default=False)
+    order: str = eqx.field(static=True, default="cic")
+    deconvolution: bool = eqx.field(static=True, default=False)
     time_stepping: str = eqx.field(static=True, default="a")
     t0: float | None = eqx.field(static=True, default=0.001)
     t1: float = eqx.field(static=True, default=1.0)
@@ -267,7 +284,9 @@ class DoubleKickDrift(AbstractNBodySolver):
         af_2 = (t0 * t1) ** 0.5
 
         # 1. Forces at current position (x_i at t0)
-        forces = _forces(displacement, self.gradient_order, self.laplace_fd) * (1.5 * cosmo.Omega_m)
+        forces = _forces(displacement, self.gradient_order, self.laplace_fd, self.order, self.deconvolution) * (
+            1.5 * cosmo.Omega_m
+        )
 
         # 2. Compute Kick Factor
         # Note: If t0 == t_initial, then t_prev_clamped = t0, ai_1 = t0.
@@ -375,7 +394,9 @@ class DoubleKickDrift(AbstractNBodySolver):
         kick_factor = k1 + k2
         prefactor_kick = 1.0 / (ac_kick**2 * E(cosmo, ac_kick))
 
-        forces = _forces(x_uncorrected, self.gradient_order, self.laplace_fd) * (1.5 * cosmo.Omega_m)
+        forces = _forces(x_uncorrected, self.gradient_order, self.laplace_fd, self.order, self.deconvolution) * (
+            1.5 * cosmo.Omega_m
+        )
         dvel = forces * (prefactor_kick * kick_factor)
 
         v_old = v_uncorrected - dvel  # Time unit isn't critical for v return in reverse
@@ -462,7 +483,7 @@ class DriftKickDrift(AbstractNBodySolver):
         x_mid = displacement + velocities * ddrift1
 
         # Kick (raw forces without 3/2 Omega_m — absorbed into pi-integrator formulation)
-        forces = _forces(x_mid, self.gradient_order, self.laplace_fd)
+        forces = _forces(x_mid, self.gradient_order, self.laplace_fd, self.order, self.deconvolution)
         pi_new = velocities * alpha + forces * beta
 
         # Drift 2
@@ -502,7 +523,7 @@ class DriftKickDrift(AbstractNBodySolver):
         x_mid = displacement - velocities * ddrift2
 
         # Un-Kick (raw forces without 3/2 Omega_m — matches forward step)
-        forces = _forces(x_mid, self.gradient_order, self.laplace_fd)
+        forces = _forces(x_mid, self.gradient_order, self.laplace_fd, self.order, self.deconvolution)
         pi_old = (velocities - forces * beta) * (1.0 / alpha)
 
         # Un-Drift 1
@@ -616,7 +637,7 @@ class BullFrog(AbstractNBodySolver):
         x_mid = displacement + velocities * ddrift1
 
         # Kick (raw forces without 3/2 Omega_m — absorbed into BullFrog beta)
-        forces = _forces(x_mid, self.gradient_order, self.laplace_fd)
+        forces = _forces(x_mid, self.gradient_order, self.laplace_fd, self.order, self.deconvolution)
         pi_new = velocities * alpha + forces * beta
 
         # Drift 2
@@ -656,7 +677,7 @@ class BullFrog(AbstractNBodySolver):
         x_mid = displacement - velocities * ddrift2
 
         # Un-Kick (raw forces without 3/2 Omega_m — matches forward step)
-        forces = _forces(x_mid, self.gradient_order, self.laplace_fd)
+        forces = _forces(x_mid, self.gradient_order, self.laplace_fd, self.order, self.deconvolution)
         pi_old = (velocities - forces * beta) * (1.0 / alpha)
 
         # Un-Drift 1

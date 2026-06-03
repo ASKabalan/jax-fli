@@ -10,7 +10,10 @@ import numpy as np
 from .._src.power import _coherence, _cross_spherical_cl, _flat_cl, _power, _spherical_cl, _transfer
 
 
-@partial(jax.jit, static_argnames=["box_shape", "multipoles", "los", "kmax", "dk"])
+@partial(
+    jax.jit,
+    static_argnames=["box_shape", "multipoles", "los", "kmax", "dk", "compensate_order", "shotnoise"],
+)
 def power(
     mesh,
     mesh2=None,
@@ -21,8 +24,14 @@ def power(
     kmax: float | None = None,
     multipoles: int | Iterable[int] = 0,
     los: jnp.ndarray | Iterable[float] = jnp.array([0.0, 0.0, 1.0]),
+    compensate_order: int | str | None = None,
+    shotnoise: tuple[int | str, float] | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Array-only 3D power spectrum. Returns (wavenumber, spectra)."""
+    """Array-only 3D power spectrum. Returns (wavenumber, spectra).
+
+    ``compensate_order`` deconvolves the mass-assignment window; ``shotnoise``
+    (``(order, nbar)``) subtracts the aliased shot noise (auto-spectrum only).
+    """
     box_shape = tuple(box_shape)
     los_array = None if multipoles == 0 else tuple(np.asarray(los))
     wavenumber, spectra = _power(
@@ -34,6 +43,8 @@ def power(
         kmax=kmax,
         multipoles=multipoles,
         los=los_array,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
     )
     return wavenumber, spectra
 
@@ -46,8 +57,13 @@ def transfer(
     kedges: int | float | Iterable[float] | None = None,
     dk: float | None = None,
     kmax: float | None = None,
+    compensate_order: int | str | None = None,
+    shotnoise: tuple[int | str, float] | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Monopole transfer function sqrt(P1/P0)."""
+    """Monopole transfer function sqrt(P1/P0).
+
+    ``compensate_order``/``shotnoise`` are applied to both auto-spectra.
+    """
     wavenumber, tr = _transfer(
         mesh0,
         mesh1,
@@ -55,6 +71,8 @@ def transfer(
         kedges=kedges,
         dk=dk,
         kmax=kmax,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
     )
     return wavenumber, tr
 
@@ -67,8 +85,14 @@ def coherence(
     kedges: int | float | Iterable[float] | None = None,
     dk: float | None = None,
     kmax: float | None = None,
+    compensate_order: int | str | None = None,
+    shotnoise: tuple[int | str, float] | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Monopole coherence pk01 / sqrt(pk0 pk1)."""
+    """Monopole coherence pk01 / sqrt(pk0 pk1).
+
+    ``compensate_order`` deconvolves every spectrum; ``shotnoise`` is subtracted
+    from the two auto-spectra only.
+    """
     wavenumber, coh = _coherence(
         mesh0,
         mesh1,
@@ -76,6 +100,8 @@ def coherence(
         kedges=kedges,
         dk=dk,
         kmax=kmax,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
     )
     return wavenumber, coh
 

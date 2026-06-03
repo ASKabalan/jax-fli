@@ -8,7 +8,7 @@ import jax
 import jax.core
 import jax.numpy as jnp
 import numpy as np
-from jaxpm.painting import cic_read, cic_read_dx
+from jaxpm.painting import readout
 from jaxtyping import Array, Float
 
 if TYPE_CHECKING:
@@ -29,7 +29,6 @@ from .density import DensityField, FieldStatus
 from .lightcone import FlatDensity, SphericalDensity
 from .units import DensityUnit, PositionUnit, convert_units
 
-DEFAULT_CHUNK_SIZE = 2**24
 SphericalScheme = Literal["ngp", "bilinear", "rbf_neighbor"]
 
 
@@ -121,23 +120,26 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ painting: 3D
 
-    @partial(jax.jit, static_argnames=("chunk_size", "batch_size"))
+    @partial(jax.jit, static_argnames=("batch_size", "order"))
     def paint(
         self,
         *,
         mesh: Array | None = None,
         weights: Array | float = 1.0,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
         batch_size: int | None = None,
+        order: str = "cic",
     ) -> DensityField:
         """
-        Paint particles onto a 3D density mesh using CIC interpolation.
+        Paint particles onto a 3D density mesh using the stencil
+        (NGP/CIC/TSC/PCS) mass-assignment scheme.
 
         The interpretation of `self.array` is controlled by `self.unit`:
 
-        - GRID_RELATIVE -> displacements, uses CIC-DX.
-        - GRID_ABSOLUTE -> absolute grid coordinates, uses standard CIC.
+        - GRID_RELATIVE -> displacements, painted from the uniform grid.
+        - GRID_ABSOLUTE -> absolute grid coordinates.
         - MPC_H -> forbidden; convert first to a grid unit.
+
+        `order` selects the mass-assignment order (NGP=1, CIC=2, TSC=3, PCS=4).
         """
         data = jnp.asarray(self.array)
         if self.unit == PositionUnit.MPC_H:
@@ -155,7 +157,7 @@ class ParticleField(AbstractField):
             mode=mode,
             mesh=mesh,
             weights=weights,
-            chunk_size=chunk_size,
+            order=order,
         )
 
         if data.ndim == 4:
@@ -184,10 +186,10 @@ class ParticleField(AbstractField):
         """
         Interpolate values from a 3D density mesh back to particle positions.
 
-        Uses the same unit->mode mapping as `paint`:
+        Uses the same unit->mode mapping as `paint`, via the stencil `readout`:
 
-        - GRID_RELATIVE -> cic_read_dx
-        - GRID_ABSOLUTE -> cic_read
+        - GRID_RELATIVE -> initial_particles='uniform'
+        - GRID_ABSOLUTE -> initial_particles=None
         - MPC_H -> error (convert first)
         """
         if self.unit == PositionUnit.MPC_H:
@@ -195,20 +197,15 @@ class ParticleField(AbstractField):
             self = self.to(PositionUnit.GRID_RELATIVE)
         mode = "relative" if self.unit == PositionUnit.GRID_RELATIVE else "absolute"
 
-        if mode == "relative":
-            read_data = cic_read_dx(
-                density_mesh.array,
-                self.array,
-                halo_size=self.halo_size,
-                sharding=self.field_sharding,
-            )
-        else:  # "absolute"
-            read_data = cic_read(
-                density_mesh.array,
-                self.array,
-                halo_size=self.halo_size,
-                sharding=self.field_sharding,
-            )
+        initial_particles = "uniform" if mode == "relative" else None
+        read_data = readout(
+            density_mesh.array,
+            self.array,
+            initial_particles=initial_particles,
+            order="cic",
+            halo_size=self.halo_size,
+            sharding=self.field_sharding,
+        )
 
         return DensityField.FromDensityMetadata(
             array=read_data,

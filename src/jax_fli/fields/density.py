@@ -286,7 +286,10 @@ class DensityField(AbstractField):
         plt.show()
 
     # -------------------------------------------------------- power-spectrum API
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax", "dk"])
+    @partial(
+        jax.jit,
+        static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
+    )
     def power(
         self,
         mesh2: DensityField | None = None,
@@ -297,11 +300,19 @@ class DensityField(AbstractField):
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
         batch_size: int | None = None,
+        compensate_order: int | str | None = None,
+        shotnoise: tuple[int | str, float] | None = None,
     ) -> PowerSpectrum:
         """Compute the 3D matter power spectrum P(k).
 
         Parameters mirror :func:`jax_fli.power.power`. Any keyword
         arguments are forwarded verbatim to that helper.
+
+        ``compensate_order`` deconvolves the mass-assignment window of that
+        order (NGP=1, CIC=2, TSC=3, PCS=4). ``shotnoise=(order, nbar)`` subtracts
+        the aliased Poisson shot noise before deconvolving (auto-spectrum only);
+        ``nbar = N / box.prod()`` (for one particle per cell,
+        ``nbar = prod(mesh_size) / prod(box_size)``).
         """
         box_shape = tuple(self.box_size)
 
@@ -328,6 +339,8 @@ class DensityField(AbstractField):
                 kmax=kmax,
                 multipoles=multipoles,
                 los=los,
+                compensate_order=compensate_order,
+                shotnoise=shotnoise,
             )
 
         k, pk = jax.lax.map(_power_fn, (data1, data2), batch_size=batch_size)
@@ -344,7 +357,10 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["multipoles", "los", "batch_size", "kmax", "dk"])
+    @partial(
+        jax.jit,
+        static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
+    )
     def cross_power(
         self,
         *,
@@ -354,6 +370,8 @@ class DensityField(AbstractField):
         multipoles: Iterable[int] | None = 0,
         los: Array | Iterable[float] = (0.0, 0.0, 1.0),
         batch_size: int | None = None,
+        compensate_order: int | str | None = None,
+        shotnoise: tuple[int | str, float] | None = None,
     ) -> PowerSpectrum:
         """Compute all cross-power spectra for batched density fields.
 
@@ -371,6 +389,12 @@ class DensityField(AbstractField):
             Line-of-sight direction for multipole decomposition.
         batch_size : int, optional
             Batch size for lax.map processing. None means no batching.
+        compensate_order : int, str, or None
+            Deconvolve the mass-assignment window of this order from every pair.
+        shotnoise : (order, nbar) or None
+            Subtracted from auto-spectra only; since every pair here is computed
+            as a cross-spectrum it does not affect the result (kept for symmetry
+            with :meth:`power`).
 
         Returns
         -------
@@ -409,9 +433,8 @@ class DensityField(AbstractField):
         multipoles_static = tuple(multipoles) if isinstance(multipoles, (list | tuple)) else (multipoles,)
         los_tuple = None if multipoles_static == 0 else tuple(np.asarray(los, dtype=float))
 
-        def pair_fn(pair):
+        def pair_fn(mesh_i, mesh_j):
             """Compute power spectrum for a single (i, j) pair."""
-            mesh_i, mesh_j = pair
             k, pk = power_fn(
                 mesh_i,
                 mesh_j,
@@ -421,6 +444,8 @@ class DensityField(AbstractField):
                 kmax=kmax,
                 multipoles=multipoles_static,
                 los=los_tuple,
+                compensate_order=compensate_order,
+                shotnoise=shotnoise,
             )
             return k, pk
 
@@ -443,7 +468,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk"])
+    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def transfer(
         self,
         other: DensityField,
@@ -452,8 +477,13 @@ class DensityField(AbstractField):
         dk: float | None = None,
         kmax: float | None = None,
         batch_size: int | None = None,
+        compensate_order: int | str | None = None,
+        shotnoise: tuple[int | str, float] | None = None,
     ) -> PowerSpectrum:
-        """Monopole transfer function sqrt(P_other / P_self)."""
+        """Monopole transfer function sqrt(P_other / P_self).
+
+        ``compensate_order``/``shotnoise`` are applied to both auto-spectra.
+        """
 
         def _compute(pair):
             arr1, arr2 = pair
@@ -464,6 +494,8 @@ class DensityField(AbstractField):
                 kedges=kedges,
                 dk=dk,
                 kmax=kmax,
+                compensate_order=compensate_order,
+                shotnoise=shotnoise,
             )
 
         data1 = self.array
@@ -493,7 +525,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk"])
+    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def coherence(
         self,
         other: DensityField,
@@ -502,8 +534,14 @@ class DensityField(AbstractField):
         dk: float | None = None,
         kmax: float | None = None,
         batch_size: int | None = None,
+        compensate_order: int | str | None = None,
+        shotnoise: tuple[int | str, float] | None = None,
     ) -> PowerSpectrum:
-        """Monopole coherence pk01 / sqrt(pk0 pk1)."""
+        """Monopole coherence pk01 / sqrt(pk0 pk1).
+
+        ``compensate_order`` deconvolves every spectrum; ``shotnoise`` is
+        subtracted from the two auto-spectra only.
+        """
 
         def _compute(pair):
             arr1, arr2 = pair
@@ -514,6 +552,8 @@ class DensityField(AbstractField):
                 kedges=kedges,
                 dk=dk,
                 kmax=kmax,
+                compensate_order=compensate_order,
+                shotnoise=shotnoise,
             )
 
         data1 = self.array

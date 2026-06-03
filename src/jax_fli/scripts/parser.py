@@ -72,6 +72,20 @@ def add_integration_settings_args(p):
         "--laplace-fd", action="store_true", dest="laplace_fd", help="Use finite-difference Laplacian (default: False)"
     )
     g.add_argument(
+        "--paint-order",
+        type=str,
+        default="cic",
+        choices=["ngp", "cic", "tsc", "pcs"],
+        dest="paint_order",
+        help="Mass-assignment order for force painting/readout (default: cic)",
+    )
+    g.add_argument(
+        "--deconvolution",
+        action="store_true",
+        dest="deconvolution",
+        help="Deconvolve the mass-assignment window in the force computation (default: False)",
+    )
+    g.add_argument(
         "--shell-spacing",
         choices=["comoving", "equal_vol", "a", "growth"],
         default="comoving",
@@ -446,6 +460,23 @@ def add_spectra_density_args(p):
         default=[0.0, 0.0, 1.0],
         metavar=("LX", "LY", "LZ"),
         help="Line-of-sight direction for multipole decomposition (default: 0 0 1)",
+    )
+    g.add_argument(
+        "--compensate-order",
+        type=str,
+        default=None,
+        choices=["ngp", "cic", "tsc", "pcs"],
+        dest="compensate_order",
+        help="Deconvolve the mass-assignment window of this order from P(k) (default: off)",
+    )
+    g.add_argument(
+        "--shotnoise-order",
+        type=str,
+        default=None,
+        choices=["ngp", "cic", "tsc", "pcs"],
+        dest="shotnoise_order",
+        help="Subtract aliased shot noise for this assignment order "
+        "(nbar = prod(mesh)/prod(box); auto-spectrum only) (default: off)",
     )
 
 

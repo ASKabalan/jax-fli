@@ -26,13 +26,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "jax>=0.6.0,<0.10.0",
+    "jax>=0.6.0,<=0.10.0",
     "equinox",
     "jaxtyping",
-    "jaxpm@git+https://github.com/DifferentiableUniverseInitiative/JaxPM.git@ALL-MODIF",
-    "jax_cosmo@git+https://github.com/ASKabalan/jax_cosmo@ALL-MODIF",
+    "jaxpm@git+https://github.com/DifferentiableUniverseInitiative/JaxPM.git@higher-order-paint",
+    "jax_cosmo@git+https://github.com/ASKabalan/jax_cosmo@better-cache",
     "healpy",
-    "jax-healpy@git+https://github.com/CMBSciPol/jax-healpy.git@maintaint-shapes-batching",
+    "jax-healpy@git+https://github.com/CMBSciPol/jax-healpy.git",
 ]
 
 [project.optional-dependencies]

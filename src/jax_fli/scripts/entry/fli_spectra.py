@@ -99,6 +99,7 @@ def _convert_to_overdensity(field, field_type: str, normalization: str):
 def _compute_spectra(field, field_type: str, args):
     """Route to the appropriate spectra method based on field type."""
     import jax.numpy as jnp
+    import numpy as np
 
     ell_edges = jnp.array(args.ell_edges) if args.ell_edges is not None else None
     kedges = jnp.array(args.kedges) if args.kedges is not None else None
@@ -118,6 +119,13 @@ def _compute_spectra(field, field_type: str, args):
     elif field_type == "DensityField":
         if args.kedges is not None and args.dk is not None:
             raise ValueError("Cannot specify both kedges and dk. Please choose one.")
+        compensate_order = getattr(args, "compensate_order", None)
+        shotnoise = None
+        sn_order = getattr(args, "shotnoise_order", None)
+        if sn_order is not None:
+            # mean number density for one particle per mesh cell
+            nbar = float(np.prod(np.asarray(field.mesh_size)) / np.prod(np.asarray(field.box_size)))
+            shotnoise = (sn_order, nbar)
         return field.power(
             kedges=kedges,
             dk=args.dk,
@@ -125,6 +133,8 @@ def _compute_spectra(field, field_type: str, args):
             multipoles=tuple(args.multipoles),
             los=tuple(args.los),
             batch_size=args.batch_size,
+            compensate_order=compensate_order,
+            shotnoise=shotnoise,
         )
     else:
         raise ValueError(f"Unsupported field type for spectra: {field_type!r}")
