@@ -42,7 +42,6 @@ def lpt(
     density_widths=None,
     order: int = 1,
     paint_order: str = "cic",
-    deconvolution: bool = False,
     initial_particles: Array = None,
     painting: PaintingOptions = PaintingOptions(target="particles"),
     shell_spacing: str = "comoving",
@@ -84,9 +83,6 @@ def lpt(
     paint_order : int or str, default="cic"
         Mass-assignment order forwarded to the force computation (NGP=1, CIC=2,
         TSC=3, PCS=4); affects the force read-out interpolation.
-    deconvolution : bool, default=False
-        Forwarded to the force computation. Inert at the LPT stage (the density
-        is supplied directly, so there is no painted field to deconvolve).
     initial_particles : Array, optional
         Custom initial particle positions.
     painting : PaintingOptions, optional
@@ -160,7 +156,6 @@ def lpt(
         sharding=initial_field.field_sharding,
         order=order,
         paint_order=paint_order,
-        deconvolution=deconvolution,
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         dealiased=dealiased,
