@@ -9,7 +9,6 @@ __all__ = ["PaintingOptions"]
 
 SphericalScheme = Literal["ngp", "bilinear", "rbf_neighbor"]
 PaintingTarget = Literal["spherical", "flat", "density", "particles"]
-DEFAULT_CHUNK_SIZE = 2**24
 
 
 class PaintingOptions(eqx.Module):
@@ -52,8 +51,8 @@ class PaintingOptions(eqx.Module):
     ud_grade_pess : bool, default=False
         Pessimistic ud_grade mode.
 
-    chunk_size : int, default=2**24
-        Chunk size for 3D painting.
+    order : int or str, default="cic"
+        Mass-assignment order for 3D ("density") painting (NGP=1, CIC=2, TSC=3, PCS=4).
 
     weights : array, float, or None, default=None
         Weights for painting.
@@ -89,7 +88,7 @@ class PaintingOptions(eqx.Module):
     ud_grade_pess: bool = eqx.field(static=True, default=False)
 
     # 3D paint specific
-    chunk_size: int = eqx.field(static=True, default=DEFAULT_CHUNK_SIZE)
+    order: str = eqx.field(static=True, default="cic")
 
     # Shared
     weights: Array | float | None = 1.0

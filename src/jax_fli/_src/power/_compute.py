@@ -3,70 +3,7 @@ import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
 import numpy as np
-
-
-def _legendre(mu, ell: int):
-    """Simple Legendre evaluator for non-negative integer ell."""
-    ell = int(ell)
-    if ell == 0:
-        return jnp.ones_like(mu)
-    if ell == 1:
-        return mu
-    P0 = jnp.ones_like(mu)
-    P1 = mu
-    for n in range(2, ell + 1):
-        Pn = ((2 * n - 1) * mu * P1 - (n - 1) * P0) / n
-        P0, P1 = P1, Pn
-    return P1
-
-
-def _initialize_pk(mesh_shape, box_shape, kedges, dk, kmax, los):
-    """Initialize k-bins and meshes; kedges may be None (handled internally)."""
-    mesh_shape = tuple(mesh_shape)
-    box_shape = tuple(box_shape)
-
-    mesh_shape_np = np.array(mesh_shape)
-    box_shape_np = np.array(box_shape)
-
-    if kedges is None:
-        if kmax is None:
-            kmax = np.pi * np.min(mesh_shape_np / box_shape_np)
-        if dk is None:
-            dk = 2 * np.pi / np.min(box_shape_np) * 2  # twice fundamental
-        if dk <= 0:
-            raise ValueError("dk must be positive and non-zero")
-        kedges_np = np.arange(dk, kmax, dk) + dk / 2
-        if kedges_np.size < 2:
-            kedges_np = np.linspace(kmax / 4, kmax * 0.9, 2)
-        kedges = jnp.asarray(kedges_np)
-    else:
-        kedges = jnp.asarray(kedges)
-
-    ndim = len(mesh_shape)
-    kvec = []
-    for i, (m, b) in enumerate(zip(mesh_shape, box_shape)):
-        freq = jnp.fft.fftfreq(m)
-        shape = [1] * ndim
-        shape[i] = m
-        kvec.append((2 * jnp.pi * m / b) * freq.reshape(shape))
-    kmesh = jnp.sqrt(sum(ki**2 for ki in kvec))
-
-    dig = jnp.digitize(kmesh.reshape(-1), kedges)
-    nbins = kedges.shape[0] + 1
-    kcount = jnp.bincount(dig, length=nbins)
-
-    kavg = jnp.bincount(dig, weights=kmesh.reshape(-1), length=nbins)
-    kavg = kavg / jnp.where(kcount == 0, 1, kcount)
-    kavg = kavg[1:-1]
-
-    if los is None:
-        mumesh = 1.0
-    else:
-        mumesh = sum(ki * losi for ki, losi in zip(kvec, los))
-        kmesh_nozeros = jnp.where(kmesh == 0, 1, kmesh)
-        mumesh = jnp.where(kmesh == 0, 0, mumesh / kmesh_nozeros)
-
-    return dig, kcount, kavg, mumesh, kedges
+from jaxpm.utils import power_spectrum
 
 
 def _power(
@@ -79,50 +16,45 @@ def _power(
     kmax=None,
     multipoles=0,
     los=jnp.array([0.0, 0.0, 1.0]),
+    compensate_order=None,
+    shotnoise=None,
 ):
-    """Compute auto/cross 3D power spectrum using distributed FFTs (no batching)."""
+    """Auto/cross 3D power spectrum via ``jaxpm.utils.power_spectrum``.
 
-    mesh_shape = tuple(mesh.shape)
-    mesh_shape_arr = jnp.asarray(mesh_shape)
-    box_shape = tuple(box_shape) if box_shape is not None else mesh_shape
-    box_shape_arr = jnp.asarray(box_shape)
-    poles = multipoles if isinstance(multipoles, (list | tuple)) else (multipoles,)
-    los = None if multipoles == 0 else tuple(np.asarray(los) / np.linalg.norm(los))
+    Thin wrapper that forwards jax-fli's binning knobs (``kedges``/``dk``/``kmax``)
+    and the optional grid corrections.
 
-    meshk = jnp.fft.fftn(mesh, norm="ortho")
+    Parameters
+    ----------
+    compensate_order : int, str, or None
+        Deconvolve the mass-assignment window of the given order (NGP=1, CIC=2,
+        TSC=3, PCS=4): multiply ``|delta_k|**2`` by ``compensation_kernel**2``.
+    shotnoise : (order, nbar) or None
+        Subtract the aliased shot noise ``(1 / nbar) * C_order(k)`` before
+        deconvolving (auto-spectrum only, i.e. ``mesh2 is None``). ``nbar`` is the
+        mean number density in the same units as ``box_shape``
+        (``nbar = N / box.prod()``; one particle per cell -> ``mesh.prod() / box.prod()``).
+    """
+    los_arg = [0.0, 0.0, 1.0] if los is None else los
 
-    dig, kcount, kavg, mumesh, kedges = _initialize_pk(mesh_shape, box_shape, kedges, dk, kmax, los)
-    n_bins = kedges.shape[0] + 1
+    # jax-fli's contract returns a 1D spectrum for a single multipole, whether
+    # given as a scalar or a length-1 sequence. jaxpm only returns 1D for a
+    # scalar (a length-1 sequence yields a (1, n_k) array), so unwrap to match.
+    if isinstance(multipoles, (list | tuple)) and len(multipoles) == 1:
+        multipoles = multipoles[0]
 
-    if mesh2 is None:
-        mmk = meshk.real**2 + meshk.imag**2
-    else:
-        meshk2 = jnp.fft.fftn(mesh2, norm="ortho")
-        mmk = meshk * meshk2.conj()
-
-    pk_list = []
-    for ell in poles:  # poles is static (Python tuple) under jit
-        ell_int = int(ell)
-        w_ell = _legendre(mumesh, ell_int)
-        weights = (mmk * (2 * ell_int + 1) * w_ell).reshape(-1)
-
-        if mesh2 is None:
-            psum = jnp.bincount(dig, weights=weights, length=n_bins)
-        else:
-            psum_real = jnp.bincount(dig, weights=weights.real, length=n_bins)
-            psum_imag = jnp.bincount(dig, weights=weights.imag, length=n_bins)
-            psum = (psum_real**2 + psum_imag**2) ** 0.5
-
-        pk_list.append(psum)
-
-    pk = jnp.stack(pk_list, axis=0)
-
-    norm = jnp.where(kcount > 0, kcount, 1)
-    pk = (pk / norm)[:, 1:-1] * (box_shape_arr / mesh_shape_arr).prod()
-
-    if len(poles) == 1:
-        return kavg, pk[0]
-    return kavg, pk
+    return power_spectrum(
+        mesh,
+        mesh2,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=multipoles,
+        los=los_arg,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
+    )
 
 
 def _flat_cl(map2d, map2=None, *, pixel_size=None, field_size=None, ell_edges=None):
@@ -242,16 +174,72 @@ def _cross_spherical_cl(maps, *, lmax=None, method="healpy"):
     return jnp.asarray(ell_out), jnp.asarray(cls)
 
 
-def _transfer(mesh0, mesh1, *, box_shape, kedges=None, dk=None, kmax=None):
-    """Monopole transfer function sqrt(P1/P0)."""
-    k, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, dk=dk, kmax=kmax, multipoles=0)
-    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, dk=dk, kmax=kmax, multipoles=0)
+def _transfer(mesh0, mesh1, *, box_shape, kedges=None, dk=None, kmax=None, compensate_order=None, shotnoise=None):
+    """Monopole transfer function sqrt(P1/P0).
+
+    ``compensate_order`` and ``shotnoise`` are applied to both auto-spectra.
+    """
+    k, pk0 = _power(
+        mesh0,
+        None,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=0,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
+    )
+    _, pk1 = _power(
+        mesh1,
+        None,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=0,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
+    )
     return k, (pk1 / pk0) ** 0.5
 
 
-def _coherence(mesh0, mesh1, *, box_shape, kedges=None, dk=None, kmax=None):
-    """Monopole coherence pk01 / sqrt(pk0 pk1)."""
-    k, pk01 = _power(mesh0, mesh1, box_shape=box_shape, kedges=kedges, dk=dk, kmax=kmax, multipoles=0)
-    _, pk0 = _power(mesh0, None, box_shape=box_shape, kedges=kedges, dk=dk, kmax=kmax, multipoles=0)
-    _, pk1 = _power(mesh1, None, box_shape=box_shape, kedges=kedges, dk=dk, kmax=kmax, multipoles=0)
+def _coherence(mesh0, mesh1, *, box_shape, kedges=None, dk=None, kmax=None, compensate_order=None, shotnoise=None):
+    """Monopole coherence pk01 / sqrt(pk0 pk1).
+
+    ``compensate_order`` deconvolves every spectrum; ``shotnoise`` is subtracted
+    from the two auto-spectra only (it does not apply to the cross term pk01).
+    """
+    k, pk01 = _power(
+        mesh0,
+        mesh1,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=0,
+        compensate_order=compensate_order,
+    )
+    _, pk0 = _power(
+        mesh0,
+        None,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=0,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
+    )
+    _, pk1 = _power(
+        mesh1,
+        None,
+        box_shape=box_shape,
+        kedges=kedges,
+        dk=dk,
+        kmax=kmax,
+        multipoles=0,
+        compensate_order=compensate_order,
+        shotnoise=shotnoise,
+    )
     return k, pk01 / (pk0 * pk1) ** 0.5

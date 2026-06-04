@@ -199,8 +199,8 @@ class NoInterp(AbstractInterp):
         elif self.painting.target == "density":
             result = dx.paint(
                 weights=self.painting.weights,
-                chunk_size=self.painting.chunk_size,
                 batch_size=self.painting.batch_size,
+                order=self.painting.order,
             )
         else:
             result = dx
@@ -321,8 +321,8 @@ class DriftInterp(AbstractInterp):
         elif self.painting.target == "density":
             result = dx_drifted.paint(
                 weights=self.painting.weights,
-                chunk_size=self.painting.chunk_size,
                 batch_size=self.painting.batch_size,
+                order=self.painting.order,
             )
         else:
             result = dx_drifted

@@ -21,6 +21,7 @@ __all__ = ["lpt"]
     jax.jit,
     static_argnames=[
         "order",
+        "paint_order",
         "nb_shells",
         "painting",
         "shell_spacing",
@@ -39,6 +40,7 @@ def lpt(
     nb_shells: int | None = None,
     density_widths=None,
     order: int = 1,
+    paint_order: str = "cic",
     initial_particles: Array = None,
     painting: PaintingOptions = PaintingOptions(target="particles"),
     shell_spacing: str = "comoving",
@@ -77,6 +79,9 @@ def lpt(
         End time or detailed time specification. Used if *ts* and *nb_shells* are None.
     order : int, default=1
         LPT order (1 or 2 supported via underlying JAXPM implementation).
+    paint_order : int or str, default="cic"
+        Mass-assignment order forwarded to the force computation (NGP=1, CIC=2,
+        TSC=3, PCS=4); affects the force read-out interpolation.
     initial_particles : Array, optional
         Custom initial particle positions.
     painting : PaintingOptions, optional
@@ -149,6 +154,7 @@ def lpt(
         halo_size=initial_field.halo_size,
         sharding=initial_field.field_sharding,
         order=order,
+        paint_order=paint_order,
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         dealiased=dealiased,
@@ -258,7 +264,9 @@ def lpt(
 
     if painting.target == "density":
         dx_field = dx_field.paint(
-            weights=painting.weights, chunk_size=painting.chunk_size, batch_size=painting.batch_size
+            weights=painting.weights,
+            batch_size=painting.batch_size,
+            order=painting.order,
         )
 
     return dx_field, p_field

@@ -10,7 +10,7 @@ from typing import Literal
 
 import jax
 import jax.numpy as jnp
-from jaxpm.painting import cic_paint, cic_paint_2d, cic_paint_dx
+from jaxpm.painting import cic_paint_2d, paint
 from jaxpm.spherical import paint_particles_spherical
 from jaxtyping import Array
 
@@ -29,10 +29,11 @@ def _single_paint(
     mode: PaintMode,
     mesh: Array | None,
     weights: Array | float,
-    chunk_size: int,
+    order: str = "cic",
 ) -> Array:
     """
-    Paint a single shell of particles onto a 3D density mesh.
+    Paint a single shell of particles onto a 3D density mesh using the stencil
+    (NGP/CIC/TSC/PCS) mass-assignment scheme.
 
     Parameters
     ----------
@@ -54,8 +55,8 @@ def _single_paint(
         Pre-allocated mesh for absolute mode (optional).
     weights : Array | float
         Particle weights for painting.
-    chunk_size : int
-        Chunk size for painting operations.
+    order : int or str
+        Mass-assignment order (NGP=1, CIC=2, TSC=3, PCS=4).
 
     Returns
     -------
@@ -63,25 +64,17 @@ def _single_paint(
         Painted 3D density mesh, shape mesh_size.
     """
     mode = mode.lower()
-    if mode == "relative":
-        density = cic_paint_dx(
-            array,
-            halo_size=halo_size,
-            sharding=field_sharding,
-            weight=weights,
-            chunk_size=chunk_size,
-        )
-    elif mode == "absolute":
-        grid_mesh = mesh if mesh is not None else jnp.zeros(mesh_size, dtype=array.dtype)
-        density = cic_paint(
-            grid_mesh,
-            array,
-            weight=weights,
-            halo_size=halo_size,
-            sharding=field_sharding,
-        )
-    else:
-        raise ValueError("mode must be either 'relative' or 'absolute'")
+    if mode not in ("relative", "absolute"):
+        raise ValueError(f"Invalid mode: {mode}. Must be 'relative' or 'absolute'.")
+    initial_particles = "uniform" if mode == "relative" else None
+    density = paint(
+        array,
+        initial_particles=initial_particles,
+        order=order,
+        halo_size=halo_size,
+        sharding=field_sharding,
+        weight=weights,
+    )
 
     return density
 

@@ -20,7 +20,7 @@ __all__ = ["single_ode", "symplectic_fpm"]
 
 def single_ode(cosmo, reference_field: ParticleField):
     mesh_shape = reference_field.mesh_size
-    paint_absolute_pos = reference_field.unit == PositionUnit.GRID_ABSOLUTE
+    initial_particles = None if reference_field.unit == PositionUnit.GRID_ABSOLUTE else "uniform"
     halo_size = reference_field.halo_size
     sharding = reference_field.field_sharding
 
@@ -34,7 +34,7 @@ def single_ode(cosmo, reference_field: ParticleField):
             pm_forces(
                 pos.array,
                 mesh_shape=mesh_shape,
-                paint_absolute_pos=paint_absolute_pos,
+                initial_particles=initial_particles,
                 halo_size=halo_size,
                 sharding=sharding,
             )
@@ -103,7 +103,7 @@ def symplectic_fpm(
     """
     # Extract metadata from reference field
     mesh_shape = reference_field.mesh_size
-    paint_absolute_pos = reference_field.unit == PositionUnit.GRID_ABSOLUTE
+    initial_particles = None if reference_field.unit == PositionUnit.GRID_ABSOLUTE else "uniform"
     halo_size = reference_field.halo_size
     sharding = reference_field.field_sharding
 
@@ -177,7 +177,7 @@ def symplectic_fpm(
             pm_forces(
                 pos.array,
                 mesh_shape=mesh_shape,
-                paint_absolute_pos=paint_absolute_pos,
+                initial_particles=initial_particles,
                 halo_size=halo_size,
                 sharding=sharding,
             )
@@ -227,7 +227,7 @@ def symplectic_fpm(
             pm_forces(
                 pos.array,
                 mesh_shape=mesh_shape,
-                paint_absolute_pos=paint_absolute_pos,
+                initial_particles=initial_particles,
                 halo_size=halo_size,
                 sharding=sharding,
             )
