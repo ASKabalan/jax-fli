@@ -237,7 +237,6 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
         "shell_spacing",
         "min_width",
         "paint_order",
-        "deconvolution",
         "gradient_order",
         "laplace_fd",
         "dealiased",
@@ -255,7 +254,6 @@ def run_lpt(
     min_width,
     density_widths=None,
     paint_order="cic",
-    deconvolution=False,
     gradient_order=1,
     laplace_fd=False,
     dealiased=False,
@@ -272,7 +270,6 @@ def run_lpt(
         shell_spacing=shell_spacing,
         min_width=min_width,
         paint_order=paint_order,
-        deconvolution=deconvolution,
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         dealiased=dealiased,
@@ -290,7 +287,6 @@ def run_lpt(
         "shell_spacing",
         "min_width",
         "paint_order",
-        "deconvolution",
         "gradient_order",
         "laplace_fd",
         "dealiased",
@@ -311,7 +307,6 @@ def run_simulations(
     shell_spacing: str = "a",
     min_width: float = 50.0,
     paint_order="cic",
-    deconvolution=False,
     gradient_order=1,
     laplace_fd=False,
     dealiased=False,
@@ -328,7 +323,6 @@ def run_simulations(
         order=lpt_order,
         painting=jfli.PaintingOptions(target="particles"),
         paint_order=paint_order,
-        deconvolution=deconvolution,
         gradient_order=gradient_order,
         laplace_fd=laplace_fd,
         dealiased=dealiased,
@@ -421,7 +415,6 @@ def main() -> None:
             "min_width": getattr(args, "min_width", 50.0),
             "density_widths": density_widths,
             "paint_order": args.paint_order,
-            "deconvolution": args.deconvolution,
             "gradient_order": args.gradient_order,
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,
@@ -440,7 +433,6 @@ def main() -> None:
             "shell_spacing": shell_spacing,
             "min_width": getattr(args, "min_width", 50.0),
             "paint_order": args.paint_order,
-            "deconvolution": args.deconvolution,
             "gradient_order": args.gradient_order,
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,
@@ -458,9 +450,9 @@ def main() -> None:
             sys.exit(1)
 
         if sim_type == "lpt":
-            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12)
+            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 17)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

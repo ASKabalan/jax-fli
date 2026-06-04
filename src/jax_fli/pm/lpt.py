@@ -22,7 +22,6 @@ __all__ = ["lpt"]
     static_argnames=[
         "order",
         "paint_order",
-        "deconvolution",
         "nb_shells",
         "painting",
         "shell_spacing",
