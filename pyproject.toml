@@ -32,7 +32,7 @@ dependencies = [
     "jaxpm@git+https://github.com/DifferentiableUniverseInitiative/JaxPM.git@higher-order-paint",
     "jax_cosmo@git+https://github.com/ASKabalan/jax_cosmo@better-cache",
     "healpy",
-    "jax-healpy[recommended] @git+https://github.com/CMBSciPol/jax-healpy.git",
+    "jax-healpy@git+https://github.com/CMBSciPol/jax-healpy.git",
 ]
 
 [project.optional-dependencies]
