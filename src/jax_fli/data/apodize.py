@@ -40,6 +40,12 @@ def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
     jax.Array
         Apodized mask in ``[0, 1]``, shape ``(npix,)``, ``float``. Exactly 0 wherever the input
         is 0 (so ``apodized * map`` carries no outside-footprint pixels).
+
+    Notes
+    -----
+    The neighbour-separation step materializes a ``(3, 8, npix)`` intermediate, so peak memory grows
+    with ``npix`` (~10 GB at ``nside=2048`` in float64); apodize at a coarser ``nside`` if memory is
+    tight.
     """
     if apotype != "C2":
         raise NotImplementedError(f"apotype={apotype!r} not implemented; only 'C2' is supported.")

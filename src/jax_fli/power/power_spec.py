@@ -178,8 +178,13 @@ class PowerSpectrum(AbstractField):
                 unit=self.unit,
             )
 
-        # not batched -> slice the wavenumber (last) axis, keep any components axis
-        ksel = slice(key, key + 1) if isinstance(key, int) else key
+        # not batched -> slice the wavenumber (last) axis, keep any components axis.
+        # Normalize negative ints so ps[-1] selects the last bin (not slice(-1, 0) -> empty).
+        if isinstance(key, int):
+            k = key if key >= 0 else self.array.shape[-1] + key
+            ksel = slice(k, k + 1)
+        else:
+            ksel = key
         return PowerSpectrum(
             wavenumber=jnp.atleast_1d(self.wavenumber[ksel]),  # type: ignore[reportOptionalSubscript]
             array=self.array[..., ksel],

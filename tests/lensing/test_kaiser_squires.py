@@ -1,161 +1,150 @@
-"""Kaiser-Squires transforms, shear field methods, and spin-2 angular_cl forwarding."""
+"""Kaiser-Squires shear reconstruction: ``get_shear`` / ``get_convergence`` (flat + spherical).
+
+Inputs are the **real Born convergence maps** from ``conftest`` (spherical maps are cross-validated
+against glass/dorian in ``test_born``; flat maps have no such reference, so flat KS is checked for
+self-consistency — forward+inverse round-trip — only).
+
+Spherical KS lives in harmonic space and zeroes ``l < 2``, so the round-trip is validated on the
+angular power spectrum (the ``l >= 2`` subspace it preserves). Flat KS is an FFT operator that is
+exact except the (unconstrained) DC mode, so its round-trip is checked directly on the mean-removed
+map.
+"""
 
 from __future__ import annotations
 
-from functools import partial
-
 import healpy as hp
-import jax
 import jax.numpy as jnp
-import jax_fli as jfli
-import jax_healpy as jhp
 import numpy as np
-import pytest
-from jax_fli._src.base._enums import ConvergenceUnit, FieldStatus
-from jax_fli._src.lensing import kappa2shear, shear2kappa
-from jax_fli.fields import SphericalKappaField, SphericalShearField
+from jax_fli._src.base._enums import FieldStatus
+from jax_fli.fields import FlatKappaField, FlatShearField, SphericalKappaField, SphericalShearField
 
-NS = 64
-LMAX = 3 * NS - 1
-M = "jax"
+from tests.helpers import compare_fields
 
-
-def _kappa_array(n=None, seed=3):
-    ell = np.arange(LMAX + 1)
-    cl = np.zeros(LMAX + 1)
-    cl[2:] = 1.0 / (ell[2:] + 10.0) ** 2.5
-    np.random.seed(seed)
-    if n is None:
-        return jnp.asarray(hp.synfast(cl, NS, lmax=LMAX, pol=False))
-    return jnp.asarray(np.stack([hp.synfast(cl, NS, lmax=LMAX, pol=False) for _ in range(n)]))
+# Round-trip tolerances (set from the measured Born-map round-trip).
+# Spherical: C_l(rec)/C_l(kappa) over l in [LMIN, 2*nside] — median ~1, drifts to ~5% near the band
+# limit (nside=64, iter=3). Flat: FFT KS is exact bar DC, so the mean-removed map matches to ~1e-7.
+SPH_CL_RTOL = 0.07
+SPH_LMIN = 10
+FLAT_RTOL = 0.02
+FLAT_ATOL = 1e-6
+FLAT_MEAN_ATOL = 1e-10
 
 
-def _kappa_field(array):
-    return SphericalKappaField(
-        array=array,
-        nside=NS,
-        mesh_size=(NS, NS, NS),
-        box_size=(100.0, 100.0, 100.0),
-        unit=ConvergenceUnit.DIMENSIONLESS,
+def _assert_cl_roundtrip(rec, kappa):
+    """Assert the recovered convergence preserves the angular power spectrum for ``l >= 2``."""
+    nside = kappa.nside
+    lmax = 3 * nside - 1
+    r = np.atleast_2d(np.asarray(rec.array))
+    k = np.atleast_2d(np.asarray(kappa.array))
+    for i in range(r.shape[0]):
+        cl_rec = hp.anafast(r[i], lmax=lmax)
+        cl_kap = hp.anafast(k[i], lmax=lmax)
+        ratio = cl_rec[SPH_LMIN : 2 * nside] / cl_kap[SPH_LMIN : 2 * nside]
+        np.testing.assert_allclose(ratio, 1.0, atol=SPH_CL_RTOL, err_msg="spherical KS round-trip C_l drift")
+
+
+def _demean(arr, n_spatial):
+    """Remove the mean over the trailing ``n_spatial`` spatial axes (the unconstrained DC mode)."""
+    a = np.asarray(arr)
+    axes = tuple(range(a.ndim - n_spatial, a.ndim))
+    return a - a.mean(axis=axes, keepdims=True)
+
+
+# --------------------------------------------------------------------------- spherical
+def test_spherical_shear_roundtrip(born_kappa_single):
+    kappa = born_kappa_single[0]  # strip the S=1 axis -> (npix,)
+    sh = kappa.get_shear()
+    assert isinstance(sh, SphericalShearField)
+    assert sh.status == FieldStatus.GAMMA
+    assert sh.unit == kappa.unit
+    assert sh.array.shape == (2, kappa.array.shape[-1])
+    assert sh.is_batched() is False
+
+    rec = sh.get_convergence()
+    assert isinstance(rec, SphericalKappaField)
+    assert rec.array.shape == kappa.array.shape
+    _assert_cl_roundtrip(rec, kappa)
+
+
+def test_spherical_shear_roundtrip_batched(born_kappa_multi):
+    kappa = born_kappa_multi  # (S, npix)
+    s, npix = kappa.array.shape
+    sh = kappa.get_shear()
+    assert isinstance(sh, SphericalShearField)
+    assert sh.array.shape == (s, 2, npix)
+    assert sh.is_batched() is True
+
+    rec = sh.get_convergence()
+    assert rec.array.shape == kappa.array.shape
+    _assert_cl_roundtrip(rec, kappa)
+
+
+def test_spherical_shear_multibatched_NS(born_kappa_multi):
+    """(N, S, npix) convergence -> (N, S, 2, npix) shear."""
+    kappa = born_kappa_multi
+    s, npix = kappa.array.shape
+    n = 2
+    stacked = kappa.replace(array=jnp.broadcast_to(kappa.array, (n, s, npix)))
+    sh = stacked.get_shear()
+    assert sh.array.shape == (n, s, 2, npix)
+    assert sh.is_multi_batched() is True
+
+
+def test_spherical_shear_angular_cl_components(born_kappa_single):
+    """Spin-2 angular_cl returns 3 components (EE, EB, BB)."""
+    ps = born_kappa_single[0].get_shear().angular_cl()
+    assert ps.n_components == 3
+    assert ps.array.shape[-2] == 3
+
+
+# --------------------------------------------------------------------------- flat
+def test_flat_shear_roundtrip(born_flat_kappa_single):
+    kappa = born_flat_kappa_single[0]  # strip the S=1 axis -> (ny, nx)
+    sh = kappa.get_shear()
+    assert isinstance(sh, FlatShearField)
+    assert sh.status == FieldStatus.GAMMA
+    assert sh.unit == kappa.unit
+    assert sh.array.shape == (2, *kappa.array.shape)
+    assert sh.is_batched() is False
+
+    rec = sh.get_convergence()
+    assert isinstance(rec, FlatKappaField)
+    assert rec.array.shape == kappa.array.shape
+    compare_fields(
+        _demean(rec.array, 2),
+        _demean(kappa.array, 2),
+        "flat KS round-trip",
+        rtol=FLAT_RTOL,
+        atol=FLAT_ATOL,
+        mean_atol=FLAT_MEAN_ATOL,
     )
 
 
-# --------------------------------------------------------------------------- KS array level
-def test_ks_roundtrip_harmonic():
-    kap = _kappa_array()
-    g = kappa2shear(kap, lmax=LMAX, method=M)
-    assert g.shape == (2, hp.nside2npix(NS))
-    rec = shear2kappa(g, lmax=LMAX, method=M)
-    a0 = jhp.map2alm(kap, lmax=LMAX, pol=False, healpy_ordering=True, method=M)
-    ar = jhp.map2alm(rec, lmax=LMAX, pol=False, healpy_ordering=True, method=M)
-    res = np.asarray(jhp.alm2cl(a0 - ar, healpy_ordering=True))
-    sig = np.asarray(jhp.alm2cl(a0, healpy_ordering=True))
-    assert np.max(res[2 : LMAX - 20] / sig[2 : LMAX - 20]) < 3e-3
-
-
-def test_ks_jittable():
-    kap = _kappa_array()
-    g = kappa2shear(kap, lmax=LMAX, method=M)
-    gj = jax.jit(partial(kappa2shear, lmax=LMAX, method=M))(kap)
-    assert np.allclose(np.asarray(g), np.asarray(gj))
-
-
-def test_ks_batched_shapes():
-    kap = _kappa_array(n=2)[None]  # (1, 2, npix) ~ (N=1, S=2, npix)
-    g = kappa2shear(kap, lmax=LMAX, method=M)
-    assert g.shape == (1, 2, 2, hp.nside2npix(NS))
-    rec = shear2kappa(g, lmax=LMAX, method=M)
-    assert rec.shape == kap.shape
-
-
-# --------------------------------------------------------------------------- field methods
-def test_get_shear_returns_shear_field():
-    kf = _kappa_field(_kappa_array(n=2))  # (S=2, npix)
-    sh = kf.get_shear(lmax=LMAX)
-    assert isinstance(sh, SphericalShearField)
-    assert sh.array.shape == (2, 2, hp.nside2npix(NS))
-    assert sh.status == FieldStatus.GAMMA
+def test_flat_shear_roundtrip_batched(born_flat_kappa_multi):
+    kappa = born_flat_kappa_multi  # (S, ny, nx)
+    sh = kappa.get_shear()
+    assert isinstance(sh, FlatShearField)
+    assert sh.array.shape == (kappa.array.shape[0], 2, *kappa.array.shape[1:])
     assert sh.is_batched() is True
 
-
-def test_get_convergence_inverts():
-    kf = _kappa_field(_kappa_array(n=2))
-    rec = kf.get_shear(lmax=LMAX).get_convergence(lmax=LMAX)
-    assert isinstance(rec, SphericalKappaField)
-    assert rec.array.shape == kf.array.shape
-    # harmonic round-trip per bin
-    for i in range(2):
-        a0 = jhp.map2alm(kf.array[i], lmax=LMAX, pol=False, healpy_ordering=True, method=M)
-        ar = jhp.map2alm(rec.array[i], lmax=LMAX, pol=False, healpy_ordering=True, method=M)
-        res = np.asarray(jhp.alm2cl(a0 - ar, healpy_ordering=True))
-        sig = np.asarray(jhp.alm2cl(a0, healpy_ordering=True))
-        assert np.max(res[2 : LMAX - 20] / sig[2 : LMAX - 20]) < 3e-3
+    rec = sh.get_convergence()
+    assert rec.array.shape == kappa.array.shape
+    compare_fields(
+        _demean(rec.array, 2),
+        _demean(kappa.array, 2),
+        "flat KS round-trip (batched)",
+        rtol=FLAT_RTOL,
+        atol=FLAT_ATOL,
+        mean_atol=FLAT_MEAN_ATOL,
+    )
 
 
-def test_shear_angular_cl_components_single():
-    kf = _kappa_field(_kappa_array())  # (npix,)
-    sh = kf.get_shear(lmax=LMAX)  # (2, npix)
-    ps = sh.angular_cl(lmax=LMAX, method=M)
-    assert ps.n_components == 3
-    assert ps.array.shape == (3, LMAX + 1)
-    assert ps.is_batched() is False
-
-
-def test_shear_angular_cl_components_batched():
-    kf = _kappa_field(_kappa_array(n=3))  # (3, npix)
-    sh = kf.get_shear(lmax=LMAX)  # (3, 2, npix)
-    ps = sh.angular_cl(lmax=LMAX, method=M)
-    assert ps.array.shape == (3, 3, LMAX + 1)
-    assert ps.n_components == 3 and ps.is_batched()
-
-
-def test_shear_angular_cl_multibatched_NS():
-    """Headline shape (N, S, 2, npix): angular_cl collapses (N, S) -> (N*S, 3, n_ell)."""
-    N, S = 2, 3
-    kap = _kappa_array(n=N * S).reshape((N, S, hp.nside2npix(NS)))  # (N, S, npix)
-    sh = _kappa_field(kap).get_shear(lmax=LMAX)  # (N, S, 2, npix)
-    assert sh.array.shape == (N, S, 2, hp.nside2npix(NS))
+def test_flat_shear_multibatched_NS(born_flat_kappa_multi):
+    """(N, S, ny, nx) convergence -> (N, S, 2, ny, nx) shear."""
+    kappa = born_flat_kappa_multi
+    s, ny, nx = kappa.array.shape
+    n = 2
+    stacked = kappa.replace(array=jnp.broadcast_to(kappa.array, (n, s, ny, nx)))
+    sh = stacked.get_shear()
+    assert sh.array.shape == (n, s, 2, ny, nx)
     assert sh.is_multi_batched() is True
-    ps = sh.angular_cl(lmax=LMAX, method=M)
-    assert ps.n_components == 3
-    assert ps.array.shape == (N * S, 3, LMAX + 1)
-    assert ps.is_batched() is True
-
-
-def test_shear_angular_cl_masked_bandpowers():
-    kf = _kappa_field(_kappa_array())
-    sh = kf.get_shear(lmax=LMAX)
-    mb = jnp.asarray(np.where(np.arange(hp.nside2npix(NS)) < hp.nside2npix(NS) // 3, 1.0, 0.0))
-    apo = jfli.data.apodize(mb, 5.0)
-    ps = sh.angular_cl(mask=apo, lmax=LMAX, nlb=16, method=M, purify_b=True)
-    assert ps.n_components == 3
-    assert ps.array.shape[0] == 3 and ps.array.shape[1] < LMAX  # bandpowers
-
-
-# --------------------------------------------------------------------------- end-to-end (KS preserves EE)
-def test_fullsky_EE_equals_factor_squared_kappa():
-    """Full-sky EE of KS(kappa) == f_l^2 * C_l^{kappa kappa} (the KS identity, no mask)."""
-    kap = _kappa_array()
-    sh = _kappa_field(kap).get_shear(lmax=LMAX)
-    ps = sh.angular_cl(lmax=LMAX, method=M)  # mask=None -> per-l EE,EB,BB
-    EE = np.asarray(ps.array[0])
-    ckk = np.asarray(jhp.anafast(kap, lmax=LMAX, pol=False, method=M))
-    ell = np.arange(LMAX + 1)
-    f2 = np.zeros(LMAX + 1)
-    f2[2:] = (ell[2:] + 2) * (ell[2:] - 1) / (ell[2:] * (ell[2:] + 1))
-    sl = slice(10, LMAX - 20)
-    rel = np.max(np.abs(EE[sl] - f2[sl] * ckk[sl]) / (f2[sl] * ckk[sl]))
-    assert rel < 5e-2  # spin-2 floor
-
-
-def test_scalar_angular_cl_masked_vs_namaster():
-    nmt = pytest.importorskip("pymaster")
-    kap = _kappa_array()
-    kf = _kappa_field(kap)
-    mb = np.where(np.arange(hp.nside2npix(NS)) < hp.nside2npix(NS) // 3, 1.0, 0.0)
-    apo = jfli.data.apodize(jnp.asarray(mb), 5.0)
-    ps = kf.angular_cl(mask=apo, lmax=LMAX, nlb=16, method=M)
-    f0 = nmt.NmtField(np.asarray(apo), [np.asarray(kap)], lmax=LMAX)
-    dec_nmt = np.asarray(nmt.compute_full_master(f0, f0, nmt.NmtBin.from_nside_linear(NS, 16)))[0]
-    rel = np.max(np.abs(np.asarray(ps.array)[1:-1] - dec_nmt[1:-1])) / np.max(np.abs(dec_nmt[1:-1]))
-    assert rel < 1e-8

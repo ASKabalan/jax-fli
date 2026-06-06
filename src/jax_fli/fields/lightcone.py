@@ -34,25 +34,31 @@ class FlatDensity(AbstractField):
     """Flat-sky (2D) density or shear maps derived from volumetric simulations."""
 
     STATUS_ENUM = FieldStatus
+    # Max array rank accepted by the shape check: (ny, nx), (S, ny, nx), (N, S, ny, nx). Spin-2 shear
+    # subclasses raise this to 5 to allow a leading (2, ny, nx) component axis.
+    _MAX_ARRAY_NDIM = 4
 
     def __check_init__(self):
         """Validation hook called after Equinox auto-initialization."""
         super().__check_init__()
-        # Validate array shape
-        if self.array.ndim == 2:
-            spatial_shape = self.array.shape
-        elif self.array.ndim == 3:
-            spatial_shape = self.array.shape[-2:]
-        elif self.array.ndim == 4:
-            spatial_shape = self.array.shape[-2:]
-        else:
-            raise ValueError("FlatDensity array must have shape (ny, nx), (S, ny, nx), or (N, S, ny, nx).")
         # Validate required fields
         if self.flatsky_npix is None:
             raise ValueError("FlatDensity requires `flatsky_npix`.")
-        # Validate spatial shape matches flatsky_npix
-        if spatial_shape != tuple(self.flatsky_npix):
-            raise ValueError(f"Array spatial shape {spatial_shape} does not match flatsky_npix {self.flatsky_npix}.")
+        # Validate array rank and extract the trailing 2D spatial shape. Subclasses with an extra
+        # component axis (e.g. spin-2 shear) raise ``_MAX_ARRAY_NDIM`` to admit the extra dimension.
+        # (Guard for metadata-only fields whose ``array`` is None, matching SphericalDensity.)
+        if self.array is not None and getattr(self.array, "shape", ()) != ():
+            ndim = self.array.ndim
+            if not (2 <= ndim <= self._MAX_ARRAY_NDIM):
+                raise ValueError(
+                    f"FlatDensity array must have shape (ny, nx), (S, ny, nx), or (N, S, ny, nx), "
+                    f"got {ndim}D array with shape {self.array.shape}."
+                )
+            spatial_shape = self.array.shape if ndim == 2 else self.array.shape[-2:]
+            if spatial_shape != tuple(self.flatsky_npix):
+                raise ValueError(
+                    f"Array spatial shape {spatial_shape} does not match flatsky_npix {self.flatsky_npix}."
+                )
 
     def __getitem__(self, key) -> FlatDensity:
         if self.array.ndim < 3:
@@ -812,7 +818,7 @@ class SphericalDensity(AbstractField):
         mesh2: SphericalDensity | None = None,
         *,
         lmax: int | None = None,
-        method: str = "healpy",
+        method: str = "jax",
         batch_size: int | None = None,
         mask=None,
         purify_e: bool = False,
@@ -828,6 +834,9 @@ class SphericalDensity(AbstractField):
         ``mask`` (or pass a precomputed ``mcm``). ``purify_e``/``purify_b`` are spin-2 only and are
         ignored for a scalar field. Masked estimation uses a jax_healpy ``method`` (``"jax"`` /
         ``"jax_cuda"``); ``"healpy"`` falls back to ``"jax"``.
+
+        ``method`` selects the SHT backend and defaults to ``"jax"`` (jittable/differentiable);
+        ``"healpy"`` runs healpy's C ``anafast`` and requires concrete (non-traced) arrays.
         """
         if mask is not None:
             _lmax = lmax if lmax is not None else 3 * self.nside - 1

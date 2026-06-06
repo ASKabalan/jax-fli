@@ -16,9 +16,7 @@ datasets = pytest.importorskip("datasets")
 import jax_cosmo as jc
 import jax_fli as jfli
 from jax_fli._src.base._enums import ConvergenceUnit
-from jax_fli._src.io._power_spec_catalog import PS_CATALOG_VERSION
 from jax_fli.io.catalog import Catalog
-from jax_fli.power import cross_angular_cl_spherical
 
 jax.config.update("jax_enable_x64", True)  # Use float64 for better precision in tests
 
@@ -35,7 +33,9 @@ FIELD_TYPES = [
     "SphericalDensity",
     "FlatDensity",
     "SphericalKappaField",
+    "SphericalShearField",
     "FlatKappaField",
+    "FlatShearField",
     "ParticleField",
     "DensityField",
 ]
@@ -64,8 +64,12 @@ def make_field(field_type: str, batched: bool, seed: int = 42):
     # Build array: always use (B, spatial...) shape so field[0] strips the batch dim for unbatched
     if field_type in ("SphericalDensity", "SphericalKappaField"):
         shape = (B, npix_healpix)
+    elif field_type in ("SphericalShearField"):
+        shape = (B, 2, npix_healpix)
     elif field_type in ("FlatDensity", "FlatKappaField"):
         shape = (B, *FLAT_NPIX)
+    elif field_type in ("FlatShearField"):
+        shape = (B, 2, *FLAT_NPIX)
     elif field_type == "DensityField":
         shape = (B, *MESH_SIZE)
     elif field_type == "ParticleField":
@@ -91,6 +95,9 @@ def make_field(field_type: str, batched: bool, seed: int = 42):
     if field_type in ("SphericalKappaField", "FlatKappaField"):
         unit = ConvergenceUnit.DIMENSIONLESS
         status = jfli.FieldStatus.KAPPA
+    elif field_type in ("SphericalShearField", "FlatShearField"):
+        unit = ConvergenceUnit.DIMENSIONLESS
+        status = jfli.FieldStatus.GAMMA
     elif field_type == "ParticleField":
         unit = jfli.PositionUnit.GRID_RELATIVE
         status = jfli.FieldStatus.PARTICLES
@@ -99,14 +106,16 @@ def make_field(field_type: str, batched: bool, seed: int = 42):
         status = jfli.FieldStatus.LIGHTCONE
 
     # Choose geometry keys
-    nside = NSIDE if field_type in ("SphericalDensity", "SphericalKappaField") else None
-    flatsky_npix = FLAT_NPIX if field_type in ("FlatDensity", "FlatKappaField") else None
+    nside = NSIDE if field_type in ("SphericalDensity", "SphericalKappaField", "SphericalShearField") else None
+    flatsky_npix = FLAT_NPIX if field_type in ("FlatDensity", "FlatKappaField", "FlatShearField") else None
 
     field_cls = {
         "SphericalDensity": jfli.SphericalDensity,
         "FlatDensity": jfli.FlatDensity,
         "SphericalKappaField": jfli.SphericalKappaField,
+        "SphericalShearField": jfli.SphericalShearField,
         "FlatKappaField": jfli.FlatKappaField,
+        "FlatShearField": jfli.FlatShearField,
         "ParticleField": jfli.ParticleField,
         "DensityField": jfli.DensityField,
     }[field_type]
@@ -315,8 +324,16 @@ def test_multi_batched_field_shapes(field_type):
         array = jnp.zeros((N, S, npix_healpix))
         nside = NSIDE
         flatsky_npix = None
+    elif field_type == "SphericalShearField":
+        array = jnp.zeros((N, S, 2, npix_healpix))
+        nside = NSIDE
+        flatsky_npix = None
     elif field_type in ("FlatDensity", "FlatKappaField"):
         array = jnp.zeros((N, S, *FLAT_NPIX))
+        nside = None
+        flatsky_npix = FLAT_NPIX
+    elif field_type == "FlatShearField":
+        array = jnp.zeros((N, S, 2, *FLAT_NPIX))
         nside = None
         flatsky_npix = FLAT_NPIX
     elif field_type == "DensityField":
@@ -333,6 +350,9 @@ def test_multi_batched_field_shapes(field_type):
     if field_type in ("SphericalKappaField", "FlatKappaField"):
         unit = ConvergenceUnit.DIMENSIONLESS
         status = jfli.FieldStatus.KAPPA
+    elif field_type in ("SphericalShearField", "FlatShearField"):
+        unit = ConvergenceUnit.DIMENSIONLESS
+        status = jfli.FieldStatus.GAMMA
     elif field_type == "ParticleField":
         unit = jfli.PositionUnit.GRID_RELATIVE
         status = jfli.FieldStatus.PARTICLES
@@ -345,6 +365,8 @@ def test_multi_batched_field_shapes(field_type):
         "FlatDensity": jfli.FlatDensity,
         "SphericalKappaField": jfli.SphericalKappaField,
         "FlatKappaField": jfli.FlatKappaField,
+        "SphericalShearField": jfli.SphericalShearField,
+        "FlatShearField": jfli.FlatShearField,
         "ParticleField": jfli.ParticleField,
         "DensityField": jfli.DensityField,
     }[field_type]
@@ -519,115 +541,55 @@ def test_catalog_multi_batched_round_trip(tmp_path):
         assert not entry.is_multi_batched()
 
 
-# ---------------------------------------------------------------------------
-# PowerSpectrum catalog helpers
-# ---------------------------------------------------------------------------
-
-PS_SPEC_TYPES = ["auto", "cross_2d"]
-
-
-def make_ps(spec_type: str, with_scale_factors: bool, seed: int = 0) -> jfli.PowerSpectrum:
-    """Create a PowerSpectrum by computing angular Cl on HEALPix maps.
-
-    spec_type="auto"     : auto-power spectrum of one map → array shape (n_ell,)
-    spec_type="cross_2d" : cross-spectra of 3 maps        → array shape (6, n_ell)
-    """
+def _make_multi_batched_shear(field_type: str, N: int, S: int, seed: int = 0):
+    """Create an (N, S, 2, spatial...) shear field with metadata shaped (N, S)."""
     rng = np.random.RandomState(seed)
-    npix = 12 * NSIDE**2  # 192
-
-    if spec_type == "auto":
-        map1 = jnp.asarray(rng.randn(npix), dtype=jnp.float64)
-        ell, cl = jfli.angular_cl_spherical(map1, lmax=3 * NSIDE - 1, method="healpy")
-        ps = jfli.PowerSpectrum(wavenumber=ell, array=cl, name="cl")
-    elif spec_type == "cross_2d":
-        maps = jnp.asarray(rng.randn(3, npix), dtype=jnp.float64)
-        ell, cl_2d = cross_angular_cl_spherical(maps, lmax=3 * NSIDE - 1, method="healpy")
-        ps = jfli.PowerSpectrum(wavenumber=ell, array=cl_2d, name="cl")
+    npix = 12 * NSIDE**2
+    if field_type == "SphericalShearField":
+        array = jnp.asarray(rng.randn(N, S, 2, npix))
+        nside, flatsky_npix, cls = NSIDE, None, jfli.SphericalShearField
     else:
-        raise ValueError(f"Unknown spec_type: {spec_type}")
+        array = jnp.asarray(rng.randn(N, S, 2, *FLAT_NPIX))
+        nside, flatsky_npix, cls = None, FLAT_NPIX, jfli.FlatShearField
+    return cls(
+        array=array,
+        mesh_size=MESH_SIZE,
+        box_size=BOX_SIZE,
+        observer_position=(0.5, 0.5, 0.5),
+        field_sharding=None,
+        halo_size=(0, 0),
+        nside=nside,
+        flatsky_npix=flatsky_npix,
+        field_size=None,
+        z_sources=jnp.asarray(rng.uniform(0.5, 2.0, size=(N, S))),
+        scale_factors=jnp.asarray(rng.uniform(0.5, 1.0, size=(N, S))),
+        comoving_centers=jnp.asarray(rng.uniform(100, 500, size=(N, S))),
+        density_width=jnp.asarray(rng.uniform(10, 50, size=(N, S))),
+        status=jfli.FieldStatus.GAMMA,
+        unit=ConvergenceUnit.DIMENSIONLESS,
+    )
 
-    if with_scale_factors:
-        n_ell = ell.shape[0]
-        sf = jnp.linspace(0.5, 1.0, n_ell, dtype=jnp.float64)
-        ps = jfli.PowerSpectrum(wavenumber=ps.wavenumber, array=ps.array, name=ps.name, scale_factors=sf)
 
-    return ps
+@pytest.mark.parametrize("field_type", ["SphericalShearField", "FlatShearField"])
+def test_catalog_multi_batched_shear_round_trip(tmp_path, field_type):
+    """(N, S, 2, ...) shear behaves like other fields: N rows of (S, 2, ...) that round-trip."""
+    N, S = 2, 4
+    field = _make_multi_batched_shear(field_type, N, S)
+    cosmo = _make_batched_cosmo(N)
+    cat = Catalog(field=field, cosmology=cosmo)
+    assert len(cat) == N
 
+    entry_spatial = field.array.shape[2:]  # (2, npix) or (2, ny, nx)
+    for entry in cat.field:
+        assert entry.array.shape == (S, *entry_spatial)
+        assert entry.is_batched()
+        assert not entry.is_multi_batched()
 
-def make_ps_catalog(spec_type: str, n_entries: int, with_scale_factors: bool) -> Catalog:
-    """Build a Catalog with n_entries PowerSpectrum + Planck18 cosmologies."""
-    spectra = [make_ps(spec_type, with_scale_factors, seed=10 + i) for i in range(n_entries)]
-    cosmologies = [jc.Planck18() for _ in range(n_entries)]
-    return Catalog(field=spectra, cosmology=cosmologies, version=PS_CATALOG_VERSION)
-
-
-# ---------------------------------------------------------------------------
-# Main parametrized test: 2 x 2 x 2 = 8 tests, each testing parquet + dataset
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("n_entries", [1, 3], ids=["single", "multi"])
-@pytest.mark.parametrize("with_scale_factors", [True, False], ids=["with_sf", "no_sf"])
-@pytest.mark.parametrize("spec_type", PS_SPEC_TYPES)
-def test_ps_catalog_roundtrip(tmp_path, spec_type, with_scale_factors, n_entries):
-    """Round-trip: PowerSpectrum Catalog -> write -> read -> compare."""
-    catalog = make_ps_catalog(spec_type, n_entries=n_entries, with_scale_factors=with_scale_factors)
-
-    assert catalog.backend == "power_spec"
-    assert len(catalog) == n_entries
-
-    # Parquet round-trip
-    path = str(tmp_path / "test_ps.parquet")
-    catalog.to_parquet(path)
+    path = str(tmp_path / "shear_multi.parquet")
+    cat.to_parquet(path)
     reloaded = Catalog.from_parquet(path)
-    assert isinstance(reloaded, Catalog)
-    assert len(reloaded) == n_entries
-    assert reloaded.backend == "power_spec"
-    assert error(catalog, reloaded) < 1e-8
-
-    # Dataset round-trip
-    ds = catalog.to_dataset()
-    reloaded_ds = Catalog.from_dataset(ds)
-    assert isinstance(reloaded_ds, Catalog)
-    assert len(reloaded_ds) == n_entries
-    assert reloaded_ds.backend == "power_spec"
-    assert error(catalog, reloaded_ds) < 1e-8
-
-
-# ---------------------------------------------------------------------------
-# PowerSpectrum edge-case tests
-# ---------------------------------------------------------------------------
-
-
-def test_ps_catalog_single_normalization():
-    """Single PowerSpectrum/cosmology should be auto-wrapped to list."""
-    ps = make_ps("auto", with_scale_factors=False)
-    cosmo = jc.Planck18()
-    cat = Catalog(field=ps, cosmology=cosmo)
-    assert isinstance(cat.field, list)
-    assert isinstance(cat.cosmology, list)
-    assert len(cat) == 1
-    assert cat.backend == "power_spec"
-
-
-def test_ps_catalog_length_mismatch():
-    """Mismatched list lengths should raise ValueError."""
-    ps1 = make_ps("auto", with_scale_factors=False, seed=1)
-    ps2 = make_ps("auto", with_scale_factors=False, seed=2)
-    cosmo = jc.Planck18()
-    with pytest.raises(ValueError, match="same length"):
-        Catalog(field=[ps1, ps2], cosmology=[cosmo])
-
-
-def test_ps_catalog_getitem():
-    """Indexing a multi-entry PowerSpectrum Catalog returns a sub-Catalog."""
-    catalog = make_ps_catalog("auto", n_entries=3, with_scale_factors=False)
-    assert len(catalog) == 3
-
-    sub = catalog[0]
-    assert isinstance(sub, Catalog)
-    assert len(sub) == 1
-
-    sliced = catalog[0:2]
-    assert isinstance(sliced, Catalog)
-    assert len(sliced) == 2
+    assert len(reloaded) == N
+    for entry in reloaded.field:
+        assert type(entry).__name__ == field_type
+        assert entry.array.shape == (S, *entry_spatial)
+    assert error(cat, reloaded) < 1e-8

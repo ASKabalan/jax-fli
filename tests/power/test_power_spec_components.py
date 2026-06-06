@@ -55,6 +55,22 @@ def test_last_axis_must_match_wavenumber():
         PowerSpectrum(wavenumber=ELL, array=jnp.ones((3, 7)), n_components=3)
 
 
+def test_negative_index_selects_last_bin():
+    """ps[-1] on a non-batched spectrum selects the last ell bin (not slice(-1, 0) -> empty)."""
+    ps = PowerSpectrum(wavenumber=ELL, array=jnp.arange(30.0).reshape(3, 10), n_components=3)
+    last = ps[-1]
+    assert last.array.shape == (3, 1)
+    assert float(last.wavenumber[0]) == float(ELL[-1])
+    assert jnp.allclose(last.array[:, 0], ps.array[:, -1])
+
+
+def test_negative_index_scalar_last_bin():
+    ps = PowerSpectrum(wavenumber=ELL, array=jnp.arange(10.0))
+    last = ps[-1]
+    assert last.array.shape == (1,)
+    assert jnp.allclose(last.array[0], ps.array[-1])
+
+
 def test_plot_lines_count():
     import matplotlib
 
