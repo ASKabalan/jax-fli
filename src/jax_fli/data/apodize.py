@@ -67,9 +67,7 @@ def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
     # number of grassfire sweeps to cover theta* (static: nside known, aposize_deg concrete)
     resol = float(np.sqrt(4.0 * np.pi / npix))  # == healpy.nside2resol(nside)
     niter = int(np.ceil(2.5 * float(np.deg2rad(aposize_deg)) / resol)) + 6
-    dist, _ = jax.lax.scan(
-        lambda d, _: (jnp.minimum(d, (d[nb] + sep).min(0)), None), dist, None, length=niter
-    )
+    dist, _ = jax.lax.scan(lambda d, _: (jnp.minimum(d, (d[nb] + sep).min(0)), None), dist, None, length=niter)
     d = jnp.clip(dist, 0.0, theta_star)
     x = jnp.clip(jnp.sqrt((1 - jnp.cos(d)) / (1 - jnp.cos(theta_star))), 0.0, 1.0)
     return jnp.where(binary <= 0, 0.0, (1 - jnp.cos(jnp.pi * x)) / 2)

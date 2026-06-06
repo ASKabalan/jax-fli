@@ -40,7 +40,9 @@ def _k2g_one(kappa, nside: int, lmax: int, method: str):
 def _g2k_one(gamma, nside: int, lmax: int, method: str):
     _, fg2k = _ks_factors(lmax)
     E, _B = jhp.map2alm_spin([gamma[0], gamma[1]], spin=2, lmax=lmax, healpy_ordering=True, method=method)
-    return jhp.alm2map(jhp.almxfl(E, fg2k, healpy_ordering=True), nside, lmax=lmax, pol=False, healpy_ordering=True, method=method)
+    return jhp.alm2map(
+        jhp.almxfl(E, fg2k, healpy_ordering=True), nside, lmax=lmax, pol=False, healpy_ordering=True, method=method
+    )
 
 
 def kappa2shear(kappa, *, lmax: int | None = None, method: str = "jax"):

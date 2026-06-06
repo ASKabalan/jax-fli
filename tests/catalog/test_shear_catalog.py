@@ -8,7 +8,6 @@ import tempfile
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
-
 from jax_fli._src.base._enums import ConvergenceUnit
 from jax_fli.fields import SphericalKappaField, SphericalShearField
 from jax_fli.io import Catalog
@@ -24,7 +23,9 @@ def _cosmo():
 
 def _shear_field(n_bins=2):
     meta = dict(
-        nside=NS, mesh_size=(NS, NS, NS), box_size=(100.0, 100.0, 100.0),
+        nside=NS,
+        mesh_size=(NS, NS, NS),
+        box_size=(100.0, 100.0, 100.0),
         unit=ConvergenceUnit.DIMENSIONLESS,
         z_sources=jnp.asarray(np.linspace(0.5, 1.5, n_bins)),
         scale_factors=jnp.asarray(np.linspace(0.4, 0.7, n_bins)),

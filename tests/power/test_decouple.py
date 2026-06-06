@@ -8,11 +8,10 @@ from __future__ import annotations
 import healpy as hp
 import jax
 import jax.numpy as jnp
+import jax_fli as jfli
 import jax_healpy as jhp
 import numpy as np
 import pytest
-
-import jax_fli as jfli
 from jax_fli.power.decouple import anafast_masked, compute_mcm
 
 NS = 64
@@ -42,7 +41,9 @@ def _pure_e_shear(kappa):
     ell = np.arange(LMAX + 1)
     fk = np.zeros(LMAX + 1)
     fk[2:] = np.sqrt((ell[2:] + 2) * (ell[2:] - 1) / (ell[2:] * (ell[2:] + 1)))
-    E = jhp.almxfl(jhp.map2alm(kappa, lmax=LMAX, pol=False, healpy_ordering=True, method=M), jnp.asarray(fk), healpy_ordering=True)
+    E = jhp.almxfl(
+        jhp.map2alm(kappa, lmax=LMAX, pol=False, healpy_ordering=True, method=M), jnp.asarray(fk), healpy_ordering=True
+    )
     g1, g2 = jhp.alm2map([E, jnp.zeros_like(E)], NS, lmax=LMAX, pol=True, healpy_ordering=True, method=M)
     return jnp.stack([g1, g2], axis=0)
 

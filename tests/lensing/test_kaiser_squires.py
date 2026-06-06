@@ -7,11 +7,10 @@ from functools import partial
 import healpy as hp
 import jax
 import jax.numpy as jnp
+import jax_fli as jfli
 import jax_healpy as jhp
 import numpy as np
 import pytest
-
-import jax_fli as jfli
 from jax_fli._src.base._enums import ConvergenceUnit, FieldStatus
 from jax_fli._src.lensing import kappa2shear, shear2kappa
 from jax_fli.fields import SphericalKappaField, SphericalShearField
@@ -33,7 +32,10 @@ def _kappa_array(n=None, seed=3):
 
 def _kappa_field(array):
     return SphericalKappaField(
-        array=array, nside=NS, mesh_size=(NS, NS, NS), box_size=(100.0, 100.0, 100.0),
+        array=array,
+        nside=NS,
+        mesh_size=(NS, NS, NS),
+        box_size=(100.0, 100.0, 100.0),
         unit=ConvergenceUnit.DIMENSIONLESS,
     )
 
@@ -48,7 +50,7 @@ def test_ks_roundtrip_harmonic():
     ar = jhp.map2alm(rec, lmax=LMAX, pol=False, healpy_ordering=True, method=M)
     res = np.asarray(jhp.alm2cl(a0 - ar, healpy_ordering=True))
     sig = np.asarray(jhp.alm2cl(a0, healpy_ordering=True))
-    assert np.max(res[2:LMAX - 20] / sig[2:LMAX - 20]) < 3e-3
+    assert np.max(res[2 : LMAX - 20] / sig[2 : LMAX - 20]) < 3e-3
 
 
 def test_ks_jittable():
@@ -87,7 +89,7 @@ def test_get_convergence_inverts():
         ar = jhp.map2alm(rec.array[i], lmax=LMAX, pol=False, healpy_ordering=True, method=M)
         res = np.asarray(jhp.alm2cl(a0 - ar, healpy_ordering=True))
         sig = np.asarray(jhp.alm2cl(a0, healpy_ordering=True))
-        assert np.max(res[2:LMAX - 20] / sig[2:LMAX - 20]) < 3e-3
+        assert np.max(res[2 : LMAX - 20] / sig[2 : LMAX - 20]) < 3e-3
 
 
 def test_shear_angular_cl_components_single():
