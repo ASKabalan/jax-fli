@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import jax_fli as jfli
 import numpy as np
 import pytest
-
-import jax_fli as jfli
 
 NSIDE = 16
 LMAX = 2 * NSIDE - 1
