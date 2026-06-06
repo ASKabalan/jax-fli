@@ -60,6 +60,7 @@ def test_negative_index_selects_last_bin():
     ps = PowerSpectrum(wavenumber=ELL, array=jnp.arange(30.0).reshape(3, 10), n_components=3)
     last = ps[-1]
     assert last.array.shape == (3, 1)
+    assert last.wavenumber is not None
     assert float(last.wavenumber[0]) == float(ELL[-1])
     assert jnp.allclose(last.array[:, 0], ps.array[:, -1])
 
