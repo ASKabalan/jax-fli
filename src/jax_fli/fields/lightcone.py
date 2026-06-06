@@ -22,9 +22,11 @@ from ..power import (
     PowerSpectrum,
     angular_cl_flat,
     angular_cl_spherical,
+    compute_mcm,
     cross_angular_cl_spherical,
     deconvolve_spherical,
 )
+from ..power.decouple import anafast_masked
 from .units import DensityUnit, convert_units
 
 
@@ -516,6 +518,9 @@ class SphericalDensity(AbstractField):
     """Spherical (HEALPix) density or shear maps produced from simulations."""
 
     STATUS_ENUM = FieldStatus
+    # Max array rank accepted by the shape check: (npix), (S, npix), (N, S, npix). Spin-2 shear
+    # subclasses raise this to 4 to allow a trailing (2, npix) component axis.
+    _MAX_ARRAY_NDIM = 3
 
     def __check_init__(self):
         """Validation hook called after Equinox auto-initialization."""
@@ -528,7 +533,7 @@ class SphericalDensity(AbstractField):
             array_shape = getattr(self.array, "shape", ())
             npix = jhp.nside2npix(self.nside)
             if array_shape != ():
-                if len(array_shape) not in (1, 2, 3):
+                if not (1 <= len(array_shape) <= self._MAX_ARRAY_NDIM):
                     raise ValueError(
                         f"SphericalDensity array must have shape (npix,), (S, npix), or (N, S, npix), "
                         f"got {len(array_shape)}D array with shape {array_shape}."
@@ -809,8 +814,55 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "healpy",
         batch_size: int | None = None,
+        mask=None,
+        purify_e: bool = False,
+        purify_b: bool = False,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
-        """Compute a spherical (HEALPix) angular power spectrum C_ell (auto or cross)."""
+        """Compute a spherical (HEALPix) angular power spectrum C_ell (auto or cross).
+
+        With ``mask=None`` this is the plain spectrum (unchanged). With an apodized ``mask`` it
+        returns the masked pseudo-``C_l`` **decoupled** into bandpowers (``wavenumber`` = effective
+        bandpower multipoles), via :func:`jax_fli.power.anafast_masked`. The MCM is built once from
+        ``mask`` (or pass a precomputed ``mcm``). ``purify_e``/``purify_b`` are spin-2 only and are
+        ignored for a scalar field. Masked estimation uses a jax_healpy ``method`` (``"jax"`` /
+        ``"jax_cuda"``); ``"healpy"`` falls back to ``"jax"``.
+        """
+        if mask is not None:
+            _lmax = lmax if lmax is not None else 3 * self.nside - 1
+            _method = method if method in ("jax", "jax_cuda") else "jax"
+            _mcm = mcm if mcm is not None else compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=False, method=_method)
+            d1 = self.array
+            d2 = mesh2.array if mesh2 is not None else None
+            single = d1.ndim == 1
+            flat1 = d1.reshape((-1, d1.shape[-1]))
+            if d2 is None:
+                cls = jax.vmap(
+                    lambda m: anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
+                )(flat1)
+            else:
+                flat2 = d2.reshape((-1, d2.shape[-1]))
+                cls = jax.vmap(
+                    lambda m1, m2: anafast_masked(
+                        m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb
+                    )[1]
+                )(flat1, flat2)
+            return PowerSpectrum(
+                name=self.name,
+                wavenumber=_mcm.ell_eff,
+                array=cls[0] if single else cls,
+                n_components=1,
+                mesh_size=self.mesh_size,
+                box_size=self.box_size,
+                comoving_centers=self.comoving_centers,
+                density_width=self.density_width,
+                z_sources=self.z_sources,
+                scale_factors=self.scale_factors,
+                nside=self.nside,
+                status=FieldStatus.SPECTRA,
+                unit=SpectralUnit.ANGULAR_CL,
+            )
 
         def _compute(pair):
             m1, m2 = pair

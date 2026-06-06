@@ -12,7 +12,7 @@ from jax.experimental.multihost_utils import process_allgather
 from jaxtyping import Array
 
 from ...fields import DensityField, FlatDensity, ParticleField, SphericalDensity
-from ...fields.lensing_maps import FlatKappaField, SphericalKappaField
+from ...fields.lensing_maps import FlatKappaField, SphericalKappaField, SphericalShearField
 from ..base._core import AbstractField
 from ..base._enums import ConvergenceUnit, DensityUnit, FieldStatus, PositionUnit
 
@@ -33,6 +33,14 @@ def _ensure_batch_dim(array: np.ndarray, field_type: str) -> np.ndarray:
             return array[None, ...]
         elif array.ndim != 2:
             raise ValueError(f"Unexpected shape for {field_type}: {array.shape}")
+    elif field_type == "SphericalShearField":
+        # element is the spin-2 (2, npix); batch is the leading axis.
+        if array.ndim == 2:  # (2, npix) single -> add batch
+            return array[None, ...]
+        elif array.ndim != 3:  # (S, 2, npix) batched; flatten N,S -> B before saving
+            raise ValueError(
+                f"Unexpected shape for SphericalShearField: {array.shape} (expected (2,npix) or (S,2,npix))."
+            )
     elif field_type in ("FlatDensity", "FlatKappaField"):
         if array.ndim == 2:
             return array[None, ...]
@@ -99,7 +107,8 @@ def _array_feature_for_type(field_type: str, shape: tuple, dtype_str: str):
 
     if field_type in ("SphericalDensity", "SphericalKappaField"):
         return Array2D(shape=(None, shape[0]), dtype=dtype_str)
-    elif field_type in ("FlatDensity", "FlatKappaField"):
+    elif field_type in ("FlatDensity", "FlatKappaField", "SphericalShearField"):
+        # element rank 2: (ny, nx) for flat, (2, npix) for spherical shear
         return Array3D(shape=(None, *shape), dtype=dtype_str)
     elif field_type == "DensityField":
         return Array4D(shape=(None, *shape), dtype=dtype_str)
@@ -261,6 +270,7 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     field_classes = {
         "SphericalDensity": SphericalDensity,
         "SphericalKappaField": SphericalKappaField,
+        "SphericalShearField": SphericalShearField,
         "FlatDensity": FlatDensity,
         "FlatKappaField": FlatKappaField,
         "DensityField": DensityField,
@@ -269,7 +279,7 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     field_cls = field_classes[item["field_type"]]
     if field_cls is ParticleField:
         unit = PositionUnit[item["unit"]]
-    elif field_cls in (SphericalKappaField, FlatKappaField):
+    elif field_cls in (SphericalKappaField, FlatKappaField, SphericalShearField):
         unit = ConvergenceUnit[item["unit"]]
     else:
         unit = DensityUnit[item["unit"]]
