@@ -18,7 +18,13 @@ from .._src.base._core import AbstractField
 from .._src.base._enums import FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_flat_density, plot_spherical_density, prepare_axes
-from ..power import PowerSpectrum, angular_cl_flat, angular_cl_spherical, cross_angular_cl_spherical
+from ..power import (
+    PowerSpectrum,
+    angular_cl_flat,
+    angular_cl_spherical,
+    cross_angular_cl_spherical,
+    deconvolve_spherical,
+)
 from .units import DensityUnit, convert_units
 
 
@@ -713,6 +719,88 @@ class SphericalDensity(AbstractField):
         """
         resampled = jhp.ud_grade(self.array, new_nside)
         return self.replace(array=resampled, nside=new_nside)
+
+    def deconvolve(
+        self,
+        method: str,
+        *,
+        lmax: int | None = None,
+        lcut: int | None = None,
+        kernel_width_arcmin: float | None = None,
+        kernel_width_pixels: float | None = None,
+        smoothing_interpretation: str = "fwhm",
+        iter: int = 0,
+        w_floor: float = 1e-8,
+        batch_size: int | None = None,
+    ) -> SphericalDensity:
+        """Deconvolve the HEALPix mass-assignment window from the map(s).
+
+        Painting particles onto a HEALPix grid convolves the field with the
+        assignment window ``W_l``. This removes one factor of that window at the
+        ``a_lm`` level (``map2alm`` -> divide by ``W_l`` -> ``alm2map``), returning
+        a window-corrected (sharpened) map. Batched arrays — ``(S, npix)`` or
+        ``(N, S, npix)`` — are deconvolved map-by-map via ``jax.lax.map``.
+
+        ``method`` is required: the field does not record which scheme painted it,
+        and the painting default (``"bilinear"``) has no closed-form window. Pass
+        the scheme you painted with — ``"ngp"`` (HEALPix pixel window) or
+        ``"rbf_neighbor"`` (pixel window times a Gaussian beam, in which case pass
+        the same ``kernel_width_*`` used at paint time). ``"bilinear"`` raises
+        ``NotImplementedError``.
+
+        Parameters
+        ----------
+        method : {'ngp', 'rbf_neighbor', 'bilinear'}
+            Painting scheme whose window to remove (case-insensitive).
+        lmax : int, optional
+            Maximum multipole. Defaults to ``3*nside - 1``.
+        lcut : int, optional
+            Zero the inverse window above this multipole (extra high-l safety).
+        kernel_width_arcmin, kernel_width_pixels, smoothing_interpretation :
+            RBF beam width (``'rbf_neighbor'`` only); must match painting.
+        iter : int, default=0
+            ``map2alm`` iterations.
+        w_floor : float, default=1e-8
+            Modes with ``W_l <= w_floor`` are dropped to avoid 1/0 amplification.
+        batch_size : int, optional
+            Batch size for ``jax.lax.map`` over batched maps.
+
+        Returns
+        -------
+        SphericalDensity
+            New field with the deconvolved array; metadata is unchanged.
+
+        Notes
+        -----
+        Typically applied to an OVERDENSITY map; the output may dip slightly
+        negative near the band limit. Assumes RING ordering (the default produced
+        by this repo's painters). Transform accuracy degrades at high ``l`` under
+        the project's ``JAX_ENABLE_X64=False``.
+        """
+
+        def _fn(m):
+            return deconvolve_spherical(
+                m,
+                method=method,
+                nside=self.nside,
+                lmax=lmax,
+                lcut=lcut,
+                kernel_width_arcmin=kernel_width_arcmin,
+                kernel_width_pixels=kernel_width_pixels,
+                smoothing_interpretation=smoothing_interpretation,
+                iter=iter,
+                w_floor=w_floor,
+            )
+
+        data = self.array
+        if data.ndim == 1:
+            new_array = _fn(data)
+        else:
+            flat = data.reshape((-1, data.shape[-1]))
+            out = jax.lax.map(_fn, flat, batch_size=batch_size)
+            new_array = out.reshape(data.shape)
+
+        return self.replace(array=new_array)
 
     def angular_cl(
         self,

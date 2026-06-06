@@ -3,6 +3,7 @@ import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
 import numpy as np
+from jaxpm.spherical import deconvolve_map
 from jaxpm.utils import power_spectrum
 
 
@@ -127,6 +128,34 @@ def _spherical_cl(map_sphere, map_sphere2=None, *, lmax=None, method="jax"):
     cl = jhp.anafast(map_sphere, map_sphere2, lmax=lmax, pol=False, method=method)
     ell_out = jnp.arange(cl.shape[-1]) * 1.0
     return ell_out, jnp.asarray(cl)
+
+
+def _deconvolve_spherical(
+    hmap,
+    *,
+    method,
+    nside,
+    lmax=None,
+    lcut=None,
+    kernel_width_arcmin=None,
+    kernel_width_pixels=None,
+    smoothing_interpretation="fwhm",
+    iter=0,
+    w_floor=1e-8,
+):
+    """Deconvolve the HEALPix mass-assignment window from a single painted map."""
+    return deconvolve_map(
+        hmap,
+        method,
+        nside,
+        lmax=lmax,
+        lcut=lcut,
+        kernel_width_arcmin=kernel_width_arcmin,
+        kernel_width_pixels=kernel_width_pixels,
+        smoothing_interpretation=smoothing_interpretation,
+        iter=iter,
+        w_floor=w_floor,
+    )
 
 
 def _cross_spherical_cl(maps, *, lmax=None, method="healpy"):

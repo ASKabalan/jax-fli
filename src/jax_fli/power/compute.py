@@ -7,7 +7,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .._src.power import _coherence, _cross_spherical_cl, _flat_cl, _power, _spherical_cl, _transfer
+from .._src.power import (
+    _coherence,
+    _cross_spherical_cl,
+    _deconvolve_spherical,
+    _flat_cl,
+    _power,
+    _spherical_cl,
+    _transfer,
+)
 
 
 @partial(
@@ -148,4 +156,46 @@ def cross_angular_cl_spherical(
     return ell_out, spectra
 
 
-__all__ = ["power", "transfer", "coherence", "angular_cl_flat", "angular_cl_spherical", "cross_angular_cl_spherical"]
+def deconvolve_spherical(
+    map_sphere,
+    *,
+    method: str,
+    nside: int,
+    lmax: int | None = None,
+    lcut: int | None = None,
+    kernel_width_arcmin: float | None = None,
+    kernel_width_pixels: float | None = None,
+    smoothing_interpretation: str = "fwhm",
+    iter: int = 0,
+    w_floor: float = 1e-8,
+) -> jnp.ndarray:
+    """Deconvolve the HEALPix mass-assignment window from a single painted map.
+
+    Removes one factor of the assignment window ``W_l`` at the ``a_lm`` level.
+    ``method`` selects the window: ``'ngp'`` (pixel window), ``'rbf_neighbor'``
+    (pixel window times a Gaussian beam set by ``kernel_width_*``), or
+    ``'bilinear'`` (raises ``NotImplementedError``). Expects RING ordering.
+    """
+    return _deconvolve_spherical(
+        map_sphere,
+        method=method,
+        nside=nside,
+        lmax=lmax,
+        lcut=lcut,
+        kernel_width_arcmin=kernel_width_arcmin,
+        kernel_width_pixels=kernel_width_pixels,
+        smoothing_interpretation=smoothing_interpretation,
+        iter=iter,
+        w_floor=w_floor,
+    )
+
+
+__all__ = [
+    "power",
+    "transfer",
+    "coherence",
+    "angular_cl_flat",
+    "angular_cl_spherical",
+    "cross_angular_cl_spherical",
+    "deconvolve_spherical",
+]
