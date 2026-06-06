@@ -308,7 +308,11 @@ class SphericalShearField(SphericalDensity):
             )[1]
 
         cls = jax.vmap(_one)(flat)  # (B, 3, n)
-        ell = _mcm.ell_eff if mask is not None else (jnp.arange(_lmax + 1) * 1.0)
+        if mask is not None:
+            assert _mcm is not None
+            ell = _mcm.ell_eff
+        else:
+            ell = jnp.arange(_lmax + 1) * 1.0
         array = cls[0] if single else cls
         return PowerSpectrum(
             name=self.name,

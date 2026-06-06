@@ -26,6 +26,7 @@ def test_shear_single_components_axis():
     assert ps.is_batched() is False  # (3, n_ell) is a single 3-component spectrum, not a batch
     sliced = ps[0]  # not batched -> slices the ell axis, keeps the 3 components
     assert sliced.array.shape == (3, 1)
+    assert sliced.wavenumber is not None
     assert sliced.wavenumber.shape == (1,)
 
 
