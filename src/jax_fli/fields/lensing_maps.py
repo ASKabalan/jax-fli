@@ -1,9 +1,22 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+from warnings import warn
 
+import jax
+import jax.numpy as jnp
+
+from .._src.base._enums import FieldStatus, SpectralUnit
 from .lightcone import FlatDensity, SphericalDensity
 from .units import ConvergenceUnit, convert_units
+
+if TYPE_CHECKING:
+    from ..power.power_spec import PowerSpectrum
+
+# NOTE: Kaiser-Squires (.._src.lensing) and the power estimators (..power) are imported lazily
+# inside the methods below. lensing_maps is imported during ``jax_fli.fields`` initialization, and
+# ``.._src.lensing`` pulls in ``_born`` -> ``...fields`` (a cycle); deferring the imports to call
+# time avoids it (all modules are loaded by then).
 
 __all__ = [
     "FlatKappaField",
@@ -59,11 +72,23 @@ class FlatKappaField(FlatDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_shear(self, cosmo: Any | None = None):
+    def get_shear(self) -> FlatShearField:
+        """Compute shear ``(gamma1, gamma2)`` from convergence via flat-sky Kaiser-Squires.
+
+        Maps ``array`` of shape ``(ny, nx)`` / ``(S, ny, nx)`` / ``(N, S, ny, nx)`` to a
+        ``FlatShearField`` with a spin-2 axis inserted before the spatial axes: ``(2, ny, nx)`` /
+        ``(S, 2, ny, nx)`` / ``(N, S, 2, ny, nx)``. Jittable; the shear is pure E-mode and needs no
+        field/pixel size (the flat spin-2 operator is scale-invariant).
         """
-        Compute shear (γ1, γ2) from convergence via Kaiser-Squires inversion.
-        """
-        raise NotImplementedError("Shear computation from kappa (flat-sky) not implemented yet.")
+        from .._src.lensing import kappa2shear_flat
+
+        shear = kappa2shear_flat(self.array)
+        return FlatShearField.FromDensityMetadata(
+            array=shear,
+            field=self,
+            status=FieldStatus.GAMMA,
+            unit=self.unit,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -108,11 +133,23 @@ class SphericalKappaField(SphericalDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_shear(self, cosmo: Any | None = None):
+    def get_shear(self, *, lmax: int | None = None, method: str = "jax", iter: int = 3) -> SphericalShearField:
+        """Compute shear ``(gamma1, gamma2)`` from convergence via Kaiser-Squires (pure E-mode).
+
+        Maps ``array`` of shape ``(npix,)`` / ``(S, npix)`` / ``(N, S, npix)`` to a
+        ``SphericalShearField`` with a trailing spin-2 axis: ``(2, npix)`` / ``(S, 2, npix)`` /
+        ``(N, S, 2, npix)``. Jittable; ``lmax`` defaults to ``3*nside-1``. ``iter`` sets the
+        ``map2alm`` Jacobi iterations (default 3).
         """
-        Compute shear via spin-2 spherical harmonic transform.
-        """
-        raise NotImplementedError("Shear computation from kappa (spherical) not implemented yet.")
+        from .._src.lensing import kappa2shear_spherical
+
+        shear = kappa2shear_spherical(self.array, lmax=lmax, method=method, iter=iter)
+        return SphericalShearField.FromDensityMetadata(
+            array=shear,
+            field=self,
+            status=FieldStatus.GAMMA,
+            unit=self.unit,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -122,10 +159,68 @@ class FlatShearField(FlatDensity):
     """
     Shear map (γ1, γ2) in flat-sky (Cartesian) geometry.
 
-    By convention you can store γ1, γ2 either as:
-      - separate FlatShearField instances, or
-      - an extra leading / trailing dimension in `array`.
+    The spin-2 component axis sits **immediately before the two spatial axes**: valid array shapes
+    are ``(2, ny, nx)`` (single), ``(S, 2, ny, nx)`` (per source bin), or ``(N, S, 2, ny, nx)``
+    (realisations × source bins). Leading axes are batch.
     """
+
+    # Allow the extra component axis: (2, ny, nx) / (S, 2, ny, nx) / (N, S, 2, ny, nx).
+    _MAX_ARRAY_NDIM = 5
+
+    def __check_init__(self):
+        if self.array is not None and getattr(self.array, "shape", ()) != ():
+            shape = self.array.shape
+            if len(shape) not in (3, 4, 5):
+                raise ValueError(
+                    f"FlatShearField array must be (2, ny, nx), (S, 2, ny, nx), or (N, S, 2, ny, nx), "
+                    f"got {len(shape)}D array with shape {shape}."
+                )
+            if shape[-3] != 2:
+                raise ValueError(
+                    f"FlatShearField requires a spin-2 component axis of size 2 at position -3, " f"got shape {shape}."
+                )
+
+    def is_batched(self) -> bool:
+        """True if there is a leading batch axis beyond the ``(2, ny, nx)`` spin-2 map."""
+        return self.array.ndim in (4, 5)
+
+    def is_multi_batched(self) -> bool:
+        """True for a two-level batch ``(N, S, 2, ny, nx)``."""
+        return self.array.ndim == 5
+
+    def __getitem__(self, key) -> FlatShearField:
+        # Indexing must not slice the spin-2 component axis: only a leading batch axis is indexable.
+        if self.array.ndim < 4:
+            warn(
+                f"Indexing only supported for batched FlatShearField (4D or 5D array), got array with "
+                f"{self.array.ndim} dimensions. Returning self without indexing."
+            )
+            return self
+        return super().__getitem__(key)
+
+    # Spin-2 maps are not scalar fields: the inherited FlatDensity spectral/resample helpers treat the
+    # ``(..., 2, ny, nx)`` component axis as a batch and would silently return wrong results, so they
+    # are disabled. (Spin-2 angular power is implemented for the HEALPix ``SphericalShearField`` only.)
+    def angular_cl(self, *args, **kwargs):
+        raise NotImplementedError(
+            "FlatShearField has no spin-2 angular_cl; flat-sky shear E/B power is not implemented. "
+            "Use SphericalShearField for spin-2 angular power spectra."
+        )
+
+    def cross_angular_cl(self, *args, **kwargs):
+        raise NotImplementedError("FlatShearField has no spin-2 cross_angular_cl (not implemented).")
+
+    def transfer(self, *args, **kwargs):
+        raise NotImplementedError("FlatShearField has no spin-2 transfer (not implemented).")
+
+    def coherence(self, *args, **kwargs):
+        raise NotImplementedError("FlatShearField has no spin-2 coherence (not implemented).")
+
+    def ud_sample(self, *args, **kwargs):
+        raise NotImplementedError(
+            "FlatShearField.ud_sample is not implemented (the inherited resampler mishandles the "
+            "spin-2 component axis)."
+        )
 
     def to(
         self,
@@ -151,11 +246,23 @@ class FlatShearField(FlatDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_convergence(self, cosmo: Any | None = None):
+    def get_convergence(self) -> FlatKappaField:
+        """Compute convergence from shear via inverse flat-sky Kaiser-Squires.
+
+        Maps ``(2, ny, nx)`` / ``(S, 2, ny, nx)`` / ``(N, S, 2, ny, nx)`` to a ``FlatKappaField`` of
+        shape ``(ny, nx)`` / ``(S, ny, nx)`` / ``(N, S, ny, nx)``. Jittable. The recovered map has
+        zero mean (the DC mode is unconstrained), so for band-limited convergence it reproduces
+        ``kappa - mean(kappa)`` (the even-grid Nyquist row/column is not reconstructed).
         """
-        Compute convergence from shear via Kaiser-Squires inversion.
-        """
-        raise NotImplementedError("Convergence from shear (flat-sky) not implemented yet.")
+        from .._src.lensing import shear2kappa_flat
+
+        kappa = shear2kappa_flat(self.array)
+        return FlatKappaField.FromDensityMetadata(
+            array=kappa,
+            field=self,
+            status=FieldStatus.KAPPA,
+            unit=self.unit,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -164,7 +271,46 @@ class FlatShearField(FlatDensity):
 class SphericalShearField(SphericalDensity):
     """
     Shear map (γ1, γ2) in spherical (HEALPix) geometry.
+
+    The **trailing two axes** are the spin-2 component and the pixels: valid array shapes are
+    ``(2, npix)`` (single), ``(S, 2, npix)`` (per source bin), or ``(N, S, 2, npix)`` (realisations
+    × source bins). Leading axes are batch.
     """
+
+    # Allow the extra trailing spin-2 axis: (2, npix) / (S, 2, npix) / (N, S, 2, npix).
+    _MAX_ARRAY_NDIM = 4
+
+    def __check_init__(self):
+        if self.array is not None and getattr(self.array, "shape", ()) != ():
+            shape = self.array.shape
+            if len(shape) not in (2, 3, 4):
+                raise ValueError(
+                    f"SphericalShearField array must be (2, npix), (S, 2, npix), or (N, S, 2, npix), "
+                    f"got {len(shape)}D array with shape {shape}."
+                )
+            if shape[-2] != 2:
+                raise ValueError(
+                    f"SphericalShearField requires a spin-2 component axis of size 2 at position -2, "
+                    f"got shape {shape}."
+                )
+
+    def is_batched(self) -> bool:
+        """True if there is a leading batch axis beyond the ``(2, npix)`` spin-2 map."""
+        return self.array.ndim in (3, 4)
+
+    def is_multi_batched(self) -> bool:
+        """True for a two-level batch ``(N, S, 2, npix)``."""
+        return self.array.ndim == 4
+
+    def __getitem__(self, key) -> SphericalShearField:
+        # Indexing must not slice the spin-2 component axis: only a leading batch axis is indexable.
+        if self.array.ndim < 3:
+            warn(
+                f"Indexing only supported for batched SphericalShearField (3D or 4D array), got array "
+                f"with {self.array.ndim} dimensions. Returning self without indexing."
+            )
+            return self
+        return super().__getitem__(key)
 
     def to(
         self,
@@ -190,8 +336,91 @@ class SphericalShearField(SphericalDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_convergence(self, cosmo: Any | None = None):
+    def get_convergence(self, *, lmax: int | None = None, method: str = "jax", iter: int = 3) -> SphericalKappaField:
+        """Compute convergence from shear via inverse Kaiser-Squires (uses the E-mode).
+
+        Maps ``(2, npix)`` / ``(S, 2, npix)`` / ``(N, S, 2, npix)`` to a ``SphericalKappaField`` of
+        shape ``(npix,)`` / ``(S, npix)`` / ``(N, S, npix)``. Jittable. ``iter`` sets the
+        ``map2alm_spin`` Jacobi iterations (default 3).
         """
-        Compute convergence from shear via spin-2 spherical harmonic transform.
+        from .._src.lensing import shear2kappa_spherical
+
+        kappa = shear2kappa_spherical(self.array, lmax=lmax, method=method, iter=iter)
+        return SphericalKappaField.FromDensityMetadata(
+            array=kappa,
+            field=self,
+            status=FieldStatus.KAPPA,
+            unit=self.unit,
+        )
+
+    def angular_cl(
+        self,
+        *,
+        mask=None,
+        lmax: int | None = None,
+        method: str = "jax",
+        purify_e: bool = False,
+        purify_b: bool = False,
+        mcm=None,
+        nlb: int = 16,
+    ) -> PowerSpectrum:
+        """Spin-2 angular power spectrum (EE, EB, BB) — ``pol=True`` automatically.
+
+        Returns a 3-component :class:`PowerSpectrum` (``n_components=3``): ``(3, n_ell)`` for a
+        single ``(2, npix)`` map, ``(B, 3, n_ell)`` for batched (leading dims flattened to ``B``).
+
+        * ``mask=None`` → plain / coupled pseudo-``C_l`` (pre-multiply the map by the apodized mask
+          for the forward-model coupled-pseudo path); ``ell`` runs ``0..lmax``.
+        * ``mask`` given → masked pseudo-``C_l`` **decoupled** into bandpowers (``ell`` = effective
+          bandpower multipoles); ``purify_e``/``purify_b`` applied. EE/BB are decoupled; EB is the
+          binned (coupled) pseudo. The MCM is built once from ``mask`` and reused across the batch
+          (or pass a precomputed ``mcm``).
         """
-        raise NotImplementedError("Convergence from shear (spherical) not implemented yet.")
+        from ..power.decouple import anafast_masked, compute_mcm
+        from ..power.power_spec import PowerSpectrum
+
+        data = self.array
+        npix = data.shape[-1]
+        _lmax = lmax if lmax is not None else 3 * self.nside - 1
+        single = data.ndim == 2
+        flat = data.reshape((-1, 2, npix))
+
+        _mcm = mcm
+        if mask is not None and _mcm is None:
+            _mcm = compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=True, method=method)
+
+        def _one(g):
+            return anafast_masked(
+                g,
+                mask=mask,
+                lmax=_lmax,
+                method=method,
+                pol=True,
+                purify_e=purify_e,
+                purify_b=purify_b,
+                mcm=_mcm,
+                nlb=nlb,
+            )[1]
+
+        cls = jax.vmap(_one)(flat)  # (B, 3, n)
+        if mask is not None:
+            assert _mcm is not None
+            ell = _mcm.ell_eff
+        else:
+            ell = jnp.arange(_lmax + 1) * 1.0
+        array = cls[0] if single else cls
+        return PowerSpectrum(
+            name=self.name,
+            wavenumber=ell,
+            array=array,
+            n_components=3,
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            nside=self.nside,
+            status=FieldStatus.SPECTRA,
+            unit=SpectralUnit.ANGULAR_CL,
+        )

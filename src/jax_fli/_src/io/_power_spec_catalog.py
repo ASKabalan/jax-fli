@@ -15,22 +15,24 @@ PS_CATALOG_VERSION = 2
 
 def build_ps_features(ps: PowerSpectrum, cosmology: jc.Cosmology):
     """Build HuggingFace Features schema for a PowerSpectrum catalog row."""
-    from datasets import Array2D, Features, Sequence, Value
+    from datasets import Array2D, Array3D, Features, Sequence, Value
 
     n_k = ps.wavenumber.shape[0]  # type: ignore[reportOptionalMemberAccess]
     dtype_str = np.dtype(np.asarray(ps.array).dtype).name
 
-    # 1D spectra are stored as a Sequence; 2D (n_spec, n_k) as Array2D
+    # 1D spectra -> Sequence; 2D (n_spec, n_k) -> Array2D; 3D (B, n_components, n_k) -> Array3D
     if ps.array.ndim == 1:
         array_feature = Sequence(Value(dtype_str))
+    elif ps.array.ndim == 2:
+        array_feature = Array2D(shape=(ps.array.shape[0], n_k), dtype=dtype_str)
     else:
-        n_spec = ps.array.shape[0]
-        array_feature = Array2D(shape=(n_spec, n_k), dtype=dtype_str)
+        array_feature = Array3D(shape=(ps.array.shape[0], ps.array.shape[1], n_k), dtype=dtype_str)
 
     feature_dict = {
         # Core spectrum data
         "wavenumber": Sequence(Value("float64")),
         "array": array_feature,
+        "n_components": Value("int32"),
         "name": Value("string"),
         "has_scale_factors": Value("bool"),
         "scale_factors": Sequence(Value("float64")),
@@ -108,6 +110,7 @@ def ps_to_row(ps: PowerSpectrum, cosmology: jc.Cosmology, version: int) -> dict 
     data = {
         "wavenumber": [wavenumber],
         "array": [array],
+        "n_components": [int(ps.n_components)],
         "name": [ps.name if ps.name is not None else ""],
         "has_scale_factors": [has_sf],
         "scale_factors": [scale_factors_list],
@@ -226,6 +229,7 @@ def row_to_ps_cosmo(item: dict, sharding=None) -> tuple[PowerSpectrum, jc.Cosmol
     ps = PowerSpectrum(
         wavenumber=wavenumber,
         array=array,
+        n_components=int(np.asarray(item.get("n_components", 1)).flat[0]),
         name=name,
         scale_factors=scale_factors,
         mesh_size=mesh_size,

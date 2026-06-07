@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install system dependencies (MPI, GSL, FFTW)
+      - name: Install system dependencies (MPI, GSL, FFTW, cfitsio)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -38,7 +38,8 @@ jobs:
             libopenmpi-dev \
             libgsl-dev \
             libfftw3-dev \
-            libfftw3-mpi-dev
+            libfftw3-mpi-dev \
+            libcfitsio-dev
 
       - name: Install dependencies
         run: |
@@ -49,6 +50,9 @@ jobs:
           echo "CMAKE_PREFIX_PATH=$(python -m pybind11 --cmakedir)" >> $GITHUB_ENV
 
           pip install "jax[cpu]"
+          # s2fft from source: the PyPI cp312-abi3 wheel is mis-tagged (ships a cpython-312 .so)
+          # and won't import on 3.13, so build it for the running interpreter instead.
+          pip install -U git+https://github.com/astro-informatics/s2fft.git
           pip install -e ".[dev,catalog,sampling,raytrace]"
           pip install cython mpi4py
           pip install -r tests/requirements.txt --no-build-isolation

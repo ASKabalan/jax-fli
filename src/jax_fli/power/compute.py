@@ -139,10 +139,37 @@ def angular_cl_spherical(
     *,
     lmax: int | None = None,
     method: str = "jax",
+    mask=None,
+    pol: bool = False,
+    purify_e: bool = False,
+    purify_b: bool = False,
+    mcm=None,
+    nlb: int = 16,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Spherical (HEALPix) angular Cl. Returns (ell, spectra)."""
-    ell_out, spectra = _spherical_cl(map_sphere, map_sphere2, lmax=lmax, method=method)
-    return ell_out, spectra
+    """Spherical (HEALPix) angular Cl. Returns (ell, spectra).
+
+    With ``mask=None`` and ``pol=False`` this is the plain scalar spectrum (unchanged). Otherwise
+    it delegates to :func:`jax_fli.power.anafast_masked` — ``pol=True`` for a spin-2 ``(2, npix)``
+    map (returns EE, EB, BB) and/or ``mask`` for masked, **decoupled** bandpowers (with optional
+    ``purify_e``/``purify_b``).
+    """
+    if mask is None and not pol:
+        ell_out, spectra = _spherical_cl(map_sphere, map_sphere2, lmax=lmax, method=method)
+        return ell_out, spectra
+    from .decouple import anafast_masked
+
+    return anafast_masked(
+        map_sphere,
+        map_sphere2,
+        mask=mask,
+        lmax=lmax,
+        method=method,
+        pol=pol,
+        purify_e=purify_e,
+        purify_b=purify_b,
+        mcm=mcm,
+        nlb=nlb,
+    )
 
 
 def cross_angular_cl_spherical(

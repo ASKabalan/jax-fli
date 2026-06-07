@@ -12,7 +12,7 @@ from jax.experimental.multihost_utils import process_allgather
 from jaxtyping import Array
 
 from ...fields import DensityField, FlatDensity, ParticleField, SphericalDensity
-from ...fields.lensing_maps import FlatKappaField, SphericalKappaField
+from ...fields.lensing_maps import FlatKappaField, FlatShearField, SphericalKappaField, SphericalShearField
 from ..base._core import AbstractField
 from ..base._enums import ConvergenceUnit, DensityUnit, FieldStatus, PositionUnit
 
@@ -33,11 +33,31 @@ def _ensure_batch_dim(array: np.ndarray, field_type: str) -> np.ndarray:
             return array[None, ...]
         elif array.ndim != 2:
             raise ValueError(f"Unexpected shape for {field_type}: {array.shape}")
+    elif field_type == "SphericalShearField":
+        # element is the spin-2 (2, npix); batch is the leading axis. A multi-batched (N, S, 2, npix)
+        # field is split by Catalog into N entries of (S, 2, npix), so each entry here is rank 2 or 3.
+        if array.ndim == 2:  # (2, npix) single -> add batch
+            return array[None, ...]
+        elif array.ndim != 3:  # (S, 2, npix) batched
+            raise ValueError(
+                f"Unexpected shape for SphericalShearField: {array.shape} (expected (2,npix) or (S,2,npix); "
+                "a multi-batched (N,S,2,npix) field is auto-expanded into N catalog entries)."
+            )
     elif field_type in ("FlatDensity", "FlatKappaField"):
         if array.ndim == 2:
             return array[None, ...]
         elif array.ndim != 3:
             raise ValueError(f"Unexpected shape for FlatDensity: {array.shape}")
+    elif field_type == "FlatShearField":
+        # element is the spin-2 (2, ny, nx); batch is the leading axis. A multi-batched
+        # (N, S, 2, ny, nx) field is split by Catalog into N entries of (S, 2, ny, nx).
+        if array.ndim == 3:  # (2, ny, nx) single -> add batch
+            return array[None, ...]
+        elif array.ndim != 4:  # (S, 2, ny, nx) batched
+            raise ValueError(
+                f"Unexpected shape for FlatShearField: {array.shape} (expected (2,ny,nx) or (S,2,ny,nx); "
+                "a multi-batched (N,S,2,ny,nx) field is auto-expanded into N catalog entries)."
+            )
     elif field_type == "DensityField":
         if array.ndim == 3:
             return array[None, ...]
@@ -88,6 +108,11 @@ def _compute_split_params(array_batched):
     )
 
     max_planes_per_split = _INT32_MAX // bytes_per_n0_plane
+    if max_planes_per_split < 1:
+        # A single plane along axis 1 already exceeds the limit (e.g. a narrow spin-2 component axis,
+        # or an enormous spatial plane): splitting axis 1 cannot help. Leave it unsplit and let the
+        # writer surface the size error rather than dividing by zero here.
+        return None
     num_splits = math.ceil(int(array_batched.shape[1]) / max_planes_per_split)
     split_size = math.ceil(int(array_batched.shape[1]) / num_splits)
     return num_splits, split_size
@@ -99,9 +124,11 @@ def _array_feature_for_type(field_type: str, shape: tuple, dtype_str: str):
 
     if field_type in ("SphericalDensity", "SphericalKappaField"):
         return Array2D(shape=(None, shape[0]), dtype=dtype_str)
-    elif field_type in ("FlatDensity", "FlatKappaField"):
+    elif field_type in ("FlatDensity", "FlatKappaField", "SphericalShearField"):
+        # element rank 2: (ny, nx) for flat, (2, npix) for spherical shear
         return Array3D(shape=(None, *shape), dtype=dtype_str)
-    elif field_type == "DensityField":
+    elif field_type in ("FlatShearField", "DensityField"):
+        # element rank 3: (2, ny, nx) for flat shear, (N0, N1, N2) for density
         return Array4D(shape=(None, *shape), dtype=dtype_str)
     elif field_type == "ParticleField":
         return Array5D(shape=(None, *shape), dtype=dtype_str)
@@ -261,15 +288,17 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
     field_classes = {
         "SphericalDensity": SphericalDensity,
         "SphericalKappaField": SphericalKappaField,
+        "SphericalShearField": SphericalShearField,
         "FlatDensity": FlatDensity,
         "FlatKappaField": FlatKappaField,
+        "FlatShearField": FlatShearField,
         "DensityField": DensityField,
         "ParticleField": ParticleField,
     }
     field_cls = field_classes[item["field_type"]]
     if field_cls is ParticleField:
         unit = PositionUnit[item["unit"]]
-    elif field_cls in (SphericalKappaField, FlatKappaField):
+    elif field_cls in (SphericalKappaField, FlatKappaField, SphericalShearField, FlatShearField):
         unit = ConvergenceUnit[item["unit"]]
     else:
         unit = DensityUnit[item["unit"]]

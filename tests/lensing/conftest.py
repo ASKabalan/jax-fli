@@ -25,6 +25,8 @@ T1 = 1.0
 N_STEPS = 20
 Z_SOURCES_SINGLE = 0.5
 Z_SOURCES_MULTI = [0.5, 1.0]
+FLATSKY_NPIX = (64, 64)
+FIELD_SIZE = (10.0, 10.0)  # degrees
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +125,56 @@ def born_kappa_single(cosmology, lensing_lightcone):
 def born_kappa_multi(cosmology, lensing_lightcone):
     """Born convergence maps at z_source=[0.5, 1.0], global normalization."""
     return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global")
+
+
+# ---------------------------------------------------------------------------
+# Flat-sky Born convergence (no glass/dorian reference — used for KS self-consistency)
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def lensing_flat_initial_field(cosmology):
+    """Gaussian initial conditions for flat-sky lensing tests."""
+    return jfli.gaussian_initial_conditions(
+        jax.random.PRNGKey(42),
+        MESH_SIZE,
+        BOX_SIZE,
+        cosmo=cosmology,
+        flatsky_npix=FLATSKY_NPIX,
+        field_size=FIELD_SIZE,
+    )
+
+
+@pytest.fixture(scope="session")
+def lensing_flat_lightcone(cosmology, lensing_flat_initial_field):
+    """Flat-sky lightcone from LPT + N-body."""
+    dx, p = jfli.lpt(cosmology, lensing_flat_initial_field, ts=LPT_TS, order=LPT_ORDER)
+    solver = jfli.DoubleKickDrift(
+        interp_kernel=jfli.NoInterp(
+            painting=jfli.PaintingOptions(target="flat"),
+        ),
+        t0=T0,
+        t1=T1,
+        n_steps=N_STEPS,
+    )
+    lightcone = jfli.nbody(
+        cosmology,
+        dx,
+        p,
+        solver=solver,
+        nb_shells=NB_SHELLS,
+    )
+    return lightcone
+
+
+@pytest.fixture(scope="session")
+def born_flat_kappa_single(cosmology, lensing_flat_lightcone):
+    """Flat Born convergence map at z_source=0.5, global normalization."""
+    return jfli.born(cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global")
+
+
+@pytest.fixture(scope="session")
+def born_flat_kappa_multi(cosmology, lensing_flat_lightcone):
+    """Flat Born convergence maps at z_source=[0.5, 1.0], global normalization."""
+    return jfli.born(cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global")
 
 
 @pytest.fixture(scope="session")

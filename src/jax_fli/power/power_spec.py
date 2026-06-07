@@ -38,6 +38,12 @@ class PowerSpectrum(AbstractField):
     mesh_size: tuple[int, int, int] = eqx.field(static=True, default=(0, 0, 0))
     box_size: tuple[float, float, float] = eqx.field(static=True, default=(0.0, 0.0, 0.0))
 
+    # Number of spectral components carried on a dedicated axis. 1 = no components axis (scalar):
+    # array is (n_k) or (B, n_k). k>1 = a components axis of size k (the second-to-last axis):
+    # array is (k, n_k) or (B, k, n_k). Shear -> n_components=3 (EE, EB, BB). This disambiguates a
+    # single multi-component spectrum (k, n_k) from a batched scalar spectrum (B, n_k).
+    n_components: int = eqx.field(static=True, default=1)
+
     # Wavenumber grid (ell or k). Default None; validated as non-None in __check_init__.
     wavenumber: jax.Array | None = None
 
@@ -60,23 +66,36 @@ class PowerSpectrum(AbstractField):
             raise ValueError("wavenumber must be 1D")
 
         n_k = self.wavenumber.shape[0]
+        nc = self.n_components
 
-        if self.array.ndim == 1:
-            if self.array.shape[0] != n_k:
-                raise ValueError(f"Spectra length {self.array.shape[0]} does not match wavenumber {n_k}.")
-        elif self.array.ndim == 2:
-            if self.array.shape[1] != n_k:
-                raise ValueError(
-                    f"Spectra shape {self.array.shape} incompatible with wavenumber {n_k}. " "Use shape (n_spec, n_k)."
-                )
+        if self.array.shape[-1] != n_k:
+            raise ValueError(f"Spectra last axis {self.array.shape[-1]} does not match wavenumber {n_k}.")
+        if nc == 1:
+            # scalar: (n_k) single or (B, n_k) batched
+            if self.array.ndim not in (1, 2):
+                raise ValueError(f"Scalar PowerSpectrum (n_components=1) must be 1D or 2D, got {self.array.shape}.")
         else:
-            raise ValueError("Spectra must be 1D or 2D.")
+            # multi-component: (nc, n_k) single or (B, nc, n_k) batched; components axis = second-to-last
+            if self.array.ndim not in (2, 3):
+                raise ValueError(
+                    f"PowerSpectrum with n_components={nc} must be 2D (nc, n_k) or 3D (B, nc, n_k), "
+                    f"got {self.array.shape}."
+                )
+            if self.array.shape[-2] != nc:
+                raise ValueError(
+                    f"PowerSpectrum components axis {self.array.shape[-2]} != n_components={nc} "
+                    f"(array shape {self.array.shape})."
+                )
 
     # ---- AbstractField abstract methods -----------------------------------
 
     def is_batched(self) -> bool:
-        """Return True if the spectrum has a leading batch dimension (2D array)."""
-        return self.array.ndim == 2
+        """Return True if the spectrum has a leading batch dimension.
+
+        Scalar (n_components==1): batched iff array is 2D ``(B, n_k)``. Multi-component
+        (n_components>1): batched iff array is 3D ``(B, n_components, n_k)``.
+        """
+        return self.array.ndim == (3 if self.n_components > 1 else 2)
 
     def is_multi_batched(self) -> bool:
         """PowerSpectrum does not support multi-batching."""
@@ -88,6 +107,7 @@ class PowerSpectrum(AbstractField):
         return cls(
             array=jnp.full_like(field.array, fill_value),
             wavenumber=field.wavenumber,
+            n_components=field.n_components,
             mesh_size=field.mesh_size,
             box_size=field.box_size,
             comoving_centers=field.comoving_centers,
@@ -108,6 +128,7 @@ class PowerSpectrum(AbstractField):
             "PowerSpectrum("
             f"wavenumber=Array{tuple(self.wavenumber.shape)}, "  # type: ignore[reportOptionalMemberAccess]
             f"array=Array{tuple(self.array.shape)}, "
+            f"n_components={self.n_components}, "
             f"dtype={self.array.dtype}, "
             f"  mesh_size         ={self.mesh_size}, "
             f"  box_size          ={self.box_size}, "
@@ -121,58 +142,60 @@ class PowerSpectrum(AbstractField):
 
     def __getitem__(self, key) -> PowerSpectrum:
         """
-        Slice spectra while keeping the wavenumber grid aligned.
+        Index a PowerSpectrum.
 
-        Examples
-        --------
-        ps[:5]          -> first 5 k and spectra entries
-        ps[:2, :5]      -> first 2 spectra and first 5 k (for batched spectra)
+        * **Batched** spectrum (leading batch axis): ``ps[key]`` selects along the **batch** axis
+          (and the matching per-batch metadata: scale_factors / comoving_centers / z_sources /
+          density_width). An int key drops the batch axis, returning a single spectrum.
+        * **Non-batched** spectrum: ``ps[key]`` selects along the **wavenumber (ℓ/k)** axis,
+          preserving any components axis. This is the case for a single shear spectrum
+          ``(3, n_ell)`` — ``ps[i]`` slices ℓ, it does not pick out "EE".
         """
-        # Normalize key into (spec_sel, k_sel)
-        if isinstance(key, tuple):
-            if len(key) != 2:
-                raise ValueError("__getitem__ expects key like spectra_sel, k_sel")
-            k_sel, spec_sel = key
-        else:
-            k_sel, spec_sel = key, slice(None)
+        if self.is_batched():
+            B = self.array.shape[0]
+            array_out = self.array[key]
 
-        k_new = jnp.atleast_1d(self.wavenumber[spec_sel])  # type: ignore[reportOptionalSubscript]
-        if self.array.ndim == 1:
-            array_out = self.array[k_sel]
-        else:
-            array_out = self.array[k_sel, spec_sel]
+            def _idx(x):
+                if x is not None and x.ndim >= 1 and x.shape[0] == B:
+                    return x[key]
+                return x
 
-        # for attr scale_factors, comoving_centers, z_sources, density_width if they exist then index them with k_sel
-        if self.scale_factors is not None and self.scale_factors.ndim == 1:
-            sf_new = jnp.atleast_1d(self.scale_factors[k_sel])
-        else:
-            sf_new = self.scale_factors
+            return PowerSpectrum(
+                wavenumber=self.wavenumber,
+                array=array_out,
+                n_components=self.n_components,
+                name=self.name,
+                scale_factors=_idx(self.scale_factors),
+                mesh_size=self.mesh_size,
+                box_size=self.box_size,
+                comoving_centers=_idx(self.comoving_centers),
+                density_width=_idx(self.density_width),
+                z_sources=_idx(self.z_sources),
+                nside=self.nside,
+                flatsky_npix=self.flatsky_npix,
+                field_size=self.field_size,
+                status=self.status,
+                unit=self.unit,
+            )
 
-        if self.comoving_centers is not None and self.comoving_centers.ndim == 1:
-            cc_new = jnp.atleast_1d(self.comoving_centers[k_sel])
+        # not batched -> slice the wavenumber (last) axis, keep any components axis.
+        # Normalize negative ints so ps[-1] selects the last bin (not slice(-1, 0) -> empty).
+        if isinstance(key, int):
+            k = key if key >= 0 else self.array.shape[-1] + key
+            ksel = slice(k, k + 1)
         else:
-            cc_new = self.comoving_centers
-
-        if self.z_sources is not None and self.z_sources.ndim == 1:
-            zs_new = jnp.atleast_1d(self.z_sources[k_sel])
-        else:
-            zs_new = self.z_sources
-
-        if self.density_width is not None and self.density_width.ndim == 1:
-            dw_new = jnp.atleast_1d(self.density_width[k_sel])
-        else:
-            dw_new = self.density_width
-
+            ksel = key
         return PowerSpectrum(
-            wavenumber=k_new,
-            array=array_out,
+            wavenumber=jnp.atleast_1d(self.wavenumber[ksel]),  # type: ignore[reportOptionalSubscript]
+            array=self.array[..., ksel],
+            n_components=self.n_components,
             name=self.name,
-            scale_factors=sf_new,
+            scale_factors=self.scale_factors,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
-            comoving_centers=cc_new,
-            density_width=dw_new,
-            z_sources=zs_new,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
             nside=self.nside,
             flatsky_npix=self.flatsky_npix,
             field_size=self.field_size,
@@ -216,7 +239,8 @@ class PowerSpectrum(AbstractField):
             raise ValueError("Cannot plot traced arrays. Use PowerSpectrum.plot() outside of a jit context.")
 
         k_1d = self.wavenumber
-        pk_2d = self.array[None, :] if self.array.ndim == 1 else self.array
+        # Flatten any leading batch and/or components axes into individual lines.
+        pk_2d = self.array.reshape(-1, self.array.shape[-1])
         n_spec = pk_2d.shape[0]
 
         # Always generate labels if none are provided, so the metadata exists
@@ -314,6 +338,7 @@ class PowerSpectrum(AbstractField):
         return cls(
             wavenumber=ref_k,
             array=stacked_array,
+            n_components=ref.n_components,
             name=name,
             mesh_size=ref.mesh_size,
             box_size=ref.box_size,
