@@ -29,7 +29,8 @@ def main() -> None:
     parser.add_argument("--nb-shells", type=int, default=8, help="lightcone shells")
     parser.add_argument("--out", type=str, default="kappa_sim.parquet")
     parser.add_argument(
-        "--multihost", action="store_true",
+        "--multihost",
+        action="store_true",
         help="call jax.distributed.initialize() (one process per device across nodes)",
     )
     args = parser.parse_args()
@@ -57,8 +58,12 @@ def main() -> None:
     key = jax.random.PRNGKey(0)
 
     initial_field = jfli.gaussian_initial_conditions(
-        key, (args.mesh,) * 3, (args.box,) * 3,
-        cosmo=cosmo, nside=args.nside, field_sharding=sharding,
+        key,
+        (args.mesh,) * 3,
+        (args.box,) * 3,
+        cosmo=cosmo,
+        nside=args.nside,
+        field_sharding=sharding,
     )
     dx, p = jfli.lpt(cosmo, initial_field, ts=0.1, order=1)
 
@@ -67,7 +72,9 @@ def main() -> None:
             painting=jfli.PaintingOptions(target="spherical", scheme="ngp"),
             drift_on_lightcone=True,
         ),
-        t0=0.1, t1=1.0, n_steps=max(10, args.nb_shells + 2),
+        t0=0.1,
+        t1=1.0,
+        n_steps=max(10, args.nb_shells + 2),
     )
     lightcone = jfli.nbody(cosmo, dx, p, nb_shells=args.nb_shells, solver=solver)
 
