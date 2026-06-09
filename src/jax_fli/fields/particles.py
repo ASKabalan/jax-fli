@@ -120,7 +120,7 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ painting: 3D
 
-    @partial(jax.jit, static_argnames=("batch_size", "order"))
+    @partial(jax.jit, static_argnames=("batch_size", "order", "deconvolution"))
     def paint(
         self,
         *,
@@ -128,6 +128,7 @@ class ParticleField(AbstractField):
         weights: Array | float = 1.0,
         batch_size: int | None = None,
         order: str = "cic",
+        deconvolution: bool = False,
     ) -> DensityField:
         """
         Paint particles onto a 3D density mesh using the stencil
@@ -158,6 +159,7 @@ class ParticleField(AbstractField):
             mesh=mesh,
             weights=weights,
             order=order,
+            deconvolution=deconvolution,
         )
 
         if data.ndim == 4:
@@ -313,6 +315,7 @@ class ParticleField(AbstractField):
         static_argnames=(
             "scheme",
             "kernel_width_arcmin",
+            "kernel_width_pixels",
             "smoothing_interpretation",
             "paint_nside",
             "ud_grade_power",
@@ -330,6 +333,7 @@ class ParticleField(AbstractField):
         scheme: SphericalScheme = "bilinear",
         weights: Array | None = None,
         kernel_width_arcmin: float | None = None,
+        kernel_width_pixels: float | None = None,
         smoothing_interpretation: str = "fwhm",
         paint_nside: int | None = None,
         ud_grade_power: float = 0.0,
@@ -390,6 +394,7 @@ class ParticleField(AbstractField):
             "scheme": scheme,
             "weights": weights,
             "kernel_width_arcmin": kernel_width_arcmin,
+            "kernel_width_pixels": kernel_width_pixels,
             "smoothing_interpretation": smoothing_interpretation,
             "paint_nside": paint_nside,
             "ud_grade_power": ud_grade_power,

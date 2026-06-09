@@ -30,6 +30,7 @@ def _single_paint(
     mesh: Array | None,
     weights: Array | float,
     order: str = "cic",
+    deconvolution: bool = False,
 ) -> Array:
     """
     Paint a single shell of particles onto a 3D density mesh using the stencil
@@ -71,6 +72,7 @@ def _single_paint(
         array,
         initial_particles=initial_particles,
         order=order,
+        deconvolution=deconvolution,
         halo_size=halo_size,
         sharding=field_sharding,
         weight=weights,
@@ -207,6 +209,7 @@ def _single_paint_spherical_lightcone(
     scheme: SphericalScheme,
     weights: Array | None,
     kernel_width_arcmin: float | None,
+    kernel_width_pixels: float | None,
     smoothing_interpretation: str,
     paint_nside: int | None,
     ud_grade_power: float,
@@ -229,6 +232,7 @@ def _single_paint_spherical_lightcone(
         scheme=scheme,
         weights=weights,
         kernel_width_arcmin=kernel_width_arcmin,
+        kernel_width_pixels=kernel_width_pixels,
         smoothing_interpretation=smoothing_interpretation,
         paint_nside=paint_nside,
         ud_grade_power=ud_grade_power,
@@ -250,6 +254,7 @@ def _single_paint_spherical(
     scheme: SphericalScheme,
     weights: Array | None,
     kernel_width_arcmin: float | None,
+    kernel_width_pixels: float | None,
     smoothing_interpretation: str,
     paint_nside: int | None,
     ud_grade_power: float,
@@ -330,6 +335,7 @@ def _single_paint_spherical(
         weights=weights,
         method=scheme,
         kernel_width_arcmin=kernel_width_arcmin,
+        kernel_width_pixels=kernel_width_pixels,
         smoothing_interpretation=smoothing_interpretation,
         paint_nside=paint_nside,
         ud_grade_power=ud_grade_power,

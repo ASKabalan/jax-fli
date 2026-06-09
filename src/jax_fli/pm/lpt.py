@@ -211,6 +211,7 @@ def lpt(
                 scheme=painting.scheme,
                 weights=painting.weights,
                 kernel_width_arcmin=painting.kernel_width_arcmin,
+                kernel_width_pixels=painting.kernel_width_pixels,
                 smoothing_interpretation=painting.smoothing_interpretation,
                 paint_nside=painting.paint_nside,
                 ud_grade_power=painting.ud_grade_power,
@@ -250,6 +251,7 @@ def lpt(
                 scheme=painting.scheme,
                 weights=painting.weights,
                 kernel_width_arcmin=painting.kernel_width_arcmin,
+                kernel_width_pixels=painting.kernel_width_pixels,
                 smoothing_interpretation=painting.smoothing_interpretation,
                 paint_nside=painting.paint_nside,
                 ud_grade_power=painting.ud_grade_power,
@@ -267,6 +269,7 @@ def lpt(
             weights=painting.weights,
             batch_size=painting.batch_size,
             order=painting.order,
+            deconvolution=painting.deconvolution,
         )
 
     return dx_field, p_field

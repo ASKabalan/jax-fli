@@ -61,6 +61,7 @@ def _build_painting(args: Namespace):
                 scheme=args.scheme,
                 paint_nside=args.paint_nside,
                 kernel_width_arcmin=getattr(args, "kernel_width_arcmin", None),
+                kernel_width_pixels=getattr(args, "kernel_width_pixels", None),
             ),
             nside,
             None,
