@@ -36,5 +36,5 @@ Run `fli-simulate --help` for the full list and defaults.
 ## Distributed
 
 Launch one process per GPU; field sharding and halo exchange are automatic. See
-[multi-host PM](../2-advanced-usage/09-multi-host-pm.md) and the
+[multi-host PM](../2-advanced-usage/10-multi-host-pm.md) and the
 [Distributed PM notebook](../1-introduction-and-basics/04-Distributed-PM.ipynb).

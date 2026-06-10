@@ -23,4 +23,4 @@ mpirun -n 8 fli-dorian-rt --input lightcone.parquet --output kappa_rt.parquet \
 
 Unlike Born, ray-tracing is **not** JAX-differentiable. For the differentiable first-order map use
 [`fli-born-rt`](fli-born-rt.md); the two are compared in the
-[Lensing notebook](../2-advanced-usage/07-Lensing.ipynb).
+[Lensing notebook](../2-advanced-usage/08-Lensing.ipynb).

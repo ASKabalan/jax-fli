@@ -1,7 +1,7 @@
 # fli-spectra
 
 Compute power spectra from Parquet catalogs produced by `fli-simulate` (or the loaders in
-[notebook 8](../2-advanced-usage/08-External-Catalog.ipynb)). It scans a folder, detects each
+[notebook 9](../2-advanced-usage/09-External-Catalog.ipynb)). It scans a folder, detects each
 field type, converts to overdensity where needed, and applies the matching estimator:
 
 | Field type | Spectrum |

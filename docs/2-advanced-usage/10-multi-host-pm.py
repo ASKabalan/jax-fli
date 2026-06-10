@@ -5,15 +5,15 @@ This is the script you launch across nodes. The whole pipeline is identical to t
 single-device notebooks; only the device mesh changes. Run it either way:
 
   # Multi-host on SLURM (one process per GPU, jax.distributed coordinates them):
-  srun -n $SLURM_NTASKS python 09-multi-host-pm.py --multihost \
+  srun -n $SLURM_NTASKS python 10-multi-host-pm.py --multihost \
        --mesh 1024 --box 3000 --nside 1024 --nb-shells 16 --out kappa_sim.parquet
 
   # Single host with fake CPU devices (laptop / CI smoke test):
   XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
-       python 09-multi-host-pm.py --mesh 64 --nside 64 --out kappa_sim.parquet
+       python 10-multi-host-pm.py --mesh 64 --nside 64 --out kappa_sim.parquet
 
 The output Parquet holds a ``SphericalKappaField`` (one map per source bin) plus the
-cosmology, ready to load with ``jax_fli.io.Catalog.from_parquet`` (see 09-multi-host-pm.md).
+cosmology, ready to load with ``jax_fli.io.Catalog.from_parquet`` (see 10-multi-host-pm.md).
 """
 
 from __future__ import annotations
@@ -57,6 +57,12 @@ def main() -> None:
     cosmo = jc.Planck18()
     key = jax.random.PRNGKey(0)
 
+    # Ghost-cell width for the halo exchange at shard boundaries. Without it
+    # (halo_size=0) the PM forces are wrong at the x-slab edges and the lightcone
+    # shells show repeated patterns that worsen with more devices. The halo must
+    # exceed the largest particle displacement (in cells) that crosses a boundary;
+    # mesh//4 is a safe, generous default. Harmless on a single device.
+    halo = args.mesh // 4
     initial_field = jfli.gaussian_initial_conditions(
         key,
         (args.mesh,) * 3,
@@ -64,12 +70,13 @@ def main() -> None:
         cosmo=cosmo,
         nside=args.nside,
         field_sharding=sharding,
+        halo_size=halo,
     )
     dx, p = jfli.lpt(cosmo, initial_field, ts=0.1, order=1)
 
     solver = jfli.DoubleKickDrift(
         interp_kernel=jfli.OnionTiler(
-            painting=jfli.PaintingOptions(target="spherical", scheme="ngp"),
+            painting=jfli.PaintingOptions(target="spherical", scheme="rbf_neighbor"),
             drift_on_lightcone=True,
         ),
         t0=0.1,
