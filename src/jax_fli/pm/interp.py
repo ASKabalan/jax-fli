@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import warnings
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -10,10 +11,8 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import jax_healpy as jhp
-from jaxpm.growth import dGfa
-from jaxpm.growth import growth_factor as Gp
 
-from .._src.base._warn import warn_disabled, warning_if
+from .._src.base._warn import warning_if
 from ..fields import DensityUnit, FieldStatus, ParticleField, PositionUnit, SphericalDensity
 from ..fields.painting import PaintingOptions
 
@@ -103,22 +102,35 @@ class AbstractInterp(eqx.Module):
         t: float,
         y: tuple[ParticleField, ParticleField],
         cosmo,
+        drift_factor: Callable | None = None,
     ) -> Any:
-        """Produce a map."""
+        """Produce a map.
+
+        ``drift_factor`` is the solver-provided drift multiplier
+        (``AbstractNBodySolver.drift_factor``); it carries the solver's
+        momentum convention. Kernels that do not drift ignore it.
+        """
         raise NotImplementedError
 
-    def _drift_to_time(
+    def _drift_positions(
         self,
         positions: jnp.ndarray,
         velocities: jnp.ndarray,
-        a_current: float,
-        a_target: float,
+        a_from: float,
+        a_to: jnp.ndarray,
+        drift_factor: Callable,
         cosmo,
     ) -> jnp.ndarray:
-        """Drift particles using growth factor form."""
-        ac = (a_current * a_target) ** 0.5
-        drift_factor = (Gp(cosmo, a_target) - Gp(cosmo, a_current)) / dGfa(cosmo, ac)
-        return positions + drift_factor * velocities
+        """Drift particles from ``a_from`` to their per-particle ``a_to``.
+
+        ``positions`` and ``velocities`` must be in the *same* spatial unit. The
+        solver-provided ``drift_factor(a_from, a_to, cosmo)`` returns the per-particle
+        multiplier in the solver's momentum convention (conformal ``p`` for KKD,
+        ``pi = dx/dD`` for the FastPM/BullFrog steppers), so the same call is correct
+        for every solver.
+        """
+        factor = drift_factor(a_from, a_to, cosmo)
+        return positions + factor * velocities
 
 
 class NoInterp(AbstractInterp):
@@ -164,6 +176,7 @@ class NoInterp(AbstractInterp):
         t: float,
         y: tuple[ParticleField, ParticleField],
         cosmo,
+        drift_factor: Callable | None = None,
     ) -> Any:
         dx, p = y
 
@@ -181,6 +194,7 @@ class NoInterp(AbstractInterp):
                 scheme=self.painting.scheme,
                 weights=self.painting.weights,
                 kernel_width_arcmin=self.painting.kernel_width_arcmin,
+                kernel_width_pixels=self.painting.kernel_width_pixels,
                 smoothing_interpretation=self.painting.smoothing_interpretation,
                 paint_nside=self.painting.paint_nside,
                 ud_grade_power=self.painting.ud_grade_power,
@@ -201,6 +215,7 @@ class NoInterp(AbstractInterp):
                 weights=self.painting.weights,
                 batch_size=self.painting.batch_size,
                 order=self.painting.order,
+                deconvolution=self.painting.deconvolution,
             )
         else:
             result = dx
@@ -212,23 +227,15 @@ class NoInterp(AbstractInterp):
 class DriftInterp(AbstractInterp):
     """
     Painting without tiling, but drifting particles to the lightcone surface.
-    Useful when the simulation box is large enough to cover the lightcone
-    without replication, but we want to correct for the discrete time stepping
-    by drifting particles to their exact lightcone crossing time.
 
-    .. warning::
-        ``drift_on_lightcone`` is currently disabled.  ``DriftInterp`` behaves
-        identically to ``NoInterp`` until the feature is re-enabled.
+    Identical to :class:`NoInterp` except that every particle is drifted from the
+    snapshot scale factor to the scale factor at which it actually crosses the
+    lightcone (``a_of_chi`` of its comoving distance from the observer), correcting
+    the discrete time stepping. ``DriftInterp`` always drifts — there is no on/off
+    switch; use :class:`NoInterp` for a plain snapshot.
+
+    Useful when the box is large enough to cover the lightcone without replication.
     """
-
-    drift_on_lightcone: bool = eqx.field(default=False, static=True)
-
-    def __check_init__(self) -> None:
-        if self.drift_on_lightcone:
-            warn_disabled(
-                "drift_on_lightcone",
-                workaround="Use NoInterp (--interp none without --drift-on-lightcone) for a plain snapshot.",
-            )
 
     def init(self) -> InterpTilerState:
         # Check geometry
@@ -270,29 +277,26 @@ class DriftInterp(AbstractInterp):
         t: float,
         y: tuple[ParticleField, ParticleField],
         cosmo,
+        drift_factor: Callable | None = None,
     ) -> Any:
         dx, p = y
+        assert drift_factor is not None, "DriftInterp requires a solver-provided drift_factor"
 
         assert self.r_centers is not None
         assert self.density_widths is not None
         r_center = self.r_centers[state.shell_idx]
         width = self.density_widths[state.shell_idx]
 
-        # Drift logic
+        # Per-particle lightcone-crossing scale factor from comoving distance to observer.
         observer_mpc = jnp.array(dx.observer_position_mpc)
-        positions = dx.to(PositionUnit.MPC_H).array
-        velocities = p.array
+        positions_mpc = dx.to(PositionUnit.MPC_H).array
+        dist_mpc = jnp.linalg.norm(positions_mpc - observer_mpc, axis=-1)
+        a_cross = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
 
-        dist_mpc = jnp.linalg.norm(positions - observer_mpc, axis=-1)
-
-        # Calculate target scale factor for lightcone crossing
-        a_target_particle = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
-
-        # Drift
-        p_drifted = self._drift_to_time(positions, velocities, t, a_target_particle, cosmo)
-
-        # Update field with drifted positions
-        dx_drifted = dx.replace(array=p_drifted, unit=PositionUnit.MPC_H)
+        # Drift in the native GRID_RELATIVE unit (the unit of both dx and p), so this
+        # reduces to NoInterp plus exactly the drift term and painting is unchanged.
+        drifted = self._drift_positions(dx.array, p.array, t, a_cross, drift_factor, cosmo)
+        dx_drifted = dx.replace(array=drifted)
 
         if self.painting.target == "particles":
             result = dx_drifted
@@ -303,6 +307,7 @@ class DriftInterp(AbstractInterp):
                 scheme=self.painting.scheme,
                 weights=self.painting.weights,
                 kernel_width_arcmin=self.painting.kernel_width_arcmin,
+                kernel_width_pixels=self.painting.kernel_width_pixels,
                 smoothing_interpretation=self.painting.smoothing_interpretation,
                 paint_nside=self.painting.paint_nside,
                 ud_grade_power=self.painting.ud_grade_power,
@@ -323,6 +328,7 @@ class DriftInterp(AbstractInterp):
                 weights=self.painting.weights,
                 batch_size=self.painting.batch_size,
                 order=self.painting.order,
+                deconvolution=self.painting.deconvolution,
             )
         else:
             result = dx_drifted
@@ -332,16 +338,13 @@ class DriftInterp(AbstractInterp):
 
 
 class OnionTiler(AbstractInterp):
-    """27-tile spherical painting with rotation decorrelation."""
+    """27-tile spherical painting with rotation decorrelation.
+
+    When ``drift_on_lightcone`` is set, particles are additionally drifted to their
+    lightcone-crossing scale factor (per tile, using each tile's comoving distance).
+    """
 
     drift_on_lightcone: bool = eqx.field(default=False, static=True)
-
-    def __check_init__(self) -> None:
-        if self.drift_on_lightcone:
-            warn_disabled(
-                "drift_on_lightcone",
-                workaround="Remove drift_on_lightcone=True; the feature is currently deactivated.",
-            )
 
     def init(self) -> InterpTilerState:
         if self.painting.target != "spherical":
@@ -375,6 +378,7 @@ class OnionTiler(AbstractInterp):
         t: float,
         y: tuple[ParticleField, ParticleField],
         cosmo,
+        drift_factor: Callable | None = None,
     ) -> Any:
         dx, p = y
         assert self.r_centers is not None
@@ -389,11 +393,11 @@ class OnionTiler(AbstractInterp):
 
         def inside_branch(operand):
             current_state, c = operand
-            return self._paint_single(t, p, dx, c, r_center, width, current_state)
+            return self._paint_single(t, p, dx, c, r_center, width, current_state, drift_factor)
 
         def outside_branch(operand):
             current_state, c = operand
-            return self._paint_tiled_27(t, p, dx, c, r_center, R_min, R_max, current_state)
+            return self._paint_tiled_27(t, p, dx, c, r_center, R_min, R_max, current_state, drift_factor)
 
         sph_map = jax.lax.cond(inside_box, inside_branch, outside_branch, (state, cosmo))
         sph_map = sph_map.replace(scale_factors=t, comoving_centers=r_center, density_width=width)
@@ -408,18 +412,16 @@ class OnionTiler(AbstractInterp):
         R_center: float,
         width: float,
         state: InterpTilerState,
+        drift_factor: Callable | None = None,
     ) -> SphericalDensity:
-        # Check for drift
+        # Inside the box: no tiling, drift in native GRID_RELATIVE units (like DriftInterp).
         if self.drift_on_lightcone:
-            positions = dx.to(PositionUnit.MPC_H).array
-            velocities = p.array
             observer_mpc = jnp.array(dx.observer_position_mpc)
-
-            dist_mpc = jnp.linalg.norm(positions - observer_mpc, axis=-1)
-            a_target_particle = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
-
-            p_drifted = self._drift_to_time(positions, velocities, t, a_target_particle, cosmo)
-            dx = dx.replace(array=p_drifted, unit=PositionUnit.MPC_H)
+            positions_mpc = dx.to(PositionUnit.MPC_H).array
+            dist_mpc = jnp.linalg.norm(positions_mpc - observer_mpc, axis=-1)
+            a_cross = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
+            drifted = self._drift_positions(dx.array, p.array, t, a_cross, drift_factor, cosmo)
+            dx = dx.replace(array=drifted)
 
         sph_map = dx.paint_spherical(
             center=R_center,
@@ -427,6 +429,7 @@ class OnionTiler(AbstractInterp):
             scheme=self.painting.scheme,
             weights=self.painting.weights,
             kernel_width_arcmin=self.painting.kernel_width_arcmin,
+            kernel_width_pixels=self.painting.kernel_width_pixels,
             smoothing_interpretation=self.painting.smoothing_interpretation,
             paint_nside=self.painting.paint_nside,
             ud_grade_power=self.painting.ud_grade_power,
@@ -453,15 +456,21 @@ class OnionTiler(AbstractInterp):
         R_min: float,
         R_max: float,
         state: InterpTilerState,
+        drift_factor: Callable | None = None,
     ) -> SphericalDensity:
         nside = dx.nside
         observer_mpc = jnp.array(dx.observer_position_mpc)
         observer_relative = jnp.array(dx.observer_position)
         box_size = jnp.array(dx.box_size)
+        mesh_size = jnp.array(dx.mesh_size)
         width = R_max - R_min
 
         positions = dx.to(PositionUnit.MPC_H).array
         positions_centered = positions - observer_mpc
+
+        # The momentum p is a GRID_RELATIVE displacement; scale by the cell size to get
+        # an Mpc/h displacement (do NOT use p.to(MPC_H), which would add the uniform grid).
+        velocities_mpc = p.array * (box_size / mesh_size)
 
         shifts = jnp.array(list(itertools.product([0, 1, -1], repeat=3)), dtype=jnp.int16)
         shifts = jnp.where(observer_relative == 0, shifts + 1, shifts)
@@ -487,11 +496,12 @@ class OnionTiler(AbstractInterp):
             p_final_pos = p_tiled + observer_mpc
 
             if self.drift_on_lightcone:
-                velocities = p.array
-                v_rotated = jnp.einsum("ij,...j->...i", rot_mat, velocities)
+                # Rotate the Mpc/h velocity with the same rotation, drift to each tile's
+                # own lightcone-crossing epoch (distance differs per tile/shift).
+                v_rotated = jnp.einsum("ij,...j->...i", rot_mat, velocities_mpc)
                 dist_mpc = jnp.linalg.norm(p_final_pos - observer_mpc, axis=-1)
-                a_target_particle = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
-                p_final_pos = self._drift_to_time(p_final_pos, v_rotated, t, a_target_particle, cosmo)
+                a_cross = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
+                p_final_pos = self._drift_positions(p_final_pos, v_rotated, t, a_cross, drift_factor, cosmo)
 
             p_final = dx.replace(array=p_final_pos, unit=PositionUnit.MPC_H)
 
@@ -501,6 +511,7 @@ class OnionTiler(AbstractInterp):
                 scheme=self.painting.scheme,
                 weights=self.painting.weights,
                 kernel_width_arcmin=self.painting.kernel_width_arcmin,
+                kernel_width_pixels=self.painting.kernel_width_pixels,
                 smoothing_interpretation=self.painting.smoothing_interpretation,
                 paint_nside=nside,
                 ud_grade_power=self.painting.ud_grade_power,
@@ -523,16 +534,13 @@ class OnionTiler(AbstractInterp):
 
 
 class TelephotoInterp(AbstractInterp):
-    """Single rotation+shift painting for narrow FOV."""
+    """Single rotation+shift painting for narrow FOV.
+
+    When ``drift_on_lightcone`` is set, particles are drifted to their
+    lightcone-crossing scale factor after the rotation+z-shift.
+    """
 
     drift_on_lightcone: bool = eqx.field(default=False, static=True)
-
-    def __check_init__(self) -> None:
-        if self.drift_on_lightcone:
-            warn_disabled(
-                "drift_on_lightcone",
-                workaround="Remove drift_on_lightcone=True; the feature is currently deactivated.",
-            )
 
     def init(self) -> InterpTilerState:
         if self.painting.target != "spherical" and self.painting.target != "flat":
@@ -591,6 +599,7 @@ class TelephotoInterp(AbstractInterp):
         t: float,
         y: tuple[ParticleField, ParticleField],
         cosmo,
+        drift_factor: Callable | None = None,
     ) -> Any:
         dx, p = y
 
@@ -603,11 +612,11 @@ class TelephotoInterp(AbstractInterp):
 
         def inside_branch(operand):
             current_state, c = operand
-            return self._paint_single(t, p, dx, c, r_center, width, current_state)
+            return self._paint_single(t, p, dx, c, r_center, width, current_state, drift_factor)
 
         def outside_branch(operand):
             current_state, c = operand
-            return self._paint_telephoto(t, p, dx, c, r_center, width, current_state)
+            return self._paint_telephoto(t, p, dx, c, r_center, width, current_state, drift_factor)
 
         # Clear jax_cosmo workspace before cond to prevent tracer leaks:
         # traced values stored there escape the cond scope.
@@ -625,18 +634,16 @@ class TelephotoInterp(AbstractInterp):
         r_center: float,
         width: float,
         state: InterpTilerState,
+        drift_factor: Callable | None = None,
     ) -> SphericalDensity:
-        # Check for drift
+        # Inside the box: no shift, drift in native GRID_RELATIVE units (like DriftInterp).
         if self.drift_on_lightcone:
-            positions = dx.to(PositionUnit.MPC_H).array
-            velocities = p.array
             observer_mpc = jnp.array(dx.observer_position_mpc)
-
-            dist_mpc = jnp.linalg.norm(positions - observer_mpc, axis=-1)
-            a_target_particle = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
-
-            p_drifted = self._drift_to_time(positions, velocities, t, a_target_particle, cosmo)
-            dx = dx.replace(array=p_drifted, unit=PositionUnit.MPC_H)
+            positions_mpc = dx.to(PositionUnit.MPC_H).array
+            dist_mpc = jnp.linalg.norm(positions_mpc - observer_mpc, axis=-1)
+            a_cross = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
+            drifted = self._drift_positions(dx.array, p.array, t, a_cross, drift_factor, cosmo)
+            dx = dx.replace(array=drifted)
 
         if self.painting.target == "spherical":
             return dx.paint_spherical(
@@ -645,6 +652,7 @@ class TelephotoInterp(AbstractInterp):
                 scheme=self.painting.scheme,
                 weights=self.painting.weights,
                 kernel_width_arcmin=self.painting.kernel_width_arcmin,
+                kernel_width_pixels=self.painting.kernel_width_pixels,
                 smoothing_interpretation=self.painting.smoothing_interpretation,
                 paint_nside=self.painting.paint_nside,
                 ud_grade_power=self.painting.ud_grade_power,
@@ -670,8 +678,11 @@ class TelephotoInterp(AbstractInterp):
         r_center: float,
         width: float,
         state: InterpTilerState,
+        drift_factor: Callable | None = None,
     ) -> SphericalDensity:
         observer_mpc = jnp.array(dx.observer_position_mpc)
+        box_size = jnp.array(dx.box_size)
+        mesh_size = jnp.array(dx.mesh_size)
 
         assert state.rotations is not None
         rot_idx = state.rotation_idx % 47
@@ -680,21 +691,22 @@ class TelephotoInterp(AbstractInterp):
         shift_distance = jnp.floor(r_center / self.max_comoving_distance) * self.max_comoving_distance
 
         positions = dx.to(PositionUnit.MPC_H).array
-        velocities = p.array
+        # Scale the GRID_RELATIVE momentum to an Mpc/h displacement (cell size).
+        velocities_mpc = p.array * (box_size / mesh_size)
 
         p_centered = positions - observer_mpc
         p_rotated = jnp.einsum("ij,...j->...i", M, p_centered)
         z_axis = jnp.array([0.0, 0.0, 1.0])
         p_shifted = p_rotated + z_axis * shift_distance
-        v_rotated = jnp.einsum("ij,...j->...i", M, velocities)
+        v_rotated = jnp.einsum("ij,...j->...i", M, velocities_mpc)
 
         p_final_pos = p_shifted
 
         if self.drift_on_lightcone:
-            a_current = t
-            dist_mpc = jnp.linalg.norm(p_shifted - observer_mpc, axis=-1)
-            a_target_particle = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
-            p_final_pos = self._drift_to_time(p_shifted, v_rotated, a_current, a_target_particle, cosmo)
+            # p_shifted is already observer-relative, so its distance is ||p_shifted||.
+            dist_mpc = jnp.linalg.norm(p_shifted, axis=-1)
+            a_cross = jc.background.a_of_chi(cosmo, dist_mpc)[..., None]
+            p_final_pos = self._drift_positions(p_shifted, v_rotated, t, a_cross, drift_factor, cosmo)
 
         dx_transformed = dx.replace(array=p_final_pos + observer_mpc, unit=PositionUnit.MPC_H)
 
@@ -705,6 +717,7 @@ class TelephotoInterp(AbstractInterp):
                 scheme=self.painting.scheme,
                 weights=self.painting.weights,
                 kernel_width_arcmin=self.painting.kernel_width_arcmin,
+                kernel_width_pixels=self.painting.kernel_width_pixels,
                 smoothing_interpretation=self.painting.smoothing_interpretation,
                 paint_nside=self.painting.paint_nside,
                 ud_grade_power=self.painting.ud_grade_power,
