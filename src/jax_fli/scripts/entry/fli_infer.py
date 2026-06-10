@@ -223,6 +223,7 @@ def main() -> None:
         scheme=args.scheme,
         paint_nside=args.paint_nside,
         kernel_width_arcmin=args.kernel_width_arcmin,
+        kernel_width_pixels=args.kernel_width_pixels,
         adjoint=args.adjoint,
         checkpoints=args.checkpoints,
         field_sharding=sharding,

@@ -242,6 +242,13 @@ def add_simulation_settings_args(p):
         help="RBF smoothing kernel width in arcmin (default: None)",
     )
     g.add_argument(
+        "--kernel-width-pixels",
+        type=float,
+        default=None,
+        dest="kernel_width_pixels",
+        help="RBF smoothing kernel width in HEALPix pixels, e.g. 0.8 (default: None)",
+    )
+    g.add_argument(
         "--enable-x64",
         action="store_true",
         dest="enable_x64",

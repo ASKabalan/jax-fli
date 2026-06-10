@@ -33,6 +33,10 @@ class PaintingOptions(eqx.Module):
     kernel_width_arcmin : float or None, default=None
         Smoothing kernel width in arcminutes for spherical painting.
 
+    kernel_width_pixels : float or None, default=None
+        Smoothing kernel width in HEALPix pixels (e.g. 0.5 = half a pixel) for
+        spherical painting. Mutually exclusive with ``kernel_width_arcmin``.
+
     smoothing_interpretation : str, default="fwhm"
         How to interpret kernel_width_arcmin ("fwhm" or "sigma").
 
@@ -53,6 +57,12 @@ class PaintingOptions(eqx.Module):
 
     order : int or str, default="cic"
         Mass-assignment order for 3D ("density") painting (NGP=1, CIC=2, TSC=3, PCS=4).
+
+    deconvolution : bool, default=False
+        Deconvolve the assignment window from the painted 3D ("density") field in
+        Fourier space. Sharpens the field and can go NEGATIVE (Gibbs ringing) --
+        intended for Fourier / P(k) use, not a density to visualise. ``target="density"``
+        only; never used for force computation.
 
     weights : array, float, or None, default=None
         Weights for painting.
@@ -80,6 +90,7 @@ class PaintingOptions(eqx.Module):
     # Spherical-specific
     scheme: SphericalScheme = eqx.field(static=True, default="bilinear")
     kernel_width_arcmin: float | None = eqx.field(static=True, default=None)
+    kernel_width_pixels: float | None = eqx.field(static=True, default=None)
     smoothing_interpretation: str = eqx.field(static=True, default="fwhm")
     paint_nside: int | None = eqx.field(static=True, default=None)
     ud_grade_power: float = eqx.field(static=True, default=0.0)
@@ -89,6 +100,7 @@ class PaintingOptions(eqx.Module):
 
     # 3D paint specific
     order: str = eqx.field(static=True, default="cic")
+    deconvolution: bool = eqx.field(static=True, default=False)
 
     # Shared
     weights: Array | float | None = 1.0

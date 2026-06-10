@@ -185,8 +185,15 @@ def distances(centers, max_comoving):
 
     inner_edges = 0.5 * (c[:-1] + c[1:])
     lower = jnp.concatenate([jnp.zeros(1), inner_edges])
-    upper = jnp.concatenate([inner_edges, jnp.atleast_1d(jnp.asarray(max_comoving))])
-    widths_asc = upper - lower  # all positive (ascending order guarantees this)
+    # Outermost outer edge: extend to the box edge (max_comoving) for an in-box shell, but
+    # if the outermost shell lies *beyond* the box, mirror its inner half-width so the shell
+    # keeps a positive thickness. A lightcone can request shells past the box (the tilers
+    # replicate it); pinning the edge to max_comoving there made the width negative -> the
+    # furthest shell painted empty.
+    max_c = jnp.asarray(max_comoving, dtype=c.dtype)
+    outer_edge = jnp.where(c[-1] <= max_c, max_c, 2.0 * c[-1] - inner_edges[-1])
+    upper = jnp.concatenate([inner_edges, jnp.atleast_1d(outer_edge)])
+    widths_asc = upper - lower
 
     return jnp.where(is_descending, widths_asc[::-1], widths_asc)
 

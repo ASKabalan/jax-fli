@@ -84,21 +84,35 @@ cl = kappa.angular_cl(method="healpy")
   <img src="assets/kappa_born.png" alt="Born approximation convergence kappa maps" width="700">
 </p>
 
-## Tutorials
+## Documentation
+
+Full tutorials live in [`docs/`](docs/notebooks.md) — executable notebooks plus markdown guides.
+The notebooks are committed with **small-scale CPU outputs** (production parameters left in the
+code); rerun them on a GPU/cluster to reproduce the full-resolution figures.
+
+**Introduction & basics**
 
 | # | Notebook | Description |
 |---|----------|-------------|
-| 01 | [Basics](notebooks/01-basics.ipynb) | Core objects, field types, painting targets, power spectra, and I/O |
-| 02 | [LPT Simulation](notebooks/02-LPT-Simulation.ipynb) | Full lightcone using LPT with arrays of scale factors and spherical shells |
-| 03 | [PM Simulation](notebooks/03-PM-Simulation.ipynb) | PM N-body solvers, correction kernels, and painting targets |
-| 04 | [Distributed PM](notebooks/04-Distributed-PM.ipynb) | Multi-GPU distributed PM using JAX sharding and device meshes |
-| 05 | [PM Interpolation](notebooks/05-PM-Interpolation.ipynb) | Lightcone painting with TelephotoInterp and OnionTiler kernels |
-| 06 | [Advanced PM](notebooks/06-Advanced-PM.ipynb) | Production pipeline combining PGD correction, OnionTiler, and theory validation |
-| 07 | [Lensing](notebooks/07-Lensing.ipynb) | Born approximation and ray-tracing convergence maps |
-| 08 | [External Catalogs](notebooks/08-External-Catalog.ipynb) | Loading CosmoGrid and GowerStreet simulation data |
-| 09 | [Comparison](notebooks/09-Comparison.ipynb) | Validation against CosmoGrid through power spectra and lensing maps |
-| 10 | [Probabilistic Modeling](notebooks/10-Probabilistic-Modeling.ipynb) | Custom MCMC distributions and reparameterization transforms |
-| 11 | [Full-Field Inference](notebooks/11-FullFieldInference.ipynb) | Bayesian inference of initial conditions and cosmological parameters |
+| 01 | [Library Fundamentals](docs/1-introduction-and-basics/01-basics.ipynb) | Field types, painting (3D / flat / HEALPix), power spectra, catalogs |
+| 02 | [LPT Lightcone](docs/1-introduction-and-basics/02-LPT-Simulation.ipynb) | Zel'dovich lightcone, theory comparison, deconvolution + shot noise |
+| 03 | [PM Simulation](docs/1-introduction-and-basics/03-PM-Simulation.ipynb) | BullFrog N-body, 3D P(k) vs Halofit with CIC deconvolution + shot noise |
+| 04 | [Distributed PM](docs/1-introduction-and-basics/04-Distributed-PM.ipynb) | Multi-device sharding, halo exchange, distributed painting |
+
+**Advanced usage**
+
+| # | Notebook | Description |
+|---|----------|-------------|
+| 05 | [PM Interpolation](docs/2-advanced-usage/05-PM-Interpolation.ipynb) | TelephotoInterp / OnionTiler for shells beyond the box |
+| 06 | [Advanced PM](docs/2-advanced-usage/06-Advanced-PM.ipynb) | PGD correction and shell-partitioning strategies |
+| 07 | [Weak Lensing](docs/2-advanced-usage/07-Lensing.ipynb) | Born + ray-traced convergence, shear maps, saving catalogs |
+| 08 | [External Catalogs](docs/2-advanced-usage/08-External-Catalog.ipynb) | Loading CosmoGrid and GowerStreet data |
+| 09 | [Multi-host PM](docs/2-advanced-usage/09-multi-host-pm.md) | Launching across nodes + validation vs CosmoGrid |
+
+**Command-line tools** — one page per script under
+[Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`, `fli-spectra`,
+`fli-born-rt`, `fli-dorian-rt`, `fli-samples`, `fli-infer`, `fli-2pcf`, `fli-extract`,
+`fli-launcher`. Sampling/inference tutorials and experiments are in preparation.
 
 ## Module Map
 

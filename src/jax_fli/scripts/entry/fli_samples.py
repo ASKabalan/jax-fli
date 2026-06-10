@@ -125,6 +125,7 @@ def main() -> None:
         scheme=args.scheme,
         paint_nside=args.paint_nside,
         kernel_width_arcmin=args.kernel_width_arcmin,
+        kernel_width_pixels=args.kernel_width_pixels,
         field_sharding=sharding,
         lensing="born",
         drift_on_lightcone=args.drift_on_lightcone,
