@@ -1,10 +1,10 @@
-# 9 · Multi-host PM and validation against CosmoGrid
+# 10 · Multi-host PM and validation against CosmoGrid
 
 The single-GPU notebooks scale to **multiple nodes** with no change to the physics code — only
 the device mesh grows. This page shows how to launch the distributed pipeline on a SLURM cluster
 and how to validate the resulting convergence maps against a CosmoGrid reference.
 
-The runnable script is [`09-multi-host-pm.py`](09-multi-host-pm.py).
+The runnable script is [`10-multi-host-pm.py`](10-multi-host-pm.py).
 
 ---
 
@@ -41,7 +41,7 @@ One task per GPU; `srun` sets the environment that `jax.distributed.initialize()
 #SBATCH --tasks-per-node=4
 #SBATCH --gpu-bind=none
 
-srun python 09-multi-host-pm.py --multihost \
+srun python 10-multi-host-pm.py --multihost \
      --mesh 1024 --box 3000 --nside 1024 --nb-shells 16 \
      --out kappa_sim.parquet
 ```
@@ -57,13 +57,13 @@ below was produced:
 
 ```bash
 XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
-    python 09-multi-host-pm.py --mesh 128 --nside 128 --nb-shells 8 --out kappa_sim.parquet
+    python 10-multi-host-pm.py --mesh 128 --nside 128 --nb-shells 8 --out kappa_sim.parquet
 ```
 
 ## Validating against CosmoGrid
 
-`09-multi-host-pm.py` writes a `SphericalKappaField` catalog. We load it back, load a CosmoGrid
-Stage-3 convergence reference (see [notebook 8](08-External-Catalog.ipynb)), and compare angular
+`10-multi-host-pm.py` writes a `SphericalKappaField` catalog. We load it back, load a CosmoGrid
+Stage-3 convergence reference (see [notebook 9](09-External-Catalog.ipynb)), and compare angular
 power spectra at matched cosmology:
 
 ```python
@@ -76,7 +76,7 @@ SIM = Path("/path/to/Simulations")
 cg = jfli.io.load_cosmogrid_kappa(SIM / "CosmoGrid/stage3_forecast/cosmo_000002/perm_0000")
 kappa_cg, cosmo = cg.field[0], cg.cosmology[0]
 
-# Our run (produced by 09-multi-host-pm.py, here at the same cosmology)
+# Our run (produced by 10-multi-host-pm.py, here at the same cosmology)
 kappa_sim = jfli.io.Catalog.from_parquet("kappa_sim.parquet").field[0]
 
 lmax = 2 * kappa_sim.nside
@@ -88,7 +88,7 @@ theory = jfli.compute_theory_cl(cosmo, ell=np.arange(lmax),
 # ... overplot cl_sim, cl_cg, theory per source bin ...
 ```
 
-![Convergence power spectra: jax-fli multi-host PM vs CosmoGrid reference](09-multi-host-comparison.png)
+![Convergence power spectra: jax-fli multi-host PM vs CosmoGrid reference](10-multi-host-comparison.png)
 
 On the scales the CPU demo can resolve (ℓ ≲ 30–50) the simulated convergence, the CosmoGrid
 reference, and the Halofit prediction **agree across all four source bins**. They diverge at high

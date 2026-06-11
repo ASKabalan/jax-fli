@@ -104,10 +104,11 @@ code); rerun them on a GPU/cluster to reproduce the full-resolution figures.
 | # | Notebook | Description |
 |---|----------|-------------|
 | 05 | [PM Interpolation](docs/2-advanced-usage/05-PM-Interpolation.ipynb) | TelephotoInterp / OnionTiler for shells beyond the box |
-| 06 | [Advanced PM](docs/2-advanced-usage/06-Advanced-PM.ipynb) | PGD correction and shell-partitioning strategies |
-| 07 | [Weak Lensing](docs/2-advanced-usage/07-Lensing.ipynb) | Born + ray-traced convergence, shear maps, saving catalogs |
-| 08 | [External Catalogs](docs/2-advanced-usage/08-External-Catalog.ipynb) | Loading CosmoGrid and GowerStreet data |
-| 09 | [Multi-host PM](docs/2-advanced-usage/09-multi-host-pm.md) | Launching across nodes + validation vs CosmoGrid |
+| 06 | [Drift on the Lightcone](docs/2-advanced-usage/06-Drift-on-Lightcone.ipynb) | Per-particle lightcone-crossing drift; fewer/thicker density shells |
+| 07 | [Advanced PM](docs/2-advanced-usage/07-Advanced-PM.ipynb) | PGD correction and shell-partitioning strategies |
+| 08 | [Weak Lensing](docs/2-advanced-usage/08-Lensing.ipynb) | Born + ray-traced convergence, shear maps, saving catalogs |
+| 09 | [External Catalogs](docs/2-advanced-usage/09-External-Catalog.ipynb) | Loading CosmoGrid and GowerStreet data |
+| 10 | [Multi-host PM](docs/2-advanced-usage/10-multi-host-pm.md) | Launching across nodes + validation vs CosmoGrid |
 
 **Command-line tools** — one page per script under
 [Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`, `fli-spectra`,

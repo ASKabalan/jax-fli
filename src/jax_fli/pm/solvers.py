@@ -216,6 +216,22 @@ class AbstractNBodySolver(eqx.Module):
         """Reverse step."""
         raise NotImplementedError
 
+    @abstractmethod
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
+        """Per-particle drift multiplier in the solver's stored-momentum convention.
+
+        Returns the factor ``f`` such that a particle's position continues to
+        ``x(a_to) = x(a_from) + f * momentum``, where ``momentum`` is the velocity
+        field this solver carries (conformal ``p`` for KKD, ``pi = dx/dD`` for the
+        FastPM/BullFrog DKD steppers). Used by the lightcone interpolators to drift
+        particles from the snapshot scale factor to their lightcone-crossing epoch.
+        The factor is unit-agnostic: it multiplies the momentum in whatever spatial
+        unit the caller works in, provided positions and momentum share that unit.
+        ``a_to`` (and the returned factor) may be a scalar or a per-particle array
+        of lightcone-crossing scale factors.
+        """
+        raise NotImplementedError
+
 
 class DoubleKickDrift(AbstractNBodySolver):
     """
@@ -322,6 +338,15 @@ class DoubleKickDrift(AbstractNBodySolver):
 
         return x_new, v_boosted, new_state
 
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
+        """Conformal-momentum drift factor: (Gp(a_to) - Gp(a_from)) / Gf(ac).
+
+        Mirrors the in-step ``full_drift_factor`` (1/(ac^3 E(ac)) * dGp / gp(ac)),
+        which equals dGp / Gf(ac) since Gf(a) = gp(a) * a^3 * E(a).
+        """
+        ac = (a_from * a_to) ** 0.5
+        return (Gp(cosmo, a_to) - Gp(cosmo, a_from)) / Gf(cosmo, ac)
+
     def save_at(
         self,
         displacement: ParticleField,
@@ -332,7 +357,9 @@ class DoubleKickDrift(AbstractNBodySolver):
         cosmo: Any,
     ) -> Any:
         # In this scheme, t1 is the current time of the particles
-        return self.interp_kernel.paint(state.interp_state, t1, (displacement, velocities), cosmo)
+        return self.interp_kernel.paint(
+            state.interp_state, t1, (displacement, velocities), cosmo, drift_factor=self.drift_factor
+        )
 
     def reverse(
         self,
@@ -432,6 +459,10 @@ class DriftKickDrift(AbstractNBodySolver):
 
     time_stepping: str = eqx.field(static=True, default="D")
 
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
+        """D-time drift factor for pi = dx/dD momentum: Gp(a_to) - Gp(a_from)."""
+        return Gp(cosmo, a_to) - Gp(cosmo, a_from)
+
     def _compute_coefficients(self, t0, t1, cosmo):
         """Compute FastPM DKD coefficients for a step from scale factor t0 to t1."""
         a_mid = _compute_midpoint(self.time_stepping, t0, t1, cosmo)
@@ -504,7 +535,9 @@ class DriftKickDrift(AbstractNBodySolver):
         state: NBodyState,
         cosmo: Any,
     ) -> Any:
-        return self.interp_kernel.paint(state.interp_state, t1, (displacement, velocities), cosmo)
+        return self.interp_kernel.paint(
+            state.interp_state, t1, (displacement, velocities), cosmo, drift_factor=self.drift_factor
+        )
 
     def reverse(
         self,
@@ -559,6 +592,10 @@ class BullFrog(AbstractNBodySolver):
     """
 
     time_stepping: str = eqx.field(static=True, default="D")
+
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
+        """D-time drift factor for pi = dx/dD momentum: Gp(a_to) - Gp(a_from)."""
+        return Gp(cosmo, a_to) - Gp(cosmo, a_from)
 
     def _compute_coefficients(self, t0, t1, cosmo):
         """Compute BullFrog DKD coefficients for a step from scale factor t0 to t1."""
@@ -658,7 +695,9 @@ class BullFrog(AbstractNBodySolver):
         state: NBodyState,
         cosmo: Any,
     ) -> Any:
-        return self.interp_kernel.paint(state.interp_state, t1, (displacement, velocities), cosmo)
+        return self.interp_kernel.paint(
+            state.interp_state, t1, (displacement, velocities), cosmo, drift_factor=self.drift_factor
+        )
 
     def reverse(
         self,
