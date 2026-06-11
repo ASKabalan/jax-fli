@@ -72,17 +72,23 @@ class FlatKappaField(FlatDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_shear(self) -> FlatShearField:
+    def get_shear(self, *, reduced_shear: bool = False) -> FlatShearField:
         """Compute shear ``(gamma1, gamma2)`` from convergence via flat-sky Kaiser-Squires.
 
         Maps ``array`` of shape ``(ny, nx)`` / ``(S, ny, nx)`` / ``(N, S, ny, nx)`` to a
         ``FlatShearField`` with a spin-2 axis inserted before the spatial axes: ``(2, ny, nx)`` /
         ``(S, 2, ny, nx)`` / ``(N, S, 2, ny, nx)``. Jittable; the shear is pure E-mode and needs no
         field/pixel size (the flat spin-2 operator is scale-invariant).
+
+        If ``reduced_shear`` is True, returns the reduced shear ``g = gamma / (1 - kappa)`` (the
+        quantity actually observed in weak-lensing surveys) instead of ``gamma``; ``kappa`` is the
+        convergence in ``self.array``, broadcast over the spin-2 component axis.
         """
         from .._src.lensing import kappa2shear_flat
 
         shear = kappa2shear_flat(self.array)
+        if reduced_shear:
+            shear = shear / (1.0 - jnp.expand_dims(self.array, axis=-3))
         return FlatShearField.FromDensityMetadata(
             array=shear,
             field=self,
@@ -133,17 +139,25 @@ class SphericalKappaField(SphericalDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
-    def get_shear(self, *, lmax: int | None = None, method: str = "jax", iter: int = 3) -> SphericalShearField:
+    def get_shear(
+        self, *, reduced_shear: bool = False, lmax: int | None = None, method: str = "jax", iter: int = 3
+    ) -> SphericalShearField:
         """Compute shear ``(gamma1, gamma2)`` from convergence via Kaiser-Squires (pure E-mode).
 
         Maps ``array`` of shape ``(npix,)`` / ``(S, npix)`` / ``(N, S, npix)`` to a
         ``SphericalShearField`` with a trailing spin-2 axis: ``(2, npix)`` / ``(S, 2, npix)`` /
         ``(N, S, 2, npix)``. Jittable; ``lmax`` defaults to ``3*nside-1``. ``iter`` sets the
         ``map2alm`` Jacobi iterations (default 3).
+
+        If ``reduced_shear`` is True, returns the reduced shear ``g = gamma / (1 - kappa)`` (the
+        quantity actually observed in weak-lensing surveys) instead of ``gamma``; ``kappa`` is the
+        convergence in ``self.array``, broadcast over the spin-2 component axis.
         """
         from .._src.lensing import kappa2shear_spherical
 
         shear = kappa2shear_spherical(self.array, lmax=lmax, method=method, iter=iter)
+        if reduced_shear:
+            shear = shear / (1.0 - jnp.expand_dims(self.array, axis=-2))
         return SphericalShearField.FromDensityMetadata(
             array=shear,
             field=self,
@@ -177,7 +191,7 @@ class FlatShearField(FlatDensity):
                 )
             if shape[-3] != 2:
                 raise ValueError(
-                    f"FlatShearField requires a spin-2 component axis of size 2 at position -3, " f"got shape {shape}."
+                    f"FlatShearField requires a spin-2 component axis of size 2 at position -3, got shape {shape}."
                 )
 
     def is_batched(self) -> bool:
@@ -290,8 +304,7 @@ class SphericalShearField(SphericalDensity):
                 )
             if shape[-2] != 2:
                 raise ValueError(
-                    f"SphericalShearField requires a spin-2 component axis of size 2 at position -2, "
-                    f"got shape {shape}."
+                    f"SphericalShearField requires a spin-2 component axis of size 2 at position -2, got shape {shape}."
                 )
 
     def is_batched(self) -> bool:
