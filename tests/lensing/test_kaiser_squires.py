@@ -148,3 +148,40 @@ def test_flat_shear_multibatched_NS(born_flat_kappa_multi):
     sh = stacked.get_shear()
     assert sh.array.shape == (n, s, 2, ny, nx)
     assert sh.is_multi_batched() is True
+
+
+# --------------------------------------------------------------------------- reduced shear
+# g = gamma / (1 - kappa) is an exact algebraic transform of the returned shear, so the identity
+# holds to floating point. The expected value is written with explicit indexing (not the
+# implementation's ``expand_dims``) so each test independently cross-checks the spin-2 broadcast axis.
+REDUCED_RTOL = 1e-5
+REDUCED_ATOL = 1e-6
+
+
+def test_spherical_reduced_shear(born_kappa_single):
+    kappa = born_kappa_single[0]  # (npix,)
+    gamma = kappa.get_shear()
+    g = kappa.get_shear(reduced_shear=True)
+    assert g.status == gamma.status
+    assert g.array.shape == gamma.array.shape
+    expected = np.asarray(gamma.array) / (1.0 - np.asarray(kappa.array)[None, :])
+    np.testing.assert_allclose(np.asarray(g.array), expected, rtol=REDUCED_RTOL, atol=REDUCED_ATOL)
+
+
+def test_spherical_reduced_shear_batched(born_kappa_multi):
+    kappa = born_kappa_multi  # (S, npix)
+    gamma = kappa.get_shear()
+    g = kappa.get_shear(reduced_shear=True)
+    assert g.array.shape == gamma.array.shape
+    expected = np.asarray(gamma.array) / (1.0 - np.asarray(kappa.array)[:, None, :])
+    np.testing.assert_allclose(np.asarray(g.array), expected, rtol=REDUCED_RTOL, atol=REDUCED_ATOL)
+
+
+def test_flat_reduced_shear(born_flat_kappa_single):
+    kappa = born_flat_kappa_single[0]  # (ny, nx)
+    gamma = kappa.get_shear()
+    g = kappa.get_shear(reduced_shear=True)
+    assert g.status == gamma.status
+    assert g.array.shape == gamma.array.shape
+    expected = np.asarray(gamma.array) / (1.0 - np.asarray(kappa.array)[None, :, :])
+    np.testing.assert_allclose(np.asarray(g.array), expected, rtol=REDUCED_RTOL, atol=REDUCED_ATOL)
