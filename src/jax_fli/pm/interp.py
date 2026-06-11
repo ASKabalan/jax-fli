@@ -381,6 +381,8 @@ class OnionTiler(AbstractInterp):
         drift_factor: Callable | None = None,
     ) -> Any:
         dx, p = y
+        if self.drift_on_lightcone:
+            assert drift_factor is not None, "OnionTiler(drift_on_lightcone=True) requires a drift_factor"
         assert self.r_centers is not None
         assert self.density_widths is not None
         r_center = self.r_centers[state.shell_idx]
@@ -603,6 +605,8 @@ class TelephotoInterp(AbstractInterp):
     ) -> Any:
         dx, p = y
 
+        if self.drift_on_lightcone:
+            assert drift_factor is not None, "TelephotoInterp(drift_on_lightcone=True) requires a drift_factor"
         assert self.r_centers is not None
         assert self.density_widths is not None
 

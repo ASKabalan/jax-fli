@@ -217,16 +217,18 @@ class AbstractNBodySolver(eqx.Module):
         raise NotImplementedError
 
     @abstractmethod
-    def drift_factor(self, a_from: float, a_to: float, cosmo: Any) -> Any:
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
         """Per-particle drift multiplier in the solver's stored-momentum convention.
 
-        Returns the scalar ``f`` such that a particle's position continues to
+        Returns the factor ``f`` such that a particle's position continues to
         ``x(a_to) = x(a_from) + f * momentum``, where ``momentum`` is the velocity
         field this solver carries (conformal ``p`` for KKD, ``pi = dx/dD`` for the
         FastPM/BullFrog DKD steppers). Used by the lightcone interpolators to drift
         particles from the snapshot scale factor to their lightcone-crossing epoch.
         The factor is unit-agnostic: it multiplies the momentum in whatever spatial
         unit the caller works in, provided positions and momentum share that unit.
+        ``a_to`` (and the returned factor) may be a scalar or a per-particle array
+        of lightcone-crossing scale factors.
         """
         raise NotImplementedError
 
@@ -336,7 +338,7 @@ class DoubleKickDrift(AbstractNBodySolver):
 
         return x_new, v_boosted, new_state
 
-    def drift_factor(self, a_from: float, a_to: float, cosmo: Any) -> Any:
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
         """Conformal-momentum drift factor: (Gp(a_to) - Gp(a_from)) / Gf(ac).
 
         Mirrors the in-step ``full_drift_factor`` (1/(ac^3 E(ac)) * dGp / gp(ac)),
@@ -457,7 +459,7 @@ class DriftKickDrift(AbstractNBodySolver):
 
     time_stepping: str = eqx.field(static=True, default="D")
 
-    def drift_factor(self, a_from: float, a_to: float, cosmo: Any) -> Any:
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
         """D-time drift factor for pi = dx/dD momentum: Gp(a_to) - Gp(a_from)."""
         return Gp(cosmo, a_to) - Gp(cosmo, a_from)
 
@@ -591,7 +593,7 @@ class BullFrog(AbstractNBodySolver):
 
     time_stepping: str = eqx.field(static=True, default="D")
 
-    def drift_factor(self, a_from: float, a_to: float, cosmo: Any) -> Any:
+    def drift_factor(self, a_from: float, a_to: float | jnp.ndarray, cosmo: Any) -> Any:
         """D-time drift factor for pi = dx/dD momentum: Gp(a_to) - Gp(a_from)."""
         return Gp(cosmo, a_to) - Gp(cosmo, a_from)
 

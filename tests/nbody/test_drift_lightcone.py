@@ -126,6 +126,14 @@ def test_drift_factor_matches_solver_convention(cosmology):
         np.testing.assert_allclose(float(sv.drift_factor(a0, a1, cosmology)), expected_pi, rtol=1e-6)
 
 
+@pytest.mark.parametrize("kind", ["OnionTiler", "TelephotoInterp"])
+def test_drift_on_lightcone_requires_drift_factor(kind):
+    """drift_on_lightcone=True without a solver-provided drift_factor must fail fast and clearly."""
+    interp = _build_interp(kind, drift=True)
+    with pytest.raises(AssertionError, match="drift_factor"):
+        interp.paint(None, T1, (None, None), None, drift_factor=None)
+
+
 # ---------------------------------------------------------------------------
 # 8-case matrix: 4 interp kernels x 2 momentum conventions
 # ---------------------------------------------------------------------------
