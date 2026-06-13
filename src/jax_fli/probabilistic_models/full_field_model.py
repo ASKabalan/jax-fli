@@ -86,13 +86,13 @@ def full_field_probmodel(
 
         numpyro.deterministic("initial_conditions_meta_data", initial_conditions.to_metadata())
 
-        kappa_fields, lightcone = forward_model(cosmo, initial_conditions)
+        observable, lightcone = forward_model(cosmo, initial_conditions)
 
         if config.log_lightcone:
             numpyro.deterministic("lightcone", lightcone)
 
-        if kappa_fields.shape[0] != len(config.nz_shear):
-            raise ValueError("Number of convergence maps does not match nz_shear entries")
+        if observable.shape[0] != len(config.nz_shear):
+            raise ValueError("Number of observable maps does not match nz_shear entries")
 
         if geometry == "spherical":
             pixel_area_arcmin2 = _spherical_pixel_area_arcmin2(lightcone)
@@ -102,12 +102,27 @@ def full_field_probmodel(
             raise ValueError("geometry must be 'flat' or 'spherical'")
 
         nz_list = _nz_to_distributions(config.nz_shear)
-        observed_maps = []
-        for idx, (kappa_field, nz) in enumerate(zip(kappa_fields, nz_list)):
-            sigma = config.sigma_e / jnp.sqrt(nz.gals_per_arcmin2 * pixel_area_arcmin2)
-            observed_maps.append(numpyro.sample(f"kappa_{idx}", DistributedNormal(loc=kappa_field, scale=sigma)))
 
-        numpyro.deterministic("kappa_meta_data", kappa_fields.to_metadata())
+        # Optional survey footprint mask (e.g. DES Y3) at the model nside: inflate the
+        # per-pixel sigma on unobserved pixels (mask == 0) so they don't constrain the fit.
+        # (Sites stay named ``kappa_*`` for sample-extraction compatibility even when the
+        # observable is shear / reduced shear.)
+        mask = None if config.mask is None else jnp.asarray(config.mask)
+
+        observed_maps = []
+        for idx, (observable_map, nz) in enumerate(zip(observable, nz_list)):
+            sigma_obs = config.sigma_e / jnp.sqrt(nz.gals_per_arcmin2 * pixel_area_arcmin2)
+            if mask is None:
+                scale = sigma_obs
+            else:
+                m = mask
+                if config.lensing_output != "convergence" and geometry == "spherical":
+                    # spherical shear is (2, npix) per bin: insert the spin-2 component axis
+                    m = mask[None, :]
+                scale = jnp.where(m > 0, sigma_obs, config.sigma_unobserved)
+            observed_maps.append(numpyro.sample(f"kappa_{idx}", DistributedNormal(loc=observable_map, scale=scale)))
+
+        numpyro.deterministic("kappa_meta_data", observable.to_metadata())
 
         return observed_maps
 

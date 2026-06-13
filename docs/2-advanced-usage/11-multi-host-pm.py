@@ -5,15 +5,15 @@ This is the script you launch across nodes. The whole pipeline is identical to t
 single-device notebooks; only the device mesh changes. Run it either way:
 
   # Multi-host on SLURM (one process per GPU, jax.distributed coordinates them):
-  srun -n $SLURM_NTASKS python 10-multi-host-pm.py --multihost \
+  srun -n $SLURM_NTASKS python 11-multi-host-pm.py --multihost \
        --mesh 1024 --box 3000 --nside 1024 --nb-shells 16 --out kappa_sim.parquet
 
   # Single host with fake CPU devices (laptop / CI smoke test):
   XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
-       python 10-multi-host-pm.py --mesh 64 --nside 64 --out kappa_sim.parquet
+       python 11-multi-host-pm.py --mesh 64 --nside 64 --out kappa_sim.parquet
 
 The output Parquet holds a ``SphericalKappaField`` (one map per source bin) plus the
-cosmology, ready to load with ``jax_fli.io.Catalog.from_parquet`` (see 10-multi-host-pm.md).
+cosmology, ready to load with ``jax_fli.io.Catalog.from_parquet`` (see 11-multi-host-pm.md).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def main() -> None:
         cosmo=cosmo,
         nside=args.nside,
         field_sharding=sharding,
-        halo_size=halo,
+        halo_size=(halo, halo),
     )
     dx, p = jfli.lpt(cosmo, initial_field, ts=0.1, order=1)
 
@@ -87,11 +87,13 @@ def main() -> None:
 
     nz_sources = jfli.io.get_stage3_nz_shear()
     kappa = jfli.born(cosmo, lightcone, nz_shear=nz_sources)
+    shear = kappa.get_shear()
 
     # Only the lead process writes the gathered result.
     if jax.process_index() == 0:
-        jfli.io.Catalog(field=kappa, cosmology=cosmo).to_parquet(args.out)
-        print(f"wrote {args.out}: {type(kappa).__name__} {kappa.shape}")
+        jfli.io.Catalog(field=shear, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_shear.parquet"))
+        print(f"wrote {args.out}: {type(shear).__name__} {shear.shape}")
+        jfli.io.Catalog(field=kappa, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_kappa.parquet"))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from typing import ParamSpec, TypeVar
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.experimental.multihost_utils import process_allgather
 from scipy.integrate import simpson
 
 from ..fields import SphericalDensity
@@ -314,7 +315,11 @@ def raytrace(
     h = float(np.asarray(cosmo.h))
     omega_l = 1.0 - omega_m
     shell_redshifts = 1.0 / np.atleast_1d(np.asarray(lightcone.scale_factors)) - 1.0
-    density_maps_np = np.asarray(lightcone.array)
+    # All-gather the (possibly JAX-sharded) lightcone maps to a full host array on every process
+    # before the dorian/MPI handoff: ray-tracing is numpy + MPI and dorian needs the complete
+    # (n_shells, npix) maps on each rank. process_allgather(tiled=True) is the repo's standard idiom
+    # (cf. io/extract.py); a no-op on a single replicated device.
+    density_maps_np = np.asarray(process_allgather(lightcone.array, tiled=True))
     density_widths_np = np.atleast_1d(np.asarray(density_width))
 
     if source_kind == "distribution":
@@ -375,7 +380,9 @@ def raytrace(
         arr_jax = jnp.array(arr)  # numpy → JAX for SphericalKappaField
         if n_sources == 1:
             arr_jax = arr_jax[0]
-        base_field = lightcone.replace(status=FieldStatus.KAPPA)
+        # raytrace returns a host-gathered (replicated) array — drop any JAX sharding the lightcone
+        # carried so the convergence is an honest single-device field (field_sharding=None).
+        base_field = lightcone.replace(status=FieldStatus.KAPPA, field_sharding=None)
         field = SphericalKappaField.FromDensityMetadata(
             array=arr_jax,
             field=base_field,

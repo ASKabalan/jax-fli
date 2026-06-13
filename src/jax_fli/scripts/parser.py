@@ -2,6 +2,7 @@
 
 All functions are pure argparse — no jax_fli imports.
 """
+
 from __future__ import annotations
 
 
@@ -19,11 +20,15 @@ def add_distributed_args(p):
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
 
 
-def add_integration_settings_args(p):
+def add_integration_settings_args(p, solver_default="kdk"):
     """Integration / lightcone / lensing parameters.
 
     Covers everything shown in the Integration Settings form: physics,
     shell timing, and lensing source-distribution parameters.
+
+    ``solver_default`` lets each command pick the N-body integrator default: ``fli-simulate``
+    keeps ``kdk`` (DoubleKickDrift), while the full-field model entry points (``fli-infer`` /
+    ``fli-samples``) pass ``bf`` (BullFrog, the Configurations default).
     """
     g = p.add_argument_group("integration")
     p.add_argument(
@@ -45,7 +50,12 @@ def add_integration_settings_args(p):
     g.add_argument(
         "--interp", choices=["none", "onion", "telephoto"], default="none", help="Interpolation kernel (default: none)"
     )
-    g.add_argument("--solver", choices=["kdk", "dkd", "bf"], default="kdk", help="N-body integrator (default: kdk)")
+    g.add_argument(
+        "--solver",
+        choices=["kdk", "dkd", "bf"],
+        default=solver_default,
+        help=f"N-body integrator (default: {solver_default})",
+    )
     g.add_argument(
         "--time-stepping",
         choices=["a", "D", "log_a"],
@@ -160,6 +170,13 @@ def add_lensing_args(p):
     g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
     g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
     g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
+    g.add_argument(
+        "--lensing-output",
+        choices=["convergence", "shear", "reduced_shear"],
+        default="convergence",
+        dest="lensing_output",
+        help="Lensing observable emitted by the model: convergence, shear, or reduced_shear (default: convergence)",
+    )
 
 
 def add_simulation_settings_args(p):
@@ -196,6 +213,13 @@ def add_simulation_settings_args(p):
         default=[0.5, 0.5, 0.5],
         metavar=("OX", "OY", "OZ"),
         help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
+    )
+    g.add_argument(
+        "--apodization-scale-deg",
+        type=float,
+        default=1.0,
+        dest="apodization_scale_deg",
+        help="C2 apodization scale (deg) for the off-center observer visibility mask (default: 1.0)",
     )
     g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
 
@@ -357,6 +381,38 @@ def add_infer_args(p):
         "--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend (default: numpyro)"
     )
     g.add_argument("--no-progress-bar", action="store_true", dest="no_progress_bar", help="Suppress tqdm progress bars")
+
+
+def add_forward_model_args(p):
+    """Full-field likelihood knobs (used by fli-infer and fli-samples).
+
+    These map onto Configurations fields used by the survey-mask-aware likelihood: a footprint
+    mask, the inflated sigma on pixels outside it, and whether to record the lightcone.
+    ``--lensing-output`` lives in the lensing group and ``--apodization-scale-deg`` in the
+    simulation-settings group (both shared with fli-simulate).
+    """
+    g = p.add_argument_group("forward model")
+    g.add_argument(
+        "--mask",
+        type=str,
+        default=None,
+        metavar="MASK",
+        help="Survey footprint for the likelihood: 'des_y3' or a path to a HEALPix map "
+        "(.npy/.npz/.fits). Pixels outside it get --sigma-unobserved (default: no mask).",
+    )
+    g.add_argument(
+        "--sigma-unobserved",
+        type=float,
+        default=1e6,
+        dest="sigma_unobserved",
+        help="Likelihood sigma applied on pixels outside --mask (default: 1e6)",
+    )
+    g.add_argument(
+        "--log-lightcone",
+        action="store_true",
+        dest="log_lightcone",
+        help="Record the lightcone as a deterministic site in the trace (default: False)",
+    )
 
 
 def add_spectra_scan_args(p):

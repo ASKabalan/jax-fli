@@ -87,4 +87,9 @@ def born(
     source_kind, sources = _normalize_sources(nz_shear)
     kappas = _attach_source_metadata(kappas, cosmo, source_kind, sources, min_z, max_z, n_integrate)
 
+    # Re-shard the spherical convergence into the lensing layout (BINS/N, NPIX/M); warns/raises per
+    # the mesh case. Flat convergence keeps the volumetric layout.
+    if is_spherical:
+        kappas = kappas.apply_sharding()
+
     return kappas

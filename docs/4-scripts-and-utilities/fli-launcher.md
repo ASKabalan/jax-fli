@@ -23,4 +23,4 @@ fli-launcher simulate --grid cosmologies.yaml --nodes 4 --gpus-per-node 4
 Each subcommand forwards the relevant argument groups to the underlying script, plus SLURM
 placement options (nodes, GPUs per node, time, partition). Run `fli-launcher <subcommand> --help`
 for the per-command options. The multi-host launch pattern it generates is described in
-[multi-host PM](../2-advanced-usage/10-multi-host-pm.md).
+[multi-host PM](../2-advanced-usage/11-multi-host-pm.md).

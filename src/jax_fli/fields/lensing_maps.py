@@ -140,7 +140,13 @@ class SphericalKappaField(SphericalDensity):
         return self.replace(array=new_array, unit=unit)
 
     def get_shear(
-        self, *, reduced_shear: bool = False, lmax: int | None = None, method: str = "jax", iter: int = 3
+        self,
+        *,
+        reduced_shear: bool = False,
+        lmax: int | None = None,
+        method: str = "jax",
+        iter: int = 3,
+        debug_sharding: bool = False,
     ) -> SphericalShearField:
         """Compute shear ``(gamma1, gamma2)`` from convergence via Kaiser-Squires (pure E-mode).
 
@@ -149,13 +155,29 @@ class SphericalKappaField(SphericalDensity):
         ``(N, S, 2, npix)``. Jittable; ``lmax`` defaults to ``3*nside-1``. ``iter`` sets the
         ``map2alm`` Jacobi iterations (default 3).
 
+        When ``field_sharding`` spans multiple devices the per-bin transform runs inside a
+        ``jax.shard_map`` and the **shear mirrors the convergence sharding**: convergence ``P(b, x)``
+        gives shear ``P(b, None, x)`` (``b`` = bins axis, ``x`` = npix axis). If the convergence is
+        sharded on a bins axis (``b`` a real mesh axis, e.g. ``P("y", "x")``) the bins distribute
+        across devices; otherwise the SHT is replicated across devices (a warning is emitted) but the
+        shear is still returned sharded on ``npix`` like the convergence. The result is identical to
+        the single-device path. ``debug_sharding`` prints the shape and sharding at each stage
+        (works under ``jax.jit``).
+
         If ``reduced_shear`` is True, returns the reduced shear ``g = gamma / (1 - kappa)`` (the
         quantity actually observed in weak-lensing surveys) instead of ``gamma``; ``kappa`` is the
         convergence in ``self.array``, broadcast over the spin-2 component axis.
         """
         from .._src.lensing import kappa2shear_spherical
 
-        shear = kappa2shear_spherical(self.array, lmax=lmax, method=method, iter=iter)
+        shear = kappa2shear_spherical(
+            self.array,
+            lmax=lmax,
+            method=method,
+            iter=iter,
+            sharding=self.field_sharding,
+            debug_sharding=debug_sharding,
+        )
         if reduced_shear:
             shear = shear / (1.0 - jnp.expand_dims(self.array, axis=-2))
         return SphericalShearField.FromDensityMetadata(
@@ -163,6 +185,32 @@ class SphericalKappaField(SphericalDensity):
             field=self,
             status=FieldStatus.GAMMA,
             unit=self.unit,
+        )
+
+    def apply_sharding(self) -> SphericalKappaField:
+        """Shard the spherical convergence into the lensing layout ``P([None,] "y", "x")`` (BINS/N,
+        NPIX/M; batch axes replicated), keeping ``field_sharding`` the canonical 3-D mesh layout.
+
+        Warns when the mesh's second (N) axis has size 1 and there is more than one bin (lensing
+        will not distribute over tomographic bins); raises ``ValueError`` for a mis-shaped mesh whose
+        N axis does not divide the bin count. No-op on a single device or a metadata-only field.
+        """
+        from .._src.lensing._sharding import _convergence_spec, _is_multi_device, lensing_axes
+
+        if not _is_multi_device(self.field_sharding) or self.array is None:
+            return self
+        arr = self.array
+        nbins = arr.shape[-2] if arr.ndim >= 2 else 1
+        _, _, _, n_size, _ = lensing_axes(self.field_sharding, nbins)  # raises the bad-divisor case
+        if n_size == 1 and nbins > 1:  # nbins == 1 has nothing to distribute regardless of the mesh
+            warn(
+                "convergence sharding: the mesh's second (N) axis has size 1, so the lensing "
+                "convergence and shear will not be distributed over tomographic bins. Use a "
+                "(devices // n_bins, n_bins) mesh to distribute lensing over bins.",
+                stacklevel=2,
+            )
+        return self.replace(
+            array=jax.lax.with_sharding_constraint(arr, _convergence_spec(self.field_sharding, nbins, arr.ndim))
         )
 
 
@@ -364,6 +412,26 @@ class SphericalShearField(SphericalDensity):
             field=self,
             status=FieldStatus.KAPPA,
             unit=self.unit,
+        )
+
+    def apply_sharding(self) -> SphericalShearField:
+        """Shard the spherical shear into the lensing layout ``P([None,] "y", None, "x")`` (BINS/N,
+        component replicated, NPIX/M), keeping ``field_sharding`` the canonical 3-D mesh layout.
+
+        Mirrors the convergence layout with the spin-2 component axis replicated. Silent — only raises
+        ``ValueError`` for a mis-shaped mesh whose N axis does not divide the bin count (the N=1
+        *warning* belongs to the convergence/producer, not the shear). No-op on a single device or a
+        metadata-only field. (``get_shear`` already returns sharded shear; this serves the catalog
+        load path, where a shear field is rebuilt and re-distributed.)
+        """
+        from .._src.lensing._sharding import _is_multi_device, _shear_spec
+
+        if not _is_multi_device(self.field_sharding) or self.array is None:
+            return self
+        arr = self.array
+        nbins = arr.shape[-3] if arr.ndim >= 3 else 1
+        return self.replace(
+            array=jax.lax.with_sharding_constraint(arr, _shear_spec(self.field_sharding, nbins, arr.ndim - 1))
         )
 
     def angular_cl(
