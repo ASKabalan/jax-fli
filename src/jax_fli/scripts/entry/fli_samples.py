@@ -9,7 +9,13 @@ import jax_cosmo as jc
 from numpyro.infer import Predictive
 
 import jax_fli as jfli
-from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log
+from jax_fli.scripts._common import (
+    _build_sharding,
+    _resolve_mask,
+    _resolve_nz_shear,
+    _resolve_solver_name,
+    _save_args_log,
+)
 
 # ---------------------------------------------------------------------------
 # Argument parser
@@ -20,6 +26,7 @@ def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-samples."""
     from jax_fli.scripts.parser import (
         add_distributed_args,
+        add_forward_model_args,
         add_integration_settings_args,
         add_prior_args,
         add_simulation_settings_args,
@@ -32,8 +39,10 @@ def parser() -> argparse.ArgumentParser:
 
     add_distributed_args(p)
     add_simulation_settings_args(p)
-    add_integration_settings_args(p)
+    # Full-field model uses BullFrog by default (the Configurations default); set it in the parser.
+    add_integration_settings_args(p, solver_default="bf")
     add_prior_args(p)
+    add_forward_model_args(p)
 
     g = p.add_argument_group("Sampling settings")
     g.add_argument(
@@ -103,6 +112,10 @@ def main() -> None:
     px, py = args.pdim
     halo_size = (int(mesh[0] / px * args.halo_multiplier), int(mesh[1] / py * args.halo_multiplier))
 
+    # Survey footprint mask (likelihood-only; a no-op for prior-predictive sampling, kept
+    # consistent with fli-infer). Resolves at the model nside.
+    mask = _resolve_mask(args.mask, nside)
+
     # --- build Configurations ---
     config = jfli.ppl.Configurations(
         mesh_size=mesh,
@@ -128,11 +141,25 @@ def main() -> None:
         kernel_width_pixels=args.kernel_width_pixels,
         field_sharding=sharding,
         lensing="born",
+        lensing_output=args.lensing_output,
         drift_on_lightcone=args.drift_on_lightcone,
         shell_spacing=args.shell_spacing,
         min_width=args.min_width,
         min_redshift=args.min_z,
         max_redshift=args.max_z,
+        # N-body / force / painting knobs (previously not forwarded from the CLI)
+        nbody_solver=_resolve_solver_name(args.solver),
+        paint_order=args.paint_order,
+        gradient_order=args.gradient_order,
+        laplace_fd=args.laplace_fd,
+        deconvolution=args.deconvolution,
+        dealiased=args.dealiased,
+        exact_growth=args.exact_growth,
+        # Masking / likelihood + observer visibility mask
+        mask=mask,
+        sigma_unobserved=args.sigma_unobserved,
+        apodization_scale_deg=args.apodization_scale_deg,
+        log_lightcone=args.log_lightcone,
     )
 
     # --- select model ---

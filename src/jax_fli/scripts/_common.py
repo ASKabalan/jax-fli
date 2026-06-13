@@ -13,7 +13,63 @@ from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
 
-__all__ = ["_try_parse_s3", "_try_parse_des_y3", "_resolve_nz_shear", "_build_sharding", "_save_args_log"]
+__all__ = [
+    "_try_parse_s3",
+    "_try_parse_des_y3",
+    "_resolve_nz_shear",
+    "_resolve_solver_name",
+    "_resolve_mask",
+    "_build_sharding",
+    "_save_args_log",
+]
+
+# CLI --solver token -> Configurations.nbody_solver name (forward_model._SOLVERS keys).
+_SOLVER_NAMES = {"kdk": "DoubleKickDrift", "dkd": "DriftKickDrift", "bf": "BullFrog"}
+
+
+def _resolve_solver_name(solver: str) -> str:
+    """Map the CLI ``--solver`` token (kdk/dkd/bf) to ``Configurations.nbody_solver``."""
+    try:
+        return _SOLVER_NAMES[solver]
+    except KeyError as exc:
+        raise ValueError(f"Unknown --solver '{solver}'; expected one of {tuple(_SOLVER_NAMES)}.") from exc
+
+
+def _resolve_mask(mask_arg, nside):
+    """Resolve ``--mask`` into a HEALPix survey footprint array (or None).
+
+    Accepts ``None``, the ``des_y3`` keyword (``jfli.data.get_desy3_mask`` at the model
+    nside, mirroring ``--nz-shear des_y3``), or a path to a ``.npy`` / ``.npz`` / ``.fits``
+    map (ud_graded to the model nside for spherical geometry).
+    """
+    if mask_arg is None:
+        return None
+    if mask_arg.lower() in ("des_y3", "desy3"):
+        if nside is None:
+            raise ValueError("--mask des_y3 requires spherical geometry (a model nside).")
+        return jfli.data.get_desy3_mask(nside)
+
+    import numpy as np
+
+    if mask_arg.endswith(".npy"):
+        arr = np.load(mask_arg)
+    elif mask_arg.endswith(".npz"):
+        with np.load(mask_arg) as npz:
+            arr = npz[npz.files[0]]
+    elif mask_arg.endswith((".fits", ".fits.gz")):
+        import healpy as hp
+
+        arr = hp.read_map(mask_arg)
+    else:
+        raise ValueError(f"--mask must be 'des_y3' or a .npy/.npz/.fits path, got {mask_arg!r}")
+
+    arr = np.asarray(arr)
+    if nside is not None:  # spherical geometry: match the model nside
+        import healpy as hp
+
+        if hp.npix2nside(arr.shape[-1]) != nside:
+            arr = hp.ud_grade(arr, nside)
+    return arr
 
 
 # ---------------------------------------------------------------------------

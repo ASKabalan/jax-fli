@@ -293,6 +293,7 @@ def run_lpt(
         "dealiased",
         "exact_growth",
         "n_integrate",
+        "lensing_output",
     ],
 )
 def run_simulations(
@@ -315,6 +316,8 @@ def run_simulations(
     min_z=0.01,
     max_z=1.5,
     n_integrate=32,
+    lensing_output="convergence",
+    visibility_mask=None,
 ):
     # LPT to particles snapshot at t0, then run NBody
     dx, p = jfli.lpt(
@@ -345,11 +348,19 @@ def run_simulations(
     if sim_type == "pm":
         return lightcone
 
-    # Run lensing
+    # Run lensing (Born). The lensing-output switch and the apodized visibility-mask multiply
+    # live INSIDE the jitted forward model so the Kaiser-Squires transform is compiled and
+    # profiled with the simulation under --perf, identical to the full-field forward model:
+    # for shear / reduced_shear the kappa map is apodized before KS; convergence is untouched.
     if sim_type == "born":
-        return jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
-    else:
-        raise ValueError(f"Unknown sim_type: {sim_type}")
+        kappa = jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
+        if lensing_output == "convergence":
+            return kappa
+        ks_input = kappa
+        if visibility_mask is not None:
+            ks_input = kappa.replace(array=kappa.array * visibility_mask)
+        return ks_input.get_shear(reduced_shear=lensing_output == "reduced_shear")
+    raise ValueError(f"Unknown sim_type: {sim_type}")
 
 
 def main() -> None:
@@ -401,6 +412,14 @@ def main() -> None:
     nb_shells = args.nb_shells
     shell_spacing = getattr(args, "shell_spacing", "comoving")
 
+    # Apodized observer visibility mask (spherical + off-center observer; None otherwise). Applied
+    # to the kappa map before Kaiser-Squires inside run_simulations, identical to the forward model.
+    visibility_mask = None
+    if args.nside is not None:
+        visibility_mask = jfli.data.build_observer_visibility_mask(
+            tuple(args.observer_position), args.paint_nside or args.nside, args.apodization_scale_deg
+        )
+
     if sim_type == "lpt":
         # LPT mode: pass geometry params directly to lpt()
         # For lpt: if nb_shells is set, don't pass ts (they're mutually exclusive)
@@ -441,6 +460,8 @@ def main() -> None:
             "min_z": getattr(args, "min_z", 0.01),
             "max_z": getattr(args, "max_z", 1.5),
             "n_integrate": getattr(args, "n_integrate", 32),
+            "lensing_output": getattr(args, "lensing_output", "convergence"),
+            "visibility_mask": visibility_mask,
         }
 
     if args.perf:
@@ -453,7 +474,7 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16, 19)  # 19 = lensing_output (static)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

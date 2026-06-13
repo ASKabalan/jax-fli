@@ -26,7 +26,10 @@ class Configurations:
     log_lightcone: bool = False
     # Simulation settings
     halo_size: tuple[float, float] = (0, 0)
-    observer_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Observer location in normalized box coords [0, 1]^3. The center (0.5, 0.5, 0.5)
+    # sees the whole sky (no visibility mask); any other position triggers an
+    # observer-driven visibility mask in the forward model (spherical geometry only).
+    observer_position: tuple[float, float, float] = (0.5, 0.5, 0.5)
     field_sharding: Any = None
     nside: int = None
     flatsky_npix: tuple[int, int] = None
@@ -34,7 +37,15 @@ class Configurations:
     # Lensing parameters
     min_redshift: float = 0.01
     max_redshift: float = 1.5
-    lensing: str = "born"
+    lensing: str = "born"  # born only; "raytrace" is not supported by the forward model
+    # Observable returned by the forward model: "convergence" | "shear" | "reduced_shear"
+    lensing_output: str = "convergence"
+    # Masking / likelihood
+    # Survey footprint mask (e.g. DES Y3), a (npix,) HEALPix array at the model nside, or None.
+    # Used only in the likelihood: pixels with mask == 0 get an inflated sigma_unobserved.
+    mask: Any = None
+    sigma_unobserved: float = 1e6  # likelihood sigma on pixels outside the survey mask
+    apodization_scale_deg: float = 1.0  # C2 apodization scale for the observer visibility mask
     # Simulation parameters
     lpt_order: int = 2
     t0: float = 0.01
@@ -51,6 +62,16 @@ class Configurations:
     kernel_width_arcmin: float | None = None
     kernel_width_pixels: float | None = None
     drift_on_lightcone: bool = False
+    # Force / painting knobs shared by LPT and the N-body solver
+    paint_order: str = "cic"  # mass assignment: NGP / CIC / TSC / PCS
+    gradient_order: int = 1  # force gradient order (0 = exact ik, 4 = 4th-order FD)
+    laplace_fd: bool = False  # finite-difference Laplacian for the force
+    deconvolution: bool = False  # deconvolve the mass-assignment window (solver)
+    # LPT-only knobs
+    dealiased: bool = False  # dealias the painted density in Fourier space
+    exact_growth: bool = False  # use exact (ODE) growth factors
+    # N-body solver: "DoubleKickDrift" | "DriftKickDrift" | "BullFrog"
+    nbody_solver: str = "BullFrog"
     # Power spectrum settings (for power-spectrum model, not used in full-field model)
     ells: Array = field(default_factory=lambda: jnp.arange(2, 2048))
     f_sky: float = 1.0  # sky fraction for Gaussian covariance mode-count
