@@ -60,6 +60,14 @@ class FlatDensity(AbstractField):
                     f"Array spatial shape {spatial_shape} does not match flatsky_npix {self.flatsky_npix}."
                 )
 
+    def apply_sharding(self) -> FlatDensity:
+        """Shard the flat-sky map: ``P([None,] "x", "y")`` (first spatial dim→M, second→N).
+
+        Uses the canonical layout in ``field_sharding`` directly. Flat-sky convergence/shear inherit
+        this image layout — the flat Kaiser-Squires path is a plain ``vmap`` FFT, not bins-sharded.
+        """
+        return super().apply_sharding()
+
     def __getitem__(self, key) -> FlatDensity:
         if self.array.ndim < 3:
             warn(
@@ -549,6 +557,15 @@ class SphericalDensity(AbstractField):
                         f"Array last dimension {array_shape[-1]} does not match "
                         f"HEALPix npix {npix} for nside {self.nside}."
                     )
+
+    def apply_sharding(self) -> SphericalDensity:
+        """Shard the HEALPix map: ``P([None,] "x")`` (NPIX→M; the N axis is unused for a bare density).
+
+        Uses the canonical layout in ``field_sharding`` directly — ``get_sharding_for_shape`` trims the
+        3-D ``P("x","y")`` to ``P("x")`` for the 1-D npix axis. The convergence/shear subclasses
+        override this to add the BINS/N axis.
+        """
+        return super().apply_sharding()
 
     def __getitem__(self, key) -> SphericalDensity:
         if self.array.ndim < 2:

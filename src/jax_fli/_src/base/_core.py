@@ -483,12 +483,14 @@ class AbstractField(AbstractPytree):
         dbg.inspect_array_sharding(arr, callback=print)
 
     def apply_sharding(self) -> Self:
-        """Apply self.field_sharding to self.array with correct dimension alignment.
+        """Apply ``self.field_sharding`` to ``self.array`` with correct dimension alignment.
 
-        Prepends None to the sharding spec for each leading batch (S or N,S)
-        dimension, then uses get_sharding_for_shape to trim for low-D spatial
-        shapes (e.g. 1D HEALPix). Safe to call on unbatched or batched fields.
-        Returns a new field with the sharding constraint applied.
+        Trims ``self.field_sharding`` to the array's spatial rank via ``get_sharding_for_shape``
+        (a 3-D ``P("x","y")`` becomes ``P("x")`` for a 1-D HEALPix map), then prefixes ``None`` for
+        each leading batch (S or N,S) dimension. ``field_sharding`` itself is **never modified** — it
+        stays the canonical mesh layout (e.g. ``P("x","y")``); subclasses override this method to
+        derive their own (possibly transposed) array layout from it. Safe on unbatched or batched
+        fields.
         """
         if self.field_sharding is None or self.array is None:
             return self

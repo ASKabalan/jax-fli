@@ -32,6 +32,10 @@ import jax
 import jax.numpy as jnp
 import jax_healpy as jhp
 import numpy as np
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
+
+from ._sharding import _shear_spec, lensing_axes
 
 __all__ = [
     "kappa2shear_flat",
@@ -69,13 +73,65 @@ def _g2k_one(gamma, nside: int, lmax: int, method: str, iter: int):
     )
 
 
-def kappa2shear_spherical(kappa, *, lmax: int | None = None, method: str = "jax", iter: int = 3):
+def _dbg_sharding(tag: str, arr, enabled: bool):
+    """Print ``arr``'s shape (static) and resolved sharding when ``enabled`` (jit-safe)."""
+    if enabled:
+        jax.debug.inspect_array_sharding(
+            arr, callback=lambda s: print(f"[get_shear] {tag:34s} shape={tuple(arr.shape)} sharding={s.spec}")
+        )
+
+
+def _kappa2shear_spherical_sharded(
+    kappa, sharding, bins_axis, nside: int, lmax: int, method: str, iter: int, debug_sharding: bool = False
+):
+    """Kaiser-Squires on the sphere with the SHT sealed inside a ``jax.shard_map``.
+
+    ``map2alm``/``alm2map`` are not partition-aware on ``npix``: the ``shard_map`` manual region keeps
+    ``npix`` whole on each device *and* is a hard boundary that stops XLA propagating the npix-sharded
+    output back into the FFT. ``bins_axis`` (the mesh's N axis, or ``None`` to replicate) carries the
+    bins; the final ``_shear_spec`` constraint puts npix back on the M axis. The shear follows the
+    lensing convention ``P([None,] N, None, M)`` (BINS/N, NPIX/M, component replicated).
+    """
+    mesh = sharding.mesh
+    npix = kappa.shape[-1]
+    lead = kappa.shape[:-1]
+    n_flat = int(np.prod(lead)) if lead else 1
+
+    flat = kappa.reshape((n_flat, npix))
+    _dbg_sharding("0 convergence", flat, debug_sharding)
+    flat = jax.lax.with_sharding_constraint(flat, NamedSharding(mesh, P(bins_axis, None)))
+    _dbg_sharding("1 bins-sharded  P(N, None)", flat, debug_sharding)
+
+    def _block(block):  # block: (maps_per_device, npix) -- full npix present on each device
+        if debug_sharding:
+            print(f"[get_shear] (inside shard_map) per-device block = {tuple(block.shape)} (maps, npix)")
+        return jax.vmap(lambda k: _k2g_one(k, nside, lmax, method, iter))(block)
+
+    out = jax.shard_map(_block, mesh=mesh, in_specs=P(bins_axis, None), out_specs=P(bins_axis, None, None))(flat)
+    _dbg_sharding("2 shard_map out P(N, None, None)", out, debug_sharding)
+    out = out.reshape((*lead, 2, npix))
+    nbins = kappa.shape[-2] if kappa.ndim >= 2 else 1
+    out = jax.lax.with_sharding_constraint(out, _shear_spec(sharding, nbins, kappa.ndim))
+    _dbg_sharding("3 final         P([None,] N, None, M)", out, debug_sharding)
+    return out
+
+
+def kappa2shear_spherical(
+    kappa, *, lmax: int | None = None, method: str = "jax", iter: int = 3, sharding=None, debug_sharding: bool = False
+):
     """Convergence -> shear via Kaiser-Squires on the sphere. ``(..., npix)`` -> ``(..., 2, npix)``.
 
-    Leading dimensions are treated as batch and mapped with ``vmap``. ``lmax``/``method``/``iter`` are
-    static (defaults: ``lmax = 3*nside-1``, ``method='jax'``, ``iter=3``); jittable. Shear is pure
-    E-mode. ``iter`` sets the ``map2alm`` Jacobi iterations for the forward analysis (``alm2map``
-    synthesis takes none).
+    Leading dimensions are treated as batch. ``lmax``/``method``/``iter`` are static (defaults:
+    ``lmax = 3*nside-1``, ``method='jax'``, ``iter=3``); jittable. Shear is pure E-mode. ``iter`` sets
+    the ``map2alm`` Jacobi iterations for the forward analysis (``alm2map`` synthesis takes none).
+
+    If ``sharding`` is a multi-device ``NamedSharding`` the per-bin transform runs inside a
+    ``jax.shard_map`` and the shear follows the **lensing convention** ``P([None,] N, None, M)``
+    (BINS/N, NPIX/M; mesh axes M = first, N = second). The bins distribute over the N axis when it
+    divides the bin count; a mis-shaped mesh (``N_size > 1`` that does not divide the bins) raises
+    ``ValueError`` (the bad-divisor case — born emits the N=1 *warning*, get_shear stays quiet). A
+    single device falls back to the plain ``vmap``. ``debug_sharding`` prints the shape and sharding at
+    each stage (works under ``jax.jit``).
     """
     kappa = jnp.asarray(kappa)
     npix = kappa.shape[-1]
@@ -83,6 +139,12 @@ def kappa2shear_spherical(kappa, *, lmax: int | None = None, method: str = "jax"
     if lmax is None:
         lmax = 3 * nside - 1
     lead = kappa.shape[:-1]
+    mesh = getattr(sharding, "mesh", None)
+    if sharding is not None and mesh is not None and mesh.size > 1:
+        nbins = kappa.shape[-2] if kappa.ndim >= 2 else 1
+        _, n_axis, _, _, distribute = lensing_axes(sharding, nbins)  # raises the bad-divisor case
+        bins_axis = n_axis if distribute else None
+        return _kappa2shear_spherical_sharded(kappa, sharding, bins_axis, nside, lmax, method, iter, debug_sharding)
     flat = kappa.reshape((-1, npix))
     out = jax.vmap(lambda k: _k2g_one(k, nside, lmax, method, iter))(flat)  # (B, 2, npix)
     return out.reshape((*lead, 2, npix))

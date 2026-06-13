@@ -7,6 +7,10 @@ from ._kaiser_squires import (
 )
 from ._metadata import _attach_source_metadata, _max_z_source
 from ._normalize_nz import _normalize_sources
+from ._sharding import (
+    lensing_axes,
+    mesh_MN,
+)
 
 __all__ = [
     "_born_core_impl",
@@ -19,4 +23,6 @@ __all__ = [
     "kappa2shear_spherical",
     "shear2kappa_flat",
     "shear2kappa_spherical",
+    "mesh_MN",
+    "lensing_axes",
 ]

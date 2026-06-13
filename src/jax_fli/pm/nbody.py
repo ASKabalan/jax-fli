@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from functools import partial
 
 import equinox as eqx
@@ -7,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 
-from ..fields import FieldStatus, ParticleField
+from ..fields import FieldStatus, ParticleField, SphericalDensity
 from ..fields.painting import PaintingOptions
 from ._resolve_geometry import resolve_geometry
 from .integrate import AdjointType, integrate
@@ -15,6 +16,26 @@ from .interp import NoInterp
 from .solvers import AbstractNBodySolver, DoubleKickDrift
 
 __all__ = ["nbody"]
+
+
+def _warn_if_spherical_npix_unsharded(field):
+    """Warn when a **spherical** density's npix (M = the first mesh axis) sits on a size-1 axis.
+
+    The HEALPix map is partitioned over M only, so an ``(1, N)`` mesh leaves the spherical density
+    unsharded across devices. Fires once per produced spherical lightcone; no-op for flat/volumetric
+    targets and on a single device.
+    """
+    field_sharding = getattr(field, "field_sharding", None)
+    mesh = getattr(field_sharding, "mesh", None)
+    if mesh is None or mesh.size <= 1 or not isinstance(field, SphericalDensity):
+        return
+    if int(mesh.shape[mesh.axis_names[0]]) == 1:  # M = first mesh axis carries npix for spherical maps
+        warnings.warn(
+            "nbody: the mesh's first (M) axis has size 1, so the spherical density npix is not sharded "
+            "across devices (the HEALPix map is partitioned over M only). Use a (devices, 1) or "
+            "(devices // n_bins, n_bins) mesh to shard the spherical density over pixels.",
+            stacklevel=2,
+        )
 
 
 def _validate_t0_cb(lpt_t0, t0):
@@ -175,4 +196,5 @@ def nbody(
         z_sources=z_sources, comoving_centers=r_centers, density_width=density_plane_width, status=FieldStatus.LIGHTCONE
     )
 
+    _warn_if_spherical_npix_unsharded(lightcone)
     return lightcone
