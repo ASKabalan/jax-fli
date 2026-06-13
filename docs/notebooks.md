@@ -44,4 +44,8 @@ Command-line entry points for batch / HPC runs — one page per script under
 
 ## Experiments
 
-_In preparation_ — see [Experiments](5-experiments/).
+Reproduction studies that produce paper-ready figures — see [Experiments](5-experiments/).
+
+- [Experiment 08 — Masked shear](5-experiments/08-masked-shear/README.md) — Kaiser–Squires
+  κ → γ on a cut sky (DES Y3 and observer-visibility masks), masked vs full-sky shear maps and
+  mask-decoupled `EE` spectra, on a CosmoGrid convergence map.
