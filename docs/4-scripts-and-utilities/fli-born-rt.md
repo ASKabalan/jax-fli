@@ -2,7 +2,7 @@
 
 Post-process an existing spherical lightcone Parquet catalog with the **Born approximation**,
 writing a `SphericalKappaField` convergence catalog. This is the batch equivalent of `jfli.born`
-(see the [Lensing notebook](../2-advanced-usage/08-Lensing.ipynb)).
+(see the [Lensing notebook](../2-advanced-usage/09-Lensing.ipynb)).
 
 ## Usage
 

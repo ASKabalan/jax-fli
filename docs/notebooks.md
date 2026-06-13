@@ -14,22 +14,24 @@ notebook on a GPU / cluster to reproduce the full-resolution figures.
    comparison to theory, and **window deconvolution + shot-noise subtraction**.
 3. [PM Simulation](1-introduction-and-basics/03-PM-Simulation.ipynb) — the BullFrog N-body solver
    and 3-D $P(k)$ vs Halofit with CIC deconvolution + shot noise.
-4. [Distributed PM](1-introduction-and-basics/04-Distributed-PM.ipynb) — multi-device sharding,
+4. [SPMD Basics](1-introduction-and-basics/04-SPMD-Basics.md) — how a single device mesh shards the
+   whole pipeline: the M (pixels) / N (bins) convention and choosing the mesh shape.
+5. [Distributed PM](1-introduction-and-basics/05-Distributed-PM.ipynb) — multi-device sharding,
    halo exchange, and distributed painting.
 
 ## Advanced usage
 
-5. [PM Interpolation](2-advanced-usage/05-PM-Interpolation.ipynb) — `TelephotoInterp` /
+6. [PM Interpolation](2-advanced-usage/06-PM-Interpolation.ipynb) — `TelephotoInterp` /
    `OnionTiler` for shells that reach beyond the box.
-6. [Drift on the Lightcone](2-advanced-usage/06-Drift-on-Lightcone.ipynb) — drifting particles to
+7. [Drift on the Lightcone](2-advanced-usage/07-Drift-on-Lightcone.ipynb) — drifting particles to
    their lightcone-crossing epoch so the density field needs fewer, thicker shells.
-7. [Advanced PM](2-advanced-usage/07-Advanced-PM.ipynb) — PGD small-scale correction and shell
+8. [Advanced PM](2-advanced-usage/08-Advanced-PM.ipynb) — PGD small-scale correction and shell
    partitioning (equal width vs equal volume).
-8. [Weak Lensing](2-advanced-usage/08-Lensing.ipynb) — Born + ray-traced convergence, shear maps,
+9. [Weak Lensing](2-advanced-usage/09-Lensing.ipynb) — Born + ray-traced convergence, shear maps,
    and saving convergence/shear catalogs.
-9. [External Catalogs](2-advanced-usage/09-External-Catalog.ipynb) — loading CosmoGrid and
+10. [External Catalogs](2-advanced-usage/10-External-Catalog.ipynb) — loading CosmoGrid and
    GowerStreet lightcones.
-10. [Multi-host PM](2-advanced-usage/10-multi-host-pm.md) — launching across nodes and validating
+11. [Multi-host PM](2-advanced-usage/11-multi-host-pm.md) — launching across nodes and validating
     convergence against a CosmoGrid reference.
 
 ## Sampling & inference
