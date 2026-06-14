@@ -51,6 +51,25 @@ def _clip_to_start(tprev, tnext, t0):
     return jnp.where(clip, t0, tprev)
 
 
+def _boundary_t_prev(tc, t0_anchor, dt0):
+    """Start time of the forward loop's final (clipped) step into snapshot ``tc``.
+
+    The forward integrator (:func:`_fwd_loop`) re-anchors a uniform ``dt0`` grid at the
+    previous snapshot ``t0_anchor`` and clips the last step into the snapshot ``tc``. Its
+    final step therefore runs from ``a_last = t0_anchor + (m - 1) * dt0`` to ``tc``, where
+    ``m = ceil((tc - t0_anchor) / dt0)``. The reversible backward pass must invert *that*
+    step, so the boundary reverse/linearization point is ``a_last`` — not ``tc - dt0``. The
+    two coincide only when the interval is an integer number of ``dt0`` steps (on-grid
+    snapshots, no clip); for off-grid snapshots ``tc - dt0`` lands at the wrong time and the
+    reconstructed trajectory (and step VJP) drift, giving wrong gradients.
+    """
+    tol = 1e-10 if jnp.asarray(tc).dtype == jnp.dtype("float64") else 1e-6
+    n_full = jnp.floor((tc - t0_anchor) / dt0 - tol)  # full dt0 steps strictly below tc
+    n_full = jnp.maximum(n_full, 0.0)
+    t_prev = t0_anchor + n_full * dt0  # == tc - dt0 when on-grid
+    return _clip_to_start(t_prev, tc, t0_anchor)
+
+
 def integrate(
     displacements: ParticleField,
     velocities: ParticleField,
@@ -445,17 +464,20 @@ def _integrate_bwd(
         adj_cosmo_sum = jax.tree.map(jnp.add, adj_cosmo_, save_adj_cosmo)
         adj_solver_sum = jax.tree.map(jnp.add, adj_solver_, save_adj_solver)
 
-        # Reverse to find the linearization point for the step VJP
-        t_prev = tc - dt0
-        t_prev = _clip_to_start(t_prev, tc, t0_prev_snap)
+        # Reverse to find the linearization point for the step VJP. The forward re-anchors its
+        # dt0 grid at the previous snapshot and clips the last step INTO this snapshot, so its
+        # final step runs a_last -> tc; invert exactly that step (see _boundary_t_prev), not
+        # tc - dt0 (which only matches when the interval is an integer number of dt0 steps).
+        t_prev = _boundary_t_prev(tc, t0_prev_snap, dt0)
         disp_prev, vel_prev, state_prev = solver_.reverse(disp, vel, t_prev, tc, dt0, state, cosmo_)
 
         diff_state_prev, nondiff_state_prev = eqx.partition(state_prev, eqx.is_inexact_array_like)
 
         # VJP of the forward step (includes time gradient)
         def _to_vjp_step_full(disp_in, vel_in, diff_state_in, diff_cosmo_in, diff_solver_in, tc_in):
-            tp_local = tc_in - dt0
-            tp_local = _clip_to_start(tp_local, tc_in, t0_prev_snap)
+            # Linearize the forward's final (clipped) step a_last -> tc. a_last is anchored at
+            # the previous snapshot (independent of tc_in), so reuse the boundary t_prev.
+            tp_local = t_prev
             s_in = eqx.combine(diff_solver_in, nondiff_solver)
             c_in = eqx.combine(diff_cosmo_in, nondiff_cosmo)
             s_in_state_prev = eqx.combine(diff_state_in, nondiff_state_prev)

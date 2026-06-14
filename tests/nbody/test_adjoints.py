@@ -224,6 +224,52 @@ def test_checkpointed_vs_reverse(cosmo, jfli_initial_field, perturbed_reference,
 
 
 # ---------------------------------------------------------------------------
+# Test 1b: reverse == checkpointed through SAVED SNAPSHOTS (a lightcone) — 6 cases
+# ---------------------------------------------------------------------------
+
+# Uniform dt0 grid for the integrator. On-grid ts land on t0 + k*dt0 (the forward takes an
+# integer number of full steps, no clip); off-grid ts force the forward to clip its last step
+# into each snapshot — the case that exposed the reversible-backward boundary-step bug.
+_LC_NSTEPS = 18
+_LC_DT0 = (A_END - A_INI) / _LC_NSTEPS
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("solver_name", ["KKD", "DKD", "BullFrog"])
+@pytest.mark.parametrize(
+    "grid, ts",
+    [
+        ("on-grid", [A_INI + 9 * _LC_DT0, A_END]),
+        ("off-grid", [0.53, A_END]),
+    ],
+    ids=["on-grid", "off-grid"],
+)
+def test_reverse_vs_checkpointed_lightcone(cosmo, jfli_initial_field, solver_name, grid, ts):
+    """Reverse adjoint must equal checkpointed through SAVED SNAPSHOTS, not just a single
+    final-state output (the regime ``test_checkpointed_vs_reverse`` covers).
+
+    The forward re-anchors a uniform dt0 grid at each snapshot and clips its last step into the
+    snapshot time; the reversible backward must invert *that* clipped step (a_last -> snapshot),
+    not (snapshot - dt0 -> snapshot). Off-grid snapshots (any real lightcone) used to give wrong
+    gradients (~50-85%); this guards the ``pm/integrate.py::_boundary_t_prev`` fix for every
+    reversible solver, on-grid (no clip) and off-grid (clipped boundary step).
+    """
+    solver = _make_solver(solver_name, "a", t0=A_INI, t1=A_END, n_steps=_LC_NSTEPS)
+    ts_arr = jnp.asarray(ts)
+
+    def loss(init_array, adjoint):
+        init_f = jfli_initial_field.replace(array=init_array)
+        dx_, p_ = jfli.lpt(cosmo, init_f, ts=A_INI, order=2, gradient_order=0, dealiased=True, exact_growth=True)
+        result = jfli.nbody(cosmo, dx_, p_, solver=solver, ts=ts_arr, adjoint=adjoint, min_width=1.0)
+        return jnp.sum(result.array**2)
+
+    grad_chk = jax.grad(lambda ic: loss(ic, "checkpointed"))(jfli_initial_field.array)
+    grad_rev = jax.grad(lambda ic: loss(ic, "reverse"))(jfli_initial_field.array)
+
+    compare_fields(grad_rev, grad_chk, f"{solver_name} lightcone IC grad ({grid} ts)", rtol=RTOL, atol=ATOL)
+
+
+# ---------------------------------------------------------------------------
 # Test 2: checkpointed gradient with D-stepping — 4 cases
 # ---------------------------------------------------------------------------
 

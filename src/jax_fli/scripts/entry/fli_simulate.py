@@ -9,6 +9,7 @@ JAX is imported lazily (after argument parsing) so --help is instantaneous.
 """
 
 import os
+import re
 import sys
 from argparse import ArgumentParser, Namespace
 from functools import partial
@@ -89,6 +90,31 @@ def _resolve_ts(args: Namespace):
         return jnp.stack([jnp.array(args.ts_near), jnp.array(args.ts_far)], axis=0)
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Gradient mode resolver
+# ---------------------------------------------------------------------------
+
+
+def _parse_grad(grad: str):
+    """Map a --grad spec to ``(compute_grad, adjoint, checkpoints)``.
+
+    none             -> forward only (no gradient)
+    reverse          -> reversible backsolve adjoint (O(1) memory)
+    checkpoint       -> equinox checkpointed scan, default ~log2(n_steps) checkpoints
+    checkpointed_<N> -> checkpointed scan with N checkpoints
+    """
+    if grad == "none":
+        return False, "checkpointed", None
+    if grad == "reverse":
+        return True, "reverse", None
+    if grad == "checkpoint":
+        return True, "checkpointed", None
+    m = re.fullmatch(r"checkpointed_(\d+)", grad)
+    if m:
+        return True, "checkpointed", int(m.group(1))
+    raise ValueError(f"Invalid --grad value: {grad!r}. Use none | reverse | checkpoint | checkpointed_<N>.")
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +201,15 @@ def parser() -> ArgumentParser:
     add_integration_settings_args(p)
     add_cosmo_args(p)
     p.add_argument(
+        "--grad",
+        type=str,
+        default="none",
+        metavar="MODE",
+        help="Differentiate the forward model w.r.t. initial conditions: 'none' (forward only), "
+        "'reverse', 'checkpoint' (~log2(steps) checkpoints), or 'checkpointed_<N>' (N checkpoints). "
+        "When set, the output becomes the IC-shaped gradient field (pm/lensing modes only).",
+    )
+    p.add_argument(
         "--output", "-o", default="sim_output.parquet", help="Output file path (default: sim_output.parquet)"
     )
     p.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
@@ -222,6 +257,30 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
     nside = getattr(args, "nside", None)
     if interp == "onion" and nside is None:
         parser.error("--interp onion requires --nside")
+
+    # --grad: valid spec, pm/lensing only, and reverse adjoint requires uniform a-stepping
+    try:
+        compute_grad, grad_adjoint, _ = _parse_grad(getattr(args, "grad", "none"))
+    except ValueError as e:
+        parser.error(str(e))
+    if compute_grad:
+        if args.sim_mode == "lpt":
+            parser.error("--grad is not supported with --sim-mode lpt (use pm or lensing)")
+        if grad_adjoint == "reverse":
+            if getattr(args, "time_stepping", "a") != "a":
+                parser.error("--grad reverse requires --time-stepping a (the reverse adjoint assumes uniform a-steps)")
+            # The reverse (reversible backsolve) adjoint is validated for saved-snapshot
+            # lightcones (Exp 09: reverse == checkpointed == finite differences to machine
+            # precision through the volumetric/spherical snapshot path) after the off-grid
+            # boundary-step fix in pm/integrate.py (_boundary_t_prev). It is NOT yet validated
+            # for the drift-on-lightcone interpolators (DriftInterp/OnionTiler/TelephotoInterp),
+            # whose paint/rewind reversibility is untested — use --grad checkpoint with those.
+            if getattr(args, "interp", "none") != "none":
+                parser.error(
+                    "--grad reverse is not yet validated with --interp != none (drift-on-lightcone "
+                    "interpolators). Use --interp none (saved snapshots / --nb-shells / --ts are "
+                    "supported) or --grad checkpoint / checkpointed_<N>."
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +353,9 @@ def run_lpt(
         "exact_growth",
         "n_integrate",
         "lensing_output",
+        "adjoint",
+        "checkpoints",
+        "compute_grad",
     ],
 )
 def run_simulations(
@@ -318,49 +380,70 @@ def run_simulations(
     n_integrate=32,
     lensing_output="convergence",
     visibility_mask=None,
+    adjoint="checkpointed",
+    checkpoints=None,
+    compute_grad=False,
 ):
-    # LPT to particles snapshot at t0, then run NBody
-    dx, p = jfli.lpt(
-        cosmo,
-        initial_conditions,
-        ts=solver.t0,
-        order=lpt_order,
-        painting=jfli.PaintingOptions(target="particles"),
-        paint_order=paint_order,
-        gradient_order=gradient_order,
-        laplace_fd=laplace_fd,
-        dealiased=dealiased,
-        exact_growth=exact_growth,
-    )
+    def _forward(ic):
+        # LPT to particles snapshot at t0, then run NBody
+        dx, p = jfli.lpt(
+            cosmo,
+            ic,
+            ts=solver.t0,
+            order=lpt_order,
+            painting=jfli.PaintingOptions(target="particles"),
+            paint_order=paint_order,
+            gradient_order=gradient_order,
+            laplace_fd=laplace_fd,
+            dealiased=dealiased,
+            exact_growth=exact_growth,
+        )
 
-    # Run NBody
-    lightcone = jfli.nbody(
-        cosmo,
-        dx,
-        p,
-        solver=solver,
-        ts=ts,
-        nb_shells=nb_shells,
-        density_widths=density_widths,
-        shell_spacing=shell_spacing,
-        min_width=min_width,
-    )
-    if sim_type == "pm":
-        return lightcone
+        # Run NBody. adjoint / checkpoints select the gradient strategy used by --grad when this
+        # forward model is differentiated w.r.t. the initial conditions (ignored for the pure
+        # forward pass).
+        lightcone = jfli.nbody(
+            cosmo,
+            dx,
+            p,
+            solver=solver,
+            ts=ts,
+            nb_shells=nb_shells,
+            density_widths=density_widths,
+            shell_spacing=shell_spacing,
+            min_width=min_width,
+            adjoint=adjoint,
+            checkpoints=checkpoints,
+        )
+        if sim_type == "pm":
+            return lightcone
 
-    # Run lensing (Born). The lensing-output switch and the apodized visibility-mask multiply
-    # live INSIDE the jitted forward model so the Kaiser-Squires transform is compiled and
-    # profiled with the simulation under --perf, identical to the full-field forward model:
-    # for shear / reduced_shear the kappa map is apodized before KS; convergence is untouched.
-    if sim_type == "born":
-        kappa = jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
-        if lensing_output == "convergence":
-            return kappa
-        ks_input = kappa
-        if visibility_mask is not None:
-            ks_input = kappa.replace(array=kappa.array * visibility_mask)
-        return ks_input.get_shear(reduced_shear=lensing_output == "reduced_shear")
-    raise ValueError(f"Unknown sim_type: {sim_type}")
+        # Run lensing (Born). The lensing-output switch and the apodized visibility-mask multiply
+        # live INSIDE the jitted forward model so the Kaiser-Squires transform is compiled and
+        # profiled with the simulation under --perf, identical to the full-field forward model:
+        # for shear / reduced_shear the kappa map is apodized before KS; convergence is untouched.
+        if sim_type == "born":
+            kappa = jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
+            if lensing_output == "convergence":
+                return kappa
+            ks_input = kappa
+            if visibility_mask is not None:
+                ks_input = kappa.replace(array=kappa.array * visibility_mask)
+            return ks_input.get_shear(reduced_shear=lensing_output == "reduced_shear")
+        raise ValueError(f"Unknown sim_type: {sim_type}")
+
+    if not compute_grad:
+        return _forward(initial_conditions)
+
+    # --grad: differentiate a scalar machinery-benchmark loss L = 1/2 * sum(observable**2) w.r.t.
+    # the initial-condition array, and return the IC-shaped gradient field. The IC array is the
+    # sole differentiation target; the field's static metadata is carried over via .replace.
+    def _loss(ic_array):
+        observable = _forward(initial_conditions.replace(array=ic_array))
+        return 0.5 * jnp.sum(jnp.square(observable.array))
+
+    grad_array = jax.grad(_loss)(initial_conditions.array)
+    return initial_conditions.replace(array=grad_array)
 
 
 def main() -> None:
@@ -380,6 +463,7 @@ def main() -> None:
     ts = _resolve_ts(args)
     nz_shear = _resolve_nz_shear(args)
     solver = _build_solver(args, painting)
+    compute_grad, grad_adjoint, grad_checkpoints = _parse_grad(args.grad)
 
     output_dir = os.path.dirname(args.output) or "."
     _save_args_log(args, output_dir, f"fli-simulate {args.sim_mode}")
@@ -462,6 +546,9 @@ def main() -> None:
             "n_integrate": getattr(args, "n_integrate", 32),
             "lensing_output": getattr(args, "lensing_output", "convergence"),
             "visibility_mask": visibility_mask,
+            "adjoint": grad_adjoint,
+            "checkpoints": grad_checkpoints,
+            "compute_grad": compute_grad,
         }
 
     if args.perf:
@@ -474,7 +561,8 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16, 19)  # 19 = lensing_output (static)
+            # 19=lensing_output, 21=adjoint, 22=checkpoints, 23=compute_grad (all static)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16, 19, 21, 22, 23)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)
@@ -514,6 +602,15 @@ def main() -> None:
 
     print("Simulation completed... saving results.")
     sync_global_devices("Done")
+    if compute_grad:
+        # The IC-shaped gradient inherits the initial field's dynamic metadata, some of which is
+        # None (z_sources / comoving_centers / density_width). Populate zero placeholders so the
+        # parquet serializer accepts it — these fields are meaningless for a gradient.
+        result = result.replace(  # pyright: ignore
+            z_sources=jnp.zeros((1,)),
+            comoving_centers=jnp.zeros((1,)),
+            density_width=jnp.zeros((1,)),
+        )
     # --- Save output ---
     _save_result(result, cosmo, args)  # pyright: ignore
     jax.distributed.shutdown()
