@@ -1,0 +1,32 @@
+name: Release to PyPI
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish:
+    name: Publish package to PyPI
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write  # OIDC trusted publishing
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for hatch-vcs versioning
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: "0.11.21"
+
+      # The forks are dev-only [tool.uv.sources]; uv strips them at build time, so the
+      # wheel/sdist metadata depends on the plain PyPI names (jaxpm, jax-cosmo).
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

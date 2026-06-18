@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import jax
 import jax_cosmo as jc
-import jax_fli as jfli
 import numpy as np
 import pytest
+
+import jax_fli as jfli
 
 MESH_SIZE = (32, 32, 32)
 BOX_SIZE = (256.0, 256.0, 256.0)

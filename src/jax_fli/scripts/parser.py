@@ -1,9 +1,38 @@
 """Shared argument-group builders used by entry-point scripts.
 
-All functions are pure argparse — no jax_fli imports.
+All functions are pure argparse — no jax_fli imports. Each builder owns **one** concern so
+entry scripts compose only the groups they actually consume:
+
+* runtime               — ``add_common_args`` (``--enable-x64``)
+* distributed           — ``add_distributed_args`` (``--pdim`` / ``--nodes``)
+* cosmology             — ``add_cosmo_args``
+* simulation geometry   — ``add_simulation_settings_args`` (box/mesh/halo/observer/seed)
+                          + ``add_output_target_args`` (nside / density / flat-sky + painting)
+* integration           — ``add_integration_settings_args`` (physics, shell timing)
+* lensing               — ``add_lensing_args``
+* priors / inference    — ``add_prior_args`` / ``add_infer_args``
+* forward-model         — ``add_forward_model_args`` (likelihood mask / sigma / lightcone)
+* summary statistics    — ``add_summary_stats_*`` (used by fli-summary-stats)
+
+``--sim-mode`` is **not** here: it belongs to fli-simulate alone and is defined inline there.
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Runtime / device
+# ---------------------------------------------------------------------------
+
+
+def add_common_args(p):
+    """JAX runtime knobs shared by every compute script (currently ``--enable-x64``)."""
+    g = p.add_argument_group("runtime")
+    g.add_argument(
+        "--enable-x64",
+        action="store_true",
+        dest="enable_x64",
+        help="Enable JAX 64-bit floating-point precision (default: False)",
+    )
 
 
 def add_distributed_args(p):
@@ -20,24 +49,158 @@ def add_distributed_args(p):
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
 
 
-def add_integration_settings_args(p, solver_default="kdk"):
-    """Integration / lightcone / lensing parameters.
+# ---------------------------------------------------------------------------
+# Cosmology
+# ---------------------------------------------------------------------------
 
-    Covers everything shown in the Integration Settings form: physics,
-    shell timing, and lensing source-distribution parameters.
+
+def add_cosmo_args(p):
+    """Cosmological parameters (Omega_c, sigma8, Omega_b, h, n_s, etc.).
+
+    Note: ``--seed`` is part of ``add_simulation_settings_args``, not here.
+    """
+    g = p.add_argument_group("cosmology")
+    g.add_argument("--Omega-b", type=float, default=0.0486, dest="Omega_b", help="Baryon density (default: 0.0486)")
+    g.add_argument("--h", type=float, default=0.6774, help="Dimensionless Hubble parameter (default: 0.6774)")
+    g.add_argument("--n-s", type=float, default=0.9667, dest="n_s", help="Spectral index (default: 0.9667)")
+    g.add_argument("--Omega-k", type=float, default=0.0, dest="Omega_k", help="Curvature density (default: 0.0)")
+    g.add_argument("--w0", type=float, default=-1.0, help="Dark energy EOS w0 (default: -1.0)")
+    g.add_argument("--wa", type=float, default=0.0, help="Dark energy EOS wa (default: 0.0)")
+    g.add_argument("--Omega-nu", type=float, default=0.0, dest="Omega_nu", help="Neutrino density (default: 0.0)")
+    g.add_argument(
+        "--Omega-c", type=float, default=0.2589, dest="Omega_c", help="Cold dark matter density (default: 0.2589)"
+    )
+    g.add_argument("--sigma8", type=float, default=0.8159, help="sigma8 (default: 0.8159)")
+
+
+# ---------------------------------------------------------------------------
+# Simulation geometry — box + output target
+# ---------------------------------------------------------------------------
+
+
+def add_simulation_settings_args(p):
+    """Box geometry and RNG: mesh, box, halo, observer position, apodization, seed.
+
+    The *output target* (nside / density / flat-sky) and painting scheme live in the separate
+    ``add_output_target_args`` builder so the box geometry and the projection choice stay
+    independent concerns.
+    """
+    g = p.add_argument_group("simulation settings")
+    g.add_argument(
+        "--mesh-size",
+        type=int,
+        nargs=3,
+        default=[64, 64, 64],
+        metavar=("NX", "NY", "NZ"),
+        help="Mesh resolution (default: 64 64 64)",
+    )
+    g.add_argument(
+        "--box-size",
+        type=float,
+        nargs=3,
+        default=[200.0, 200.0, 200.0],
+        metavar=("LX", "LY", "LZ"),
+        help="Box side lengths in Mpc/h (default: 200 200 200)",
+    )
+    g.add_argument(
+        "--halo-multiplier",
+        type=float,
+        default=0.5,
+        dest="halo_multiplier",
+        metavar="M",
+        help="Halo size as local_mesh × multiplier (default: 0.5)",
+    )
+    g.add_argument(
+        "--observer-position",
+        type=float,
+        nargs=3,
+        default=[0.5, 0.5, 0.5],
+        metavar=("OX", "OY", "OZ"),
+        help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
+    )
+    g.add_argument(
+        "--apodization-scale-deg",
+        type=float,
+        default=1.0,
+        dest="apodization_scale_deg",
+        help="C2 apodization scale (deg) for the off-center observer visibility mask (default: 1.0)",
+    )
+    g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
+
+
+def add_output_target_args(p):
+    """Output projection target and painting scheme.
+
+    Selects the field the pipeline emits — a 3D density, a flat-sky map, a HEALPix map, or
+    (when none is given) particles — plus the spherical painting interpolation knobs.
+    """
+    g = p.add_argument_group("output target")
+    ex = g.add_mutually_exclusive_group()
+    ex.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
+    ex.add_argument("--density", action="store_true", default=False, help="3D density field output")
+    ex.add_argument(
+        "--flatsky-npix",
+        nargs=2,
+        type=int,
+        default=None,
+        metavar=("H", "W"),
+        dest="flatsky_npix",
+        help="Flat-sky pixel resolution (H×W)",
+    )
+    g.add_argument(
+        "--field-size",
+        nargs=2,
+        type=int,
+        default=[10, 10],
+        metavar=("H", "W"),
+        dest="field_size",
+        help="Angular field size in degrees H×W (use with --flatsky-npix)",
+    )
+    g.add_argument(
+        "--scheme",
+        choices=["ngp", "bilinear", "rbf_neighbor"],
+        default="bilinear",
+        help="Spherical painting interpolation scheme (default: bilinear)",
+    )
+    g.add_argument(
+        "--paint-nside",
+        type=int,
+        default=None,
+        dest="paint_nside",
+        help="Override nside for spherical painting (default: same as --nside)",
+    )
+    g.add_argument(
+        "--kernel-width-arcmin",
+        type=float,
+        default=None,
+        dest="kernel_width_arcmin",
+        help="RBF smoothing kernel width in arcmin (default: None)",
+    )
+    g.add_argument(
+        "--kernel-width-pixels",
+        type=float,
+        default=None,
+        dest="kernel_width_pixels",
+        help="RBF smoothing kernel width in HEALPix pixels, e.g. 0.8 (default: None)",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration / lightcone
+# ---------------------------------------------------------------------------
+
+
+def add_integration_settings_args(p, solver_default="kdk"):
+    """Integration / lightcone physics: solver, time-stepping, shell timing, force kernels.
 
     ``solver_default`` lets each command pick the N-body integrator default: ``fli-simulate``
     keeps ``kdk`` (DoubleKickDrift), while the full-field model entry points (``fli-infer`` /
     ``fli-samples``) pass ``bf`` (BullFrog, the Configurations default).
+
+    Lensing parameters are **not** added here — scripts call ``add_lensing_args`` explicitly when
+    they need source-distribution / Born options. ``--sim-mode`` is fli-simulate-only.
     """
     g = p.add_argument_group("integration")
-    p.add_argument(
-        "--sim-mode",
-        choices=["lpt", "pm", "lensing"],
-        required=True,
-        dest="sim_mode",
-        help="Simulation pipeline: lpt, pm (N-body), or lensing (N-body + Born)",
-    )
     g.add_argument(
         "--nb-shells", type=int, default=None, dest="nb_shells", help="Number of lightcone shells (default: 8)"
     )
@@ -135,26 +298,11 @@ def add_integration_settings_args(p, solver_default="kdk"):
     g.add_argument(
         "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h (default: 50.0)"
     )
-    add_lensing_args(p)
 
 
-def add_cosmo_args(p):
-    """Cosmological parameters (Omega_c, sigma8, Omega_b, h, n_s, etc.).
-
-    Note: ``--seed`` is part of ``add_simulation_settings_args``, not here.
-    """
-    g = p.add_argument_group("cosmology")
-    g.add_argument("--Omega-b", type=float, default=0.0486, dest="Omega_b", help="Baryon density (default: 0.0486)")
-    g.add_argument("--h", type=float, default=0.6774, help="Dimensionless Hubble parameter (default: 0.6774)")
-    g.add_argument("--n-s", type=float, default=0.9667, dest="n_s", help="Spectral index (default: 0.9667)")
-    g.add_argument("--Omega-k", type=float, default=0.0, dest="Omega_k", help="Curvature density (default: 0.0)")
-    g.add_argument("--w0", type=float, default=-1.0, help="Dark energy EOS w0 (default: -1.0)")
-    g.add_argument("--wa", type=float, default=0.0, help="Dark energy EOS wa (default: 0.0)")
-    g.add_argument("--Omega-nu", type=float, default=0.0, dest="Omega_nu", help="Neutrino density (default: 0.0)")
-    g.add_argument(
-        "--Omega-c", type=float, default=0.2589, dest="Omega_c", help="Cold dark matter density (default: 0.2589)"
-    )
-    g.add_argument("--sigma8", type=float, default=0.8159, help="sigma8 (default: 0.8159)")
+# ---------------------------------------------------------------------------
+# Lensing
+# ---------------------------------------------------------------------------
 
 
 def add_lensing_args(p):
@@ -179,109 +327,8 @@ def add_lensing_args(p):
     )
 
 
-def add_simulation_settings_args(p):
-    """Simulation settings: mesh, box, halo, observer, seed, painting scheme, x64."""
-    g = p.add_argument_group("simulation settings")
-    g.add_argument(
-        "--mesh-size",
-        type=int,
-        nargs=3,
-        default=[64, 64, 64],
-        metavar=("NX", "NY", "NZ"),
-        help="Mesh resolution (default: 64 64 64)",
-    )
-    g.add_argument(
-        "--box-size",
-        type=float,
-        nargs=3,
-        default=[200.0, 200.0, 200.0],
-        metavar=("LX", "LY", "LZ"),
-        help="Box side lengths in Mpc/h (default: 200 200 200)",
-    )
-    g.add_argument(
-        "--halo-multiplier",
-        type=float,
-        default=0.5,
-        dest="halo_multiplier",
-        metavar="M",
-        help="Halo size as local_mesh × multiplier (default: 0.5)",
-    )
-    g.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=[0.5, 0.5, 0.5],
-        metavar=("OX", "OY", "OZ"),
-        help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
-    )
-    g.add_argument(
-        "--apodization-scale-deg",
-        type=float,
-        default=1.0,
-        dest="apodization_scale_deg",
-        help="C2 apodization scale (deg) for the off-center observer visibility mask (default: 1.0)",
-    )
-    g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
-
-    g = p.add_argument_group("output target")
-    ex = g.add_mutually_exclusive_group()
-    ex.add_argument("--nside", type=int, default=None, help="HEALPix NSIDE for spherical painting")
-    ex.add_argument("--density", action="store_true", default=False, help="3D density field output")
-    ex.add_argument(
-        "--flatsky-npix",
-        nargs=2,
-        type=int,
-        default=None,
-        metavar=("H", "W"),
-        dest="flatsky_npix",
-        help="Flat-sky pixel resolution (H×W)",
-    )
-    g.add_argument(
-        "--field-size",
-        nargs=2,
-        type=int,
-        default=[10, 10],
-        metavar=("H", "W"),
-        dest="field_size",
-        help="Angular field size in degrees H×W (use with --flatsky-npix)",
-    )
-    g.add_argument(
-        "--scheme",
-        choices=["ngp", "bilinear", "rbf_neighbor"],
-        default="bilinear",
-        help="Spherical painting interpolation scheme (default: bilinear)",
-    )
-    g.add_argument(
-        "--paint-nside",
-        type=int,
-        default=None,
-        dest="paint_nside",
-        help="Override nside for spherical painting (default: same as --nside)",
-    )
-    g.add_argument(
-        "--kernel-width-arcmin",
-        type=float,
-        default=None,
-        dest="kernel_width_arcmin",
-        help="RBF smoothing kernel width in arcmin (default: None)",
-    )
-    g.add_argument(
-        "--kernel-width-pixels",
-        type=float,
-        default=None,
-        dest="kernel_width_pixels",
-        help="RBF smoothing kernel width in HEALPix pixels, e.g. 0.8 (default: None)",
-    )
-    g.add_argument(
-        "--enable-x64",
-        action="store_true",
-        dest="enable_x64",
-        help="Enable JAX 64-bit floating-point precision (default: False)",
-    )
-
-
 # ---------------------------------------------------------------------------
-# Spectra computation argument groups (used by fli-spectra)
+# Priors / inference
 # ---------------------------------------------------------------------------
 
 
@@ -415,8 +462,13 @@ def add_forward_model_args(p):
     )
 
 
-def add_spectra_scan_args(p):
-    """Scan and filter arguments for fli-spectra."""
+# ---------------------------------------------------------------------------
+# Summary-statistics argument groups (used by fli-summary-stats)
+# ---------------------------------------------------------------------------
+
+
+def add_summary_stats_scan_args(p):
+    """Folder scan and filter arguments for fli-summary-stats."""
     g = p.add_argument_group("scan")
     g.add_argument(
         "folder",
@@ -439,7 +491,7 @@ def add_spectra_scan_args(p):
     g.add_argument(
         "--force-regen",
         action="store_true",
-        help="Force regeneration of spectra even if output files already exist (default: False)",
+        help="Force regeneration even if output files already exist (default: False)",
     )
     g.add_argument(
         "--normalization",
@@ -451,8 +503,8 @@ def add_spectra_scan_args(p):
     )
 
 
-def add_spectra_flat_args(p):
-    """Flat-sky spectra arguments for fli-spectra.
+def add_summary_stats_flat_args(p):
+    """Flat-sky angular-Cl arguments for fli-summary-stats.
 
     Note: field_size and pixel_size are read from the stored field metadata.
     """
@@ -468,8 +520,8 @@ def add_spectra_flat_args(p):
     )
 
 
-def add_spectra_spherical_args(p):
-    """Spherical (HEALPix) spectra arguments for fli-spectra."""
+def add_summary_stats_spherical_args(p):
+    """Spherical (HEALPix) angular-Cl arguments for fli-summary-stats."""
     g = p.add_argument_group("spherical spectra")
     g.add_argument(
         "--lmax",
@@ -485,8 +537,8 @@ def add_spectra_spherical_args(p):
     )
 
 
-def add_spectra_density_args(p):
-    """3D density P(k) arguments for fli-spectra."""
+def add_summary_stats_density_args(p):
+    """3D density P(k) arguments for fli-summary-stats."""
     g = p.add_argument_group("3D P(k)")
     g.add_argument(
         "--kedges",
@@ -496,13 +548,13 @@ def add_spectra_density_args(p):
         metavar="K",
         help="k bin edges for P(k) (default: auto)",
     )
-    p.add_argument(
+    g.add_argument(
         "--kmax",
         type=float,
         default=None,
         help="Maximum k for P(k) (default: Nyquist frequency based on mesh size)",
     )
-    p.add_argument(
+    g.add_argument(
         "--dk",
         type=float,
         default=None,
@@ -543,8 +595,44 @@ def add_spectra_density_args(p):
     )
 
 
-def add_spectra_common_args(p):
-    """Common arguments shared across all fli-spectra field types."""
+def add_summary_stats_mask_args(p):
+    """HEALPix mask + apodization for spherical summary statistics.
+
+    The mask restricts the observed footprint before computing spherical statistics.
+    ``infer_from_observer_position`` builds the apodized visibility mask from the field's stored
+    observer position (a no-op for a centered observer); ``des_y3`` loads the DES Y3 footprint;
+    ``none`` disables masking; or pass a path to a HEALPix map (.npy/.npz/.fits). The mask is
+    apodized with a C2 window of ``--apodization-scale-deg``.
+    """
+    g = p.add_argument_group("mask")
+    g.add_argument(
+        "--mask",
+        type=str,
+        default="infer_from_observer_position",
+        metavar="MASK",
+        help="Footprint for spherical stats: 'infer_from_observer_position' (default), 'none', "
+        "'des_y3', or a path to a HEALPix map (.npy/.npz/.fits).",
+    )
+    g.add_argument(
+        "--apodization-scale-deg",
+        type=float,
+        default=1.0,
+        dest="apodization_scale_deg",
+        help="C2 apodization scale (deg) applied to the mask (default: 1.0)",
+    )
+    g.add_argument(
+        "--observer-position",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("OX", "OY", "OZ"),
+        dest="observer_position",
+        help="Override observer position (box coords) for the inferred mask (default: read from the field metadata).",
+    )
+
+
+def add_summary_stats_common_args(p):
+    """Common arguments shared across all fli-summary-stats field types."""
     g = p.add_argument_group("common")
     g.add_argument(
         "--batch-size",
@@ -552,10 +640,4 @@ def add_spectra_common_args(p):
         default=None,
         dest="batch_size",
         help="Batch size for jax.lax.map (default: None = no batching)",
-    )
-    g.add_argument(
-        "--enable-x64",
-        action="store_true",
-        dest="enable_x64",
-        help="Enable JAX 64-bit floating-point precision (default: False)",
     )

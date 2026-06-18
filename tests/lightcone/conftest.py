@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import jax
 import pytest
+
 from jax_fli import gaussian_initial_conditions
 
 MESH_SIZE = (16, 16, 16)

@@ -13,7 +13,7 @@ from jax_fli.scripts._common import _build_sharding
 
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-extract."""
-    from jax_fli.scripts.parser import add_distributed_args
+    from jax_fli.scripts.parser import add_common_args, add_distributed_args
 
     p = argparse.ArgumentParser(
         prog="fli-extract",
@@ -51,8 +51,8 @@ def parser() -> argparse.ArgumentParser:
         "--power-statistic", action="store_true", help="Compute per-chain transfer function and coherence spectra."
     )
     p.add_argument("--ddof", type=int, default=0, help="Delta degrees of freedom for std computation (default: 0)")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
+    add_common_args(p)
     add_distributed_args(p)
 
     return p

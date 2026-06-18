@@ -1,10 +1,13 @@
 """Adjoint, gradient, and reversibility tests for N-body solvers.
 
-Test matrix (15 cases total):
-- test_checkpointed_vs_reverse:  6 cases — checkpointed ≈ reverse gradients (time_stepping="a")
-- test_checkpointed_gradient_D:  4 cases — checkpointed finite for time_stepping="D"
-- test_dkd_gradient_vs_discodj:  2 cases — jax-fli DKD grad ≈ disco-dj fastpm adjoint grad
-- test_reversible_roundtrip:     3 cases — step + reverse = identity
+Test matrix (29 cases total):
+- test_checkpointed_vs_reverse:        6 cases — checkpointed ≈ reverse gradients (time_stepping="a")
+- test_reverse_vs_checkpointed_lightcone: 6 cases — reverse ≈ checkpointed through saved snapshots
+- test_step_checkpoints_invariant:     6 cases — gradient value invariant to step_checkpoints
+- test_adjoint_transpose:              2 cases — reverse/checkpointed VJP == forward-mode JVP (adjoint=None)
+- test_checkpointed_gradient_D:        4 cases — checkpointed finite for time_stepping="D"
+- test_dkd_gradient_vs_discodj:        2 cases — jax-fli DKD grad ≈ disco-dj fastpm adjoint grad
+- test_reversible_roundtrip:           3 cases — step + reverse = identity
 """
 
 from __future__ import annotations
@@ -19,12 +22,12 @@ from numpy.testing import assert_allclose
 
 jax.config.update("jax_enable_x64", True)
 
-import jax_fli as jfli
 from discodj import DiscoDJ
 from discodj.cosmology.cosmology import Cosmology as DiscoDJCosmology
+
+import jax_fli as jfli
 from jax_fli.fields import DensityField, FieldStatus
 from jax_fli.fields.units import DensityUnit
-
 from tests.helpers import MSE, MSRE, compare_fields
 
 # ---------------------------------------------------------------------------
@@ -267,6 +270,85 @@ def test_reverse_vs_checkpointed_lightcone(cosmo, jfli_initial_field, solver_nam
     grad_rev = jax.grad(lambda ic: loss(ic, "reverse"))(jfli_initial_field.array)
 
     compare_fields(grad_rev, grad_chk, f"{solver_name} lightcone IC grad ({grid} ts)", rtol=RTOL, atol=ATOL)
+
+
+# ---------------------------------------------------------------------------
+# Test 1c: step_checkpoints is a memory knob, not an accuracy knob — 6 cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("solver_name", ["KKD", "BullFrog"])
+@pytest.mark.parametrize("step_checkpoints", [1, 3, 10])
+def test_step_checkpoints_invariant(cosmo, jfli_initial_field, perturbed_reference, solver_name, step_checkpoints):
+    """``step_checkpoints`` checkpoints the inner integration-step loop: it trades recompute for
+    memory but must NOT change the gradient value. The checkpointed adjoint recomputes the forward
+    (it never inverts), so the gradient is identical for any checkpoint count — the precision-robust
+    behaviour Experiment 09 characterises.
+    """
+    reference = perturbed_reference
+    solver = _make_solver(solver_name, "a", t0=A_INI, t1=A_END, n_steps=10)
+
+    def loss(init_array, step_checkpoints):
+        init_f = jfli_initial_field.replace(array=init_array)
+        dx_, p_ = jfli.lpt(cosmo, init_f, ts=A_INI, order=2, gradient_order=0, dealiased=True, exact_growth=True)
+        result = jfli.nbody(cosmo, dx_, p_, solver=solver, adjoint="checkpointed", step_checkpoints=step_checkpoints)
+        return jnp.sum((result.array - reference) ** 2)
+
+    grad_ref = jax.grad(lambda ic: loss(ic, None))(jfli_initial_field.array)
+    grad_sc = jax.grad(lambda ic: loss(ic, step_checkpoints))(jfli_initial_field.array)
+
+    assert jnp.all(jnp.isfinite(grad_sc)), f"Non-finite IC gradient at step_checkpoints={step_checkpoints}"
+    compare_fields(
+        grad_sc, grad_ref, f"{solver_name} step_checkpoints={step_checkpoints} vs None", rtol=RTOL, atol=ATOL
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 1d: adjoint transpose (dot-product) test — FD-free, O(1) memory — 2 cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("solver_name", ["KKD", "BullFrog"])
+def test_adjoint_transpose(cosmo, jfli_initial_field, solver_name):
+    """The reverse / checkpointed VJP must be the exact transpose of the forward-mode JVP:
+    ``⟨w, J v⟩ == ⟨Jᵀ w, v⟩`` for a random tangent ``v`` and cotangent ``w``. This is an FD-free,
+    O(1)-memory correctness check of the custom reverse adjoint (the dot-product / transpose test).
+
+    The forward-mode JVP runs through ``adjoint=None`` — a plain ``jax.lax`` forward loop that carries
+    no ``custom_vjp`` and so supports ``jvp``; the VJP runs through the reverse-mode adjoints. (The
+    'reverse'/'checkpointed' paths use equinox custom-VJP loops, which block forward mode, so the
+    forward direction needs the ``adjoint=None`` path.)
+    """
+    solver = _make_solver(solver_name, "a", t0=A_INI, t1=A_END, n_steps=10)
+
+    def observable(init_array, adjoint):
+        init_f = jfli_initial_field.replace(array=init_array)
+        dx_, p_ = jfli.lpt(cosmo, init_f, ts=A_INI, order=2, gradient_order=0, dealiased=True, exact_growth=True)
+        return jfli.nbody(cosmo, dx_, p_, solver=solver, adjoint=adjoint).array
+
+    x0 = jfli_initial_field.array
+    kv, kw = jax.random.split(jax.random.PRNGKey(7))
+    v = jax.random.normal(kv, x0.shape, x0.dtype)
+
+    # Forward-mode tangent via adjoint=None (jax.lax loop is jvp-able; the reverse-mode loops are not).
+    primal, Jv = jax.jvp(lambda x: observable(x, None), (x0,), (v,))
+    assert jnp.all(jnp.isfinite(Jv)), "Non-finite JVP tangent through adjoint=None"
+
+    w = jax.random.normal(kw, primal.shape, primal.dtype)
+    lhs = float(jnp.sum(w * Jv))  # ⟨w, J v⟩
+
+    for adjoint in ("reverse", "checkpointed"):
+        _, vjp_fn = jax.vjp(lambda x, a=adjoint: observable(x, a), x0)
+        (JTw,) = vjp_fn(w)
+        rhs = float(jnp.sum(JTw * v))  # ⟨Jᵀ w, v⟩
+        assert_allclose(
+            lhs,
+            rhs,
+            rtol=1e-8,
+            atol=1e-10,
+            err_msg=f"{solver_name} transpose test failed: ⟨w,Jv⟩ != ⟨Jᵀw,v⟩ for adjoint={adjoint}",
+        )
 
 
 # ---------------------------------------------------------------------------

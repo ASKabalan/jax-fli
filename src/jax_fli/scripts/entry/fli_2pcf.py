@@ -28,6 +28,7 @@ from jax_fli.scripts._common import _resolve_nz_shear, _save_args_log
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-2pcf."""
     from jax_fli.scripts.parser import (
+        add_common_args,
         add_lensing_args,
         add_prior_args,
     )
@@ -35,8 +36,7 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="fli-2pcf",
         description=(
-            "Run 2-point-function (power-spectrum level) MCMC inference "
-            "conditioned on observed angular power spectra."
+            "Run 2-point-function (power-spectrum level) MCMC inference conditioned on observed angular power spectra."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -136,7 +136,8 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
     p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
+
+    add_common_args(p)
 
     return p
 

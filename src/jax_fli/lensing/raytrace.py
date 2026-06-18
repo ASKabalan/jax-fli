@@ -105,9 +105,9 @@ def _raytrace_z_grid(
         Convergence maps, shape (n_sources, npix). When both ``born`` and
         ``raytrace`` are True, returns ``(raytraced_maps, born_maps)``.
     """
-    assert (
-        raytrace_from_density is not None
-    ), "raytrace_from_density is None — dorian not installed. Use @require_dorian to guard callers."
+    assert raytrace_from_density is not None, (
+        "raytrace_from_density is None — dorian not installed. Use @require_dorian to guard callers."
+    )
     result = raytrace_from_density(
         density_maps=list(density_maps),
         redshifts=list(shell_redshifts),

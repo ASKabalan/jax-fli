@@ -19,6 +19,7 @@ __all__ = [
     "_resolve_nz_shear",
     "_resolve_solver_name",
     "_resolve_mask",
+    "_resolve_summary_stats_mask",
     "_build_sharding",
     "_save_args_log",
 ]
@@ -35,8 +36,36 @@ def _resolve_solver_name(solver: str) -> str:
         raise ValueError(f"Unknown --solver '{solver}'; expected one of {tuple(_SOLVER_NAMES)}.") from exc
 
 
+def _load_healpix_mask(path: str, nside):
+    """Load a HEALPix mask from a ``.npy`` / ``.npz`` / ``.fits`` file.
+
+    For spherical geometry (``nside`` given) the map is ud_graded to the model nside.
+    """
+    import numpy as np
+
+    if path.endswith(".npy"):
+        arr = np.load(path)
+    elif path.endswith(".npz"):
+        with np.load(path) as npz:
+            arr = npz[npz.files[0]]
+    elif path.endswith((".fits", ".fits.gz")):
+        import healpy as hp
+
+        arr = hp.read_map(path)
+    else:
+        raise ValueError(f"mask must be 'des_y3' or a .npy/.npz/.fits path, got {path!r}")
+
+    arr = np.asarray(arr)
+    if nside is not None:  # spherical geometry: match the model nside
+        import healpy as hp
+
+        if hp.npix2nside(arr.shape[-1]) != nside:
+            arr = hp.ud_grade(arr, nside)
+    return arr
+
+
 def _resolve_mask(mask_arg, nside):
-    """Resolve ``--mask`` into a HEALPix survey footprint array (or None).
+    """Resolve the forward-model ``--mask`` into a HEALPix survey footprint array (or None).
 
     Accepts ``None``, the ``des_y3`` keyword (``jfli.data.get_desy3_mask`` at the model
     nside, mirroring ``--nz-shear des_y3``), or a path to a ``.npy`` / ``.npz`` / ``.fits``
@@ -48,28 +77,39 @@ def _resolve_mask(mask_arg, nside):
         if nside is None:
             raise ValueError("--mask des_y3 requires spherical geometry (a model nside).")
         return jfli.data.get_desy3_mask(nside)
+    return _load_healpix_mask(mask_arg, nside)
 
-    import numpy as np
 
-    if mask_arg.endswith(".npy"):
-        arr = np.load(mask_arg)
-    elif mask_arg.endswith(".npz"):
-        with np.load(mask_arg) as npz:
-            arr = npz[npz.files[0]]
-    elif mask_arg.endswith((".fits", ".fits.gz")):
-        import healpy as hp
+def _resolve_summary_stats_mask(mask_arg, nside, observer_position, apodization_scale_deg: float = 1.0):
+    """Resolve the fli-summary-stats ``--mask`` into an apodized HEALPix footprint (or None).
 
-        arr = hp.read_map(mask_arg)
+    Spherical geometry only. Accepts:
+
+    * ``none`` / ``None`` → no mask;
+    * ``infer_from_observer_position`` → the apodized observer-visibility mask built from
+      ``observer_position`` (a centered observer sees the whole sky, so this returns ``None``);
+    * ``des_y3`` → the DES Y3 footprint, apodized with a C2 window;
+    * a ``.npy`` / ``.npz`` / ``.fits`` path → loaded, ud_graded, and apodized.
+    """
+    if mask_arg is None:
+        return None
+    key = mask_arg.lower()
+    if key == "none":
+        return None
+    if key in ("infer_from_observer_position", "infer", "observer"):
+        mask = jfli.data.build_observer_visibility_mask(tuple(observer_position), nside, apodization_scale_deg)
+        import numpy as np
+
+        # build_observer_visibility_mask returns the scalar 1 for a centered observer (whole sky);
+        # treat that as no footprint restriction.
+        return None if np.ndim(mask) == 0 else mask
+    if nside is None:
+        raise ValueError("--mask requires spherical geometry (a HEALPix nside).")
+    if key in ("des_y3", "desy3"):
+        binary = jfli.data.get_desy3_mask(nside)
     else:
-        raise ValueError(f"--mask must be 'des_y3' or a .npy/.npz/.fits path, got {mask_arg!r}")
-
-    arr = np.asarray(arr)
-    if nside is not None:  # spherical geometry: match the model nside
-        import healpy as hp
-
-        if hp.npix2nside(arr.shape[-1]) != nside:
-            arr = hp.ud_grade(arr, nside)
-    return arr
+        binary = _load_healpix_mask(mask_arg, nside)
+    return jfli.data.apodize(binary, apodization_scale_deg)
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +204,13 @@ def _resolve_nz_shear(args: Namespace):
 # ---------------------------------------------------------------------------
 
 
-def _save_args_log(args: Namespace, output_dir: str, prog: str) -> None:
-    """Write a formatted args summary to {output_dir}/args.log."""
+def _save_args_log(args: Namespace, output_dir: str, prog: str, filename: str = "args.log", mode: str = "w") -> None:
+    """Write a formatted args summary to ``{output_dir}/{filename}``.
+
+    ``filename`` lets callers give the log a per-run name (e.g. derived from the output file) so
+    concurrent runs sharing a directory don't clobber each other; ``mode="a"`` appends instead of
+    overwriting, e.g. to sit after the fli-launcher command already written to the same file.
+    """
     import os
 
     os.makedirs(output_dir, exist_ok=True)
@@ -177,8 +222,8 @@ def _save_args_log(args: Namespace, output_dir: str, prog: str) -> None:
             continue
         lines.append(f"  {key:<30} {val}")
     lines.append("=" * width)
-    log_path = os.path.join(output_dir, "args.log")
-    with open(log_path, "w") as f:
+    log_path = os.path.join(output_dir, filename)
+    with open(log_path, mode) as f:
         f.write("\n".join(lines) + "\n")
     print(f"Args saved to {log_path}")
 

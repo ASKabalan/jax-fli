@@ -10,7 +10,7 @@ from jax._src.numpy.util import promote_dtypes_inexact
 from ..fields import ParticleField
 from .solvers import AbstractNBodySolver, NBodyState, _advance_time, _compute_dt_internal
 
-AdjointType = Literal["reverse", "checkpointed"]
+AdjointType = Literal["reverse", "checkpointed", "lax"]
 
 
 def _clip_to_end(tprev, tnext, t1):
@@ -79,16 +79,19 @@ def integrate(
     t0: float,
     t1: float,
     n_steps: int,
-    adjoint: AdjointType = "checkpointed",
+    adjoint: AdjointType | None = "checkpointed",
     checkpoints: int | None = None,
+    step_checkpoints: int | None = None,
 ) -> Any:
     """
     Main integration entry point.
 
     Integrates an N-body system from t0 through snapshot times ts using the provided solver.
-    Supports two adjoint modes for gradient computation:
+    Supports two reverse-mode adjoints for gradient computation, plus a forward-mode path:
       - 'checkpointed': Memory-efficient autodiff using equinox checkpointed scan
       - 'reverse': Custom VJP with explicit backward pass using solver.reverse()
+      - ``None``: plain ``jax.lax`` forward loop (no custom VJP) so forward-mode AD
+        (``jvp``/``jacfwd``) works through the integration — not reverse-differentiable
 
     Args:
         displacements: Displacement ParticleField from LPT.
@@ -99,7 +102,21 @@ def integrate(
         t0: Initial time for integration.
         t1: Final time for integration.
         n_steps: Number of integration steps from t0 to t1.
-        adjoint: Adjoint mode, either 'checkpointed' or 'reverse'.
+        adjoint: 'checkpointed' or 'reverse' for reverse-mode gradients (``grad``/``vjp``); ``None`` for a
+            plain ``jax.lax`` forward loop that supports forward-mode AD (``jvp``/``jacfwd``, e.g. the
+            adjoint transpose test) but is not reverse-differentiable.
+        checkpoints: Number of checkpoints for the **outer scan over snapshot times** (the saved
+            shells), used by the 'checkpointed' adjoint. The forward pass is a scan over ``ts``; this
+            stores the integrator state at only this many of the saved snapshots and recomputes the
+            forward segment *between* two snapshot times on the backward pass. It therefore trades
+            recompute for memory at the granularity of whole shells. ``None`` = equinox default.
+        step_checkpoints: Number of checkpoints for the **inner integration-step loop** that runs
+            *between two consecutive snapshot times*, used by the 'checkpointed' adjoint. Each pair of
+            saved snapshots is reached by several fine N-body steps; this stores the solver state every
+            so many of those steps and recomputes the rest on the backward pass — trading recompute for
+            memory at the granularity of individual time steps. Distinct from ``checkpoints`` (which
+            checkpoints the shell scan); ``None`` = equinox default. Ignored by the 'reverse' adjoint,
+            which stores no trajectory at all and instead reconstructs it by inverting each step.
 
     Returns:
         Snapshots at each time in ts, as returned by solver.save_at().
@@ -136,7 +153,13 @@ def integrate(
 
     if adjoint == "checkpointed":
         return _integrate_checkpointed(
-            y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, checkpoints=checkpoints
+            y0_cosmo_ts_solver,
+            t0=t0,
+            t1=t1,
+            n_steps=n_steps,
+            dt0_a=dt0_a,
+            checkpoints=checkpoints,
+            step_checkpoints=step_checkpoints,
         )
     elif adjoint == "reverse":
         # For reverse adjoint, time_stepping must be "a" (validated above), so dt0_a is the step
@@ -144,6 +167,12 @@ def integrate(
     elif adjoint == "lax":
         # For testing: just run the forward pass without custom VJP
         snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, kind="bounded")
+        return snapshots
+    elif adjoint is None:
+        # Forward-mode path: plain jax.lax loops carry no custom_vjp, so forward-mode AD
+        # (jvp / jacfwd / the adjoint transpose test) works through the integration. NOT
+        # reverse-differentiable — use 'reverse' or 'checkpointed' for grad/vjp.
+        snapshots, _ = _fwd_loop(y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, kind="lax")
         return snapshots
     else:
         raise ValueError(f"Unknown adjoint type: {adjoint}")
@@ -157,6 +186,7 @@ def _integrate_checkpointed(
     n_steps: int,
     dt0_a: float,
     checkpoints: int | None = None,
+    step_checkpoints: int | None = None,
 ) -> Any:
     """
     Simple forward pass with checkpointing for memory-efficient backprop.
@@ -175,7 +205,14 @@ def _integrate_checkpointed(
         Snapshots at each time in ts.
     """
     snapshots, _ = _fwd_loop(
-        y0_cosmo_ts_solver, t0=t0, t1=t1, n_steps=n_steps, dt0_a=dt0_a, kind="checkpointed", checkpoints=checkpoints
+        y0_cosmo_ts_solver,
+        t0=t0,
+        t1=t1,
+        n_steps=n_steps,
+        dt0_a=dt0_a,
+        kind="checkpointed",
+        checkpoints=checkpoints,
+        step_checkpoints=step_checkpoints,
     )
     return snapshots
 
@@ -242,6 +279,7 @@ def _fwd_loop(
     dt0_a: float,
     kind: str = "lax",
     checkpoints: int | None = None,
+    step_checkpoints: int | None = None,
 ) -> tuple[Any, tuple[ParticleField, ParticleField, NBodyState]]:
     """
     Forward integration loop for AbstractNBodySolver.
@@ -261,6 +299,9 @@ def _fwd_loop(
         n_steps: Number of integration steps from t0 to t1.
         dt0_a: Step size in scale factor (passed to solver.step as dt parameter).
         kind: Loop type ('lax' or 'checkpointed').
+        checkpoints: Checkpoints for the outer shell scan (only when kind='checkpointed').
+        step_checkpoints: Checkpoints for the inner integration-step while-loop (only when
+            kind='checkpointed'). Trades recompute for memory along the time-integration steps.
 
     Returns:
         A tuple containing:
@@ -303,7 +344,12 @@ def _fwd_loop(
 
         # Inner loop: step until reaching t_target
         disp_, vel_, state_, _, _ = eqxi.while_loop(
-            inner_forward_cond, inner_forward_step, inner_carry, max_steps=max_steps, kind=kind
+            inner_forward_cond,
+            inner_forward_step,
+            inner_carry,
+            max_steps=max_steps,
+            kind=kind,
+            checkpoints=step_checkpoints if kind == "checkpointed" else None,
         )
 
         # Save snapshot at t_target
@@ -343,12 +389,15 @@ def _integrate_bwd(
     y_final, cosmo, ts, solver = residuals
     ys_ct = cotangents
 
-    # Partition differentiable and non-differentiable parts
-    diff_cosmo, nondiff_cosmo = eqx.partition(cosmo, eqx.is_inexact_array_like)
-    diff_solver, nondiff_solver = eqx.partition(solver, eqx.is_inexact_array_like)
+    # Partition differentiable and non-differentiable parts.
+    # NB: use is_inexact_array (not is_inexact_array_like): the *_like filter calls element.__jax_array__(),
+    # which jax>=0.10.1 sets to None on tracers, so equinox would call None() and crash. is_inexact_array
+    # does a plain isinstance(jax.Array) check (tracers qualify), so it is equivalent here and jax-version-safe.
+    diff_cosmo, nondiff_cosmo = eqx.partition(cosmo, eqx.is_inexact_array)
+    diff_solver, nondiff_solver = eqx.partition(solver, eqx.is_inexact_array)
 
     disp_final, vel_final, state_final = y_final
-    diff_state_final, nondiff_state_final = eqx.partition(state_final, eqx.is_inexact_array_like)
+    diff_state_final, nondiff_state_final = eqx.partition(state_final, eqx.is_inexact_array)
 
     # Initialize zero adjoints
     adj_disp = jax.tree.map(jnp.zeros_like, disp_final)
@@ -383,7 +432,7 @@ def _integrate_bwd(
 
         # Reverse the forward step to get previous state
         disp_prev, vel_prev, state_prev = solver_.reverse(disp, vel, t_prev, tc, dt0, state, cosmo_)
-        diff_state_prev, nondiff_state_prev = eqx.partition(state_prev, eqx.is_inexact_array_like)
+        diff_state_prev, nondiff_state_prev = eqx.partition(state_prev, eqx.is_inexact_array)
 
         # VJP for the step function
         def _to_vjp_step(disp_in, vel_in, diff_cosmo_in, diff_solver_in, diff_state_in):
@@ -392,7 +441,7 @@ def _integrate_bwd(
             # IMPORTANT: Use the nondiff part from the PREVIOUS state (reconstructed above)
             state_in = eqx.combine(diff_state_in, nondiff_state_prev)
             disp_out, vel_out, state_out = solver_in.step(disp_in, vel_in, t_prev, tc, dt0, state_in, cosmo_in)
-            state_out, _ = eqx.partition(state_out, eqx.is_inexact_array_like)
+            state_out, _ = eqx.partition(state_out, eqx.is_inexact_array)
             return (disp_out, vel_out, state_out)
 
         _, f_vjp_step = jax.vjp(_to_vjp_step, disp_prev, vel_prev, diff_cosmo_, diff_solver_, diff_state_prev)
@@ -445,7 +494,7 @@ def _integrate_bwd(
 
         solver_ = eqx.combine(diff_solver_, nondiff_solver)
         cosmo_ = eqx.combine(diff_cosmo_, nondiff_cosmo)
-        diff_state_, nondiff_state_ = eqx.partition(state, eqx.is_inexact_array_like)
+        diff_state_, nondiff_state_ = eqx.partition(state, eqx.is_inexact_array)
 
         # VJP of the snapshot function
         def _to_vjp_save(disp_in, vel_in, diff_state_in, diff_cosmo_in, diff_solver_in, tc_in):
@@ -471,7 +520,7 @@ def _integrate_bwd(
         t_prev = _boundary_t_prev(tc, t0_prev_snap, dt0)
         disp_prev, vel_prev, state_prev = solver_.reverse(disp, vel, t_prev, tc, dt0, state, cosmo_)
 
-        diff_state_prev, nondiff_state_prev = eqx.partition(state_prev, eqx.is_inexact_array_like)
+        diff_state_prev, nondiff_state_prev = eqx.partition(state_prev, eqx.is_inexact_array)
 
         # VJP of the forward step (includes time gradient)
         def _to_vjp_step_full(disp_in, vel_in, diff_state_in, diff_cosmo_in, diff_solver_in, tc_in):
@@ -483,7 +532,7 @@ def _integrate_bwd(
             s_in_state_prev = eqx.combine(diff_state_in, nondiff_state_prev)
 
             disp_out, vel_out, state_out = s_in.step(disp_in, vel_in, tp_local, tc_in, dt0, s_in_state_prev, c_in)
-            diff_state_out = eqx.filter(state_out, eqx.is_inexact_array_like)
+            diff_state_out = eqx.filter(state_out, eqx.is_inexact_array)
             return disp_out, vel_out, diff_state_out
 
         _, f_vjp_step = jax.vjp(_to_vjp_step_full, disp_prev, vel_prev, diff_state_prev, diff_cosmo_, diff_solver_, tc)

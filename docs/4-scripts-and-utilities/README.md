@@ -8,7 +8,7 @@ package, so the same command works on a single GPU or across many nodes. Every s
 | Script | Purpose |
 |--------|---------|
 | [`fli-simulate`](fli-simulate.md) | Run the IC → LPT / PM / lensing pipeline |
-| [`fli-spectra`](fli-spectra.md) | Compute power spectra from Parquet catalogs |
+| [`fli-summary-stats`](fli-summary-stats.md) | Compute summary statistics (Cℓ, P(k)) from Parquet catalogs |
 | [`fli-born-rt`](fli-born-rt.md) | Add Born convergence to existing lightcones |
 | [`fli-dorian-rt`](fli-dorian-rt.md) | Add dorian ray-traced convergence (MPI) |
 | [`fli-samples`](fli-samples.md) | Draw prior-predictive samples from a model |

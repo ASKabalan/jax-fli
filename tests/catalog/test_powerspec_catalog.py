@@ -15,6 +15,7 @@ import pytest
 datasets = pytest.importorskip("datasets")
 
 import jax_cosmo as jc
+
 import jax_fli as jfli
 from jax_fli._src.io._power_spec_catalog import PS_CATALOG_VERSION
 from jax_fli.io.catalog import Catalog

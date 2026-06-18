@@ -25,12 +25,13 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 import healpy as hp
-import jax_fli as jfli
 import matplotlib.pyplot as plt
 import numpy as np
 from datasets import load_dataset
-from jax_fli.io.catalog import Catalog
 from jaxpm.spherical import spherical_visibility_mask
+
+import jax_fli as jfli
+from jax_fli.io.catalog import Catalog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from _exputils import savefig, set_style

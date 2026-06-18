@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-import jax_fli as jfli
 import numpy as np
 import pytest
 from jax.experimental.multihost_utils import process_allgather
 
+import jax_fli as jfli
 from tests.helpers import compare_fields
 
 from .conftest import _PDIMS, N_STEPS, NB_SHELLS, PAINT_NSIDE, T0, T1, Z_SOURCE_BORN, make_sharded_ics
@@ -91,9 +91,9 @@ def test_distributed_lpt_gradient_sharding(single_device_ics, cosmo, target, pdi
 
     grads = jax.grad(forward)(sharded_ics.array)
 
-    assert grads.sharding.is_equivalent_to(
-        sharding, ndim=3
-    ), f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    assert grads.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    )
     assert jnp.all(jnp.isfinite(grads)), "Gradients contain non-finite values"
     assert float(jnp.linalg.norm(grads)) > 0, "Gradients are all zero"
     print(f"LPT gradient target={target} pdims={pdims}: OK, norm={float(jnp.linalg.norm(grads)):.6f}")
@@ -126,9 +126,9 @@ def test_distributed_nbody_gradient_sharding(single_device_ics, cosmo, solver_na
 
     grads = jax.grad(forward)(sharded_ics.array)
 
-    assert grads.sharding.is_equivalent_to(
-        sharding, ndim=3
-    ), f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    assert grads.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    )
     assert jnp.all(jnp.isfinite(grads)), "Gradients contain non-finite values"
     assert float(jnp.linalg.norm(grads)) > 0, "Gradients are all zero"
     print(
@@ -163,9 +163,9 @@ def test_distributed_born_gradient_sharding(single_device_ics, cosmo, pdims):
 
     grads = jax.grad(forward)(sharded_ics.array)
 
-    assert grads.sharding.is_equivalent_to(
-        sharding, ndim=3
-    ), f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    assert grads.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
+    )
     assert jnp.all(jnp.isfinite(grads)), "Gradients contain non-finite values"
     assert float(jnp.linalg.norm(grads)) > 0, "Gradients are all zero"
     print(f"Born gradient pdims={pdims}: OK, norm={float(jnp.linalg.norm(grads)):.6f}")

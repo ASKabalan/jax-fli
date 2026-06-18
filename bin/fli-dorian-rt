@@ -4,6 +4,7 @@
 Runs dorian ray-tracing via MPI. No JAX distributed init — dorian handles
 its own parallelism through MPI.
 """
+
 import os
 
 os.environ["JAX_PLATFORM_NAME"] = "cpu"

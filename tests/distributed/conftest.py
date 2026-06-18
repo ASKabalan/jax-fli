@@ -23,11 +23,12 @@ else:
     print(f"starting local distributed on CPU with {jax.device_count()} devices")
 
 import jax_cosmo as jc  # noqa: E402
-import jax_fli as jfli  # noqa: E402
 import pytest  # noqa: E402
 from jax import lax  # noqa: E402
 from jax.sharding import AxisType, NamedSharding  # noqa: E402
 from jax.sharding import PartitionSpec as P  # noqa: E402
+
+import jax_fli as jfli  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
 

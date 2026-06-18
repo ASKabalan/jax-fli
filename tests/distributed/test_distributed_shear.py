@@ -33,12 +33,13 @@ import gc
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
-import jax_fli as jfli
 import numpy as np
 import pytest
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import AxisType, NamedSharding
 from jax.sharding import PartitionSpec as P
+
+import jax_fli as jfli
 from jax_fli.fields import SphericalKappaField
 
 NSIDE = 16

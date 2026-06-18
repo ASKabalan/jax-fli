@@ -25,9 +25,12 @@ from jax_fli.scripts._common import (
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-samples."""
     from jax_fli.scripts.parser import (
+        add_common_args,
         add_distributed_args,
         add_forward_model_args,
         add_integration_settings_args,
+        add_lensing_args,
+        add_output_target_args,
         add_prior_args,
         add_simulation_settings_args,
     )
@@ -37,10 +40,13 @@ def parser() -> argparse.ArgumentParser:
         description="Generate prior-predictive samples from a probabilistic model.",
     )
 
+    add_common_args(p)
     add_distributed_args(p)
     add_simulation_settings_args(p)
+    add_output_target_args(p)
     # Full-field model uses BullFrog by default (the Configurations default); set it in the parser.
     add_integration_settings_args(p, solver_default="bf")
+    add_lensing_args(p)
     add_prior_args(p)
     add_forward_model_args(p)
 

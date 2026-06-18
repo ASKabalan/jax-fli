@@ -1,122 +1,134 @@
 [build-system]
-requires = ["setuptools>=61", "wheel", "setuptools-scm>=6.2"]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+requires = ["hatchling", "hatch-vcs"]
+
+[dependency-groups]
+dev = [
+  "prek==0.3.9",
+  "pyright==1.1.406",
+  "ruff==0.13.0",
+  "toml-sort==0.23.1"
+]
+docs = [
+  "sphinx"
+]
+tests = [
+  "jax-fli[all]",
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "pytest-timeout",
+  # build dependencies for the no-build-isolation oracle backends below:
+  "cython",
+  "numpy",
+  "mpi4py",
+  "setuptools",
+  "wheel",
+  # oracle / reference backends used by the comparison tests ([tool.uv.sources] below):
+  "fastpm",
+  "pfft-python",
+  "pmesh",
+  "glass[examples]",
+  "discodj",
+  "pymaster"
+]
 
 [project]
-name = "jax-fli"
-version = "0.1.0"
-description = "Forward-modeling and sampling on top of JAXPM + JAX-Decomp"
 authors = [
-    { name = "Wassim Kabalan", email = "wassim@apc.in2p3.fr" }
+  {email = "wassim@apc.in2p3.fr", name = "Wassim Kabalan"}
 ]
-readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
-keywords = ["jax", "cosmology", "nbody", "sampling", "mcmc", "bayesian-inference"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Astronomy",
-    "Topic :: Scientific/Engineering :: Physics",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Astronomy",
+  "Topic :: Scientific/Engineering :: Physics"
 ]
-
 dependencies = [
-    "jax>=0.6.0,<=0.10.0",
-    "equinox",
-    "jaxtyping",
-    "jaxpm@git+https://github.com/DifferentiableUniverseInitiative/JaxPM.git@higher-order-paint",
-    "jax_cosmo@git+https://github.com/ASKabalan/jax_cosmo@better-cache",
-    "healpy",
-    "jax-healpy[recommended] @ git+https://github.com/CMBSciPol/jax-healpy@implement-alm2map",
+  "jax>=0.10.0",
+  "equinox",
+  "jaxtyping",
+  "jaxpm",
+  "jax-cosmo",
+  "healpy",
+  "jax-healpy[recommended]>=0.7.0",
+  # s2fft is already pulled by jax-healpy[recommended]; declared directly so the
+  # [tool.uv.sources] override below binds (uv sources apply to direct deps only).
+  "s2fft"
 ]
+description = "Forward-modeling and sampling on top of JAXPM + JAX-Decomp"
+dynamic = ["version"]
+keywords = ["jax", "cosmology", "nbody", "sampling", "mcmc", "bayesian-inference"]
+license = {text = "MIT"}
+name = "jax-fli"
+readme = "README.md"
+requires-python = ">=3.11"
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-timeout",
-    "pytest-cov>=4.0",
-    "ruff>=0.1.0",
-    "pre-commit>=3.0",
-    "cython",
-]
-catalog = [
-    "datasets>=2.0",
-    "huggingface_hub>=0.20",
-    "h5py",
-]
-sampling = [
-    "blackjax",
-    "numpyro",
-    "orbax-checkpoint",
-]
-plot = [
-    "matplotlib>=3.0",
-    "ipython",
-    "ipykernel",
-    "ipywidgets",
-    "getdist",
-    "arviz",
-    "tabulate",
-]
+# Deliberately excludes `cuda` so `tests` (which pulls jax-fli[all]) keeps CI on CPU JAX.
+all = ["jax_fli[catalog, sampling, raytrace, plot, benchmark]"]
 benchmark = ["jax-hpc-profiler"]
+catalog = [
+  "datasets>=2.0",
+  "huggingface_hub>=0.20",
+  "h5py"
+]
+cuda = ["jax[cuda]>=0.10.0"]
 legacy = ["diffrax"]
+plot = [
+  "matplotlib>=3.0",
+  "getdist",
+  "arviz[preview]",
+  "tabulate"
+]
+examples = [
+  "ipython",
+  "ipykernel",
+  "ipywidgets",
+  "papermill",
+]
 raytrace = ["dorian-raytrace-mpi"]
-
-all = ["jax_fli[catalog, sampling, legacy, raytrace, plot, benchmark]"]
+sampling = [
+  "blackjax",
+  "numpyro",
+  "orbax-checkpoint"
+]
 
 [project.urls]
-Homepage = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 Documentation = "https://jax-fli.readthedocs.io"
-Repository = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
+Homepage = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 Issues = "https://github.com/DifferentiableUniverseInitiative/jax-fli/issues"
+Repository = "https://github.com/DifferentiableUniverseInitiative/jax-fli"
 
+[tool.hatch.build.targets.sdist]
+include = ["src/jax_fli", "bin", "tests", "README.md"]
 
-# Scripts have to be outside of the package since we don't want to import the package (and thus jax before running the jax.distributed init
-[tool.setuptools]
-script-files = ["bin/fli-launcher", "bin/fli-simulate", "bin/fli-samples", "bin/fli-infer", "bin/fli-born-rt", "bin/fli-dorian-rt", "bin/fli-extract", "bin/fli-spectra", "bin/fli-2pcf"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/jax_fli"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["jax_fli*"]
+# Scripts are installed verbatim into the env's bin/ (NOT as [project.scripts] entry
+# points): each bin/fli-* sets env vars and runs jax.distributed.initialize() BEFORE
+# importing the package, so they must not import jax_fli at console-script generation.
+[tool.hatch.build.targets.wheel.shared-scripts]
+"bin/fli-2pcf" = "fli-2pcf"
+"bin/fli-born-rt" = "fli-born-rt"
+"bin/fli-dorian-rt" = "fli-dorian-rt"
+"bin/fli-extract" = "fli-extract"
+"bin/fli-infer" = "fli-infer"
+"bin/fli-launcher" = "fli-launcher"
+"bin/fli-samples" = "fli-samples"
+"bin/fli-simulate" = "fli-simulate"
+"bin/fli-summary-stats" = "fli-summary-stats"
 
-[tool.setuptools.package-data]
-"jax_fli.data" = ["stage3_nz/*.txt", "des_y3_nz/*.txt", "des_y3_nz/*.json", "masks/*.npy"]
-
-[tool.ruff]
-line-length = 120
-fix = true
-include = ["*.py", "*.ipynb"]
-target-version = "py310"
-
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle
-    "F",   # pyflakes
-    "UP",  # pyupgrade
-    "T10", # flake8-debugger
-    "I",   # isort
-    #"T20", # flake8-print
-]
-
-ignore = [
-    "E501",  # line too long
-    "E402",  # module level import not at top of file
-    "E731",  # do not assign a lambda expression, use a def
-    "F722", # syntax error in type annotation
-    "UP007"
-]
-
-[tool.ruff.format]
-quote-style = "double"
+[tool.hatch.version]
+source = "vcs"
 
 [tool.pyright]
-include = ["src"]
 exclude = ["**/node_modules", "**/__pycache__", ".git"]
+include = ["src"]
 pythonPlatform = "Linux"
 pythonVersion = "3.10"
 reportGeneralTypeIssues = false
@@ -124,17 +136,71 @@ reportMissingImports = false
 reportUndefinedVariable = false
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
 addopts = "-v --cov=jax_fli --cov-report=term-missing"
 markers = [
-    "distributed: tests requiring multi-device JAX setup (8 CPU devices or SLURM)",
-    "single_device: tests that run on a single device (default)",
-    "slow: tests that are too slow for CI",
-    "scripts: end-to-end CLI script validation tests (fli-simulate)",
+  "distributed: tests requiring multi-device JAX setup (8 CPU devices or SLURM)",
+  "single_device: tests that run on a single device (default)",
+  "slow: tests that are too slow for CI",
+  "scripts: end-to-end CLI script validation tests (fli-simulate)"
 ]
+python_classes = ["Test*"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+pythonpath = ["."]
+testpaths = ["tests"]
 timeout = 9000
 timeout_method = "thread"
+
+[tool.ruff]
+fix = true
+include = ["*.py", "*.ipynb"]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+ignore = [
+  "E501", # line too long
+  "E402", # module level import not at top of file
+  "E731", # do not assign a lambda expression, use a def
+  "F722", # syntax error in type annotation
+  "UP007"
+]
+select = [
+  "E", # pycodestyle
+  "F", # pyflakes
+  "UP", # pyupgrade
+  "T10", # flake8-debugger
+  "I" # isort
+]
+
+[tool.uv]
+# Don't install any dependency group by default (uv's built-in default is ["dev"]).
+# A plain `uv sync` now installs only the project + its deps; opt into groups
+# explicitly with `--group dev` / `--group tests`, or `--all-groups`.
+default-groups = []
+
+# The MP-Gadget backends use legacy setup.py builds that import setuptools/cython/numpy/mpi4py
+# without declaring them as build deps. Provide those so they build under normal isolation
+# (cleaner than a global no-build-isolation toggle — which is what broke glass's build in CI).
+# The system FFTW/MPI they link against come from the apt step, not from here.
+[tool.uv.extra-build-dependencies]
+fastpm = ["setuptools", "wheel", "cython", "numpy", "mpi4py"]
+pfft-python = ["setuptools", "wheel", "cython", "numpy", "mpi4py"]
+pmesh = ["setuptools", "wheel", "cython", "numpy", "mpi4py"]
+
+# jaxpm/jax-cosmo/s2fft are declared by their PyPI names above; the oracle backends live in
+# the `tests` group. The git sources here override all of them to the pinned forks/branches
+# for local dev + locking. uv strips [tool.uv.sources] from the published wheel, so released
+# metadata depends only on the plain PyPI names.
+[tool.uv.sources]
+discodj = {git = "https://github.com/cosmo-sims/DISCO-DJ.git"}
+fastpm = {git = "https://github.com/ASKabalan/fastpm-python"}
+glass = {git = "https://github.com/glass-dev/glass"}
+jax-cosmo = {branch = "better-cache", git = "https://github.com/ASKabalan/jax_cosmo"}
+jaxpm = {branch = "higher-order-paint", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git"}
+pfft-python = {git = "https://github.com/MP-Gadget/pfft-python"}
+pmesh = {git = "https://github.com/MP-Gadget/pmesh"}
+s2fft = {branch = "main", git = "https://github.com/astro-informatics/s2fft"}

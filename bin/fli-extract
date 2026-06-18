@@ -4,6 +4,7 @@
 Runs JAX distributed init BEFORE importing the package, so that
 jax.distributed.initialize() happens before any JAX backend touches.
 """
+
 import os
 
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
