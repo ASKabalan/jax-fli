@@ -63,6 +63,7 @@ def _build_painting(args: Namespace):
                 paint_nside=args.paint_nside,
                 kernel_width_arcmin=getattr(args, "kernel_width_arcmin", None),
                 kernel_width_pixels=getattr(args, "kernel_width_pixels", None),
+                pixel_window_deconvolution=getattr(args, "pixel_window_deconvolution", False),
             ),
             nside,
             None,
@@ -271,6 +272,16 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
     nside = getattr(args, "nside", None)
     if interp == "onion" and nside is None:
         parser.error("--interp onion requires --nside")
+
+    # --pixel-window-deconvolution: spherical only, needs a closed-form window scheme
+    if getattr(args, "pixel_window_deconvolution", False):
+        if nside is None:
+            parser.error("--pixel-window-deconvolution requires --nside (spherical painting)")
+        if args.scheme not in ("ngp", "rbf_neighbor"):
+            parser.error(
+                "--pixel-window-deconvolution requires --scheme ngp or rbf_neighbor "
+                "(bilinear has no closed-form HEALPix pixel window)"
+            )
 
     # --grad: valid spec, pm/lensing only, and reverse adjoint requires uniform a-stepping
     try:

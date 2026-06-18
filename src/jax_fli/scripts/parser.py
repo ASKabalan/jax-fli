@@ -183,6 +183,14 @@ def add_output_target_args(p):
         dest="kernel_width_pixels",
         help="RBF smoothing kernel width in HEALPix pixels, e.g. 0.8 (default: None)",
     )
+    g.add_argument(
+        "--pixel-window-deconvolution",
+        action="store_true",
+        dest="pixel_window_deconvolution",
+        help="Deconvolve the HEALPix painting window (a_lm level) from the spherical map after "
+        "painting; distinct from the force --deconvolution. Requires --scheme ngp|rbf_neighbor "
+        "(default: False)",
+    )
 
 
 # ---------------------------------------------------------------------------

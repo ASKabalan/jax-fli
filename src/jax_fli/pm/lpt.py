@@ -272,4 +272,13 @@ def lpt(
             deconvolution=painting.deconvolution,
         )
 
+    # Post-paint HEALPix window deconvolution (a_lm level), distinct from the 3D force window.
+    if painting.target == "spherical" and painting.pixel_window_deconvolution:
+        dx_field = dx_field.deconvolve(
+            method=painting.scheme,
+            kernel_width_arcmin=painting.kernel_width_arcmin,
+            kernel_width_pixels=painting.kernel_width_pixels,
+            smoothing_interpretation=painting.smoothing_interpretation,
+        )
+
     return dx_field, p_field

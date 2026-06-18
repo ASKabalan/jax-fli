@@ -52,6 +52,7 @@ def make_full_field_model(
         paint_nside=config.paint_nside,
         kernel_width_arcmin=config.kernel_width_arcmin,
         kernel_width_pixels=config.kernel_width_pixels,
+        pixel_window_deconvolution=config.pixel_window_deconvolution,
     )
     interp_cls = DriftInterp if config.drift_on_lightcone else NoInterp
     interp_kernel = interp_cls(painting=painting)

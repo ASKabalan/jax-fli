@@ -207,5 +207,15 @@ def nbody(
         z_sources=z_sources, comoving_centers=r_centers, density_width=density_plane_width, status=FieldStatus.LIGHTCONE
     )
 
+    # Post-paint HEALPix window deconvolution (a_lm level), distinct from the 3D force window.
+    painting = solver.interp_kernel.painting
+    if painting.target == "spherical" and painting.pixel_window_deconvolution:
+        lightcone = lightcone.deconvolve(
+            method=painting.scheme,
+            kernel_width_arcmin=painting.kernel_width_arcmin,
+            kernel_width_pixels=painting.kernel_width_pixels,
+            smoothing_interpretation=painting.smoothing_interpretation,
+        )
+
     _warn_if_spherical_npix_unsharded(lightcone)
     return lightcone

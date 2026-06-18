@@ -145,6 +145,7 @@ def main() -> None:
         paint_nside=args.paint_nside,
         kernel_width_arcmin=args.kernel_width_arcmin,
         kernel_width_pixels=args.kernel_width_pixels,
+        pixel_window_deconvolution=args.pixel_window_deconvolution,
         field_sharding=sharding,
         lensing="born",
         lensing_output=args.lensing_output,

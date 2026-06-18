@@ -61,6 +61,9 @@ class Configurations:
     paint_nside: int | None = None
     kernel_width_arcmin: float | None = None
     kernel_width_pixels: float | None = None
+    # Post-paint HEALPix window deconvolution (a_lm level) for spherical maps; distinct from the
+    # 3D force `deconvolution` below. Requires scheme in {ngp, rbf_neighbor}.
+    pixel_window_deconvolution: bool = False
     drift_on_lightcone: bool = False
     # Force / painting knobs shared by LPT and the N-body solver
     paint_order: str = "cic"  # mass assignment: NGP / CIC / TSC / PCS
