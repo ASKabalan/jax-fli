@@ -77,18 +77,18 @@ catalog = [
   "h5py"
 ]
 cuda = ["jax[cuda]>=0.10.0"]
+examples = [
+  "ipython",
+  "ipykernel",
+  "ipywidgets",
+  "papermill"
+]
 legacy = ["diffrax"]
 plot = [
   "matplotlib>=3.0",
   "getdist",
   "arviz[preview]",
   "tabulate"
-]
-examples = [
-  "ipython",
-  "ipykernel",
-  "ipywidgets",
-  "papermill",
 ]
 raytrace = ["dorian-raytrace-mpi"]
 sampling = [

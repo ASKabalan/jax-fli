@@ -119,8 +119,10 @@ def main() -> None:
         if args.nside is not None and int(args.nside) != int(field.nside):
             field = field.ud_sample(int(args.nside))
         if rank == 0:
-            print(f"   density: {type(field).__name__} shape={tuple(field.array.shape)} "
-                  f"nside={field.nside} dtype={field.array.dtype} | n(z)={args.nz}, interp={args.interp}")
+            print(
+                f"   density: {type(field).__name__} shape={tuple(field.array.shape)} "
+                f"nside={field.nside} dtype={field.array.dtype} | n(z)={args.nz}, interp={args.interp}"
+            )
 
     # The synthetic smoke-test geometry produces degenerate parallel-transport angles (dorian raises
     # "THETA out of range"); PT is orthogonal to the MPI path we want to exercise, so force it off
@@ -144,8 +146,10 @@ def main() -> None:
     if rank != 0:  # only rank 0 holds the gathered result
         return
 
-    print(f"   kappa: {type(kappa_rt).__name__} shape={tuple(kappa_rt.array.shape)} "
-          f"nside={kappa_rt.nside} dtype={kappa_rt.array.dtype}")
+    print(
+        f"   kappa: {type(kappa_rt).__name__} shape={tuple(kappa_rt.array.shape)} "
+        f"nside={kappa_rt.nside} dtype={kappa_rt.array.dtype}"
+    )
     if args.smoke_test:
         assert kappa_rt.array.shape[-1] == 12 * field.nside * field.nside
         print(f"[smoke-test] PASS — dorian ray-tracing ran under {size} MPI ranks and returned a κ map.")

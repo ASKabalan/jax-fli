@@ -102,8 +102,10 @@ def main() -> None:
 
     print(f"Publish plan for {REPO}:")
     for kind, config, lp, rp, is_new in plan:
-        print(f"  {kind:9s} {lp} ({Path(lp).stat().st_size / 1e9:.2f} GB)  ->  "
-              f"config {config} {'(NEW)' if is_new else '(overwrite)'}  at  {rp}")
+        print(
+            f"  {kind:9s} {lp} ({Path(lp).stat().st_size / 1e9:.2f} GB)  ->  "
+            f"config {config} {'(NEW)' if is_new else '(overwrite)'}  at  {rp}"
+        )
     if not args.yes:
         print("\nDry run — re-run with --yes to upload and update the dataset card.")
         return

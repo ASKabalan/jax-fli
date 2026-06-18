@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 from jaxpm.distributed import fft3d, ifft3d, normal_field
-from jaxpm.kernels import fftk, interpolate_power_spectrum
+from jaxpm.kernels import fftk
 from jaxtyping import Array, PRNGKeyArray
 
 from .fields import DensityField, DensityUnit, FieldStatus

@@ -190,8 +190,10 @@ def self_test() -> None:
         assert int(back.nside) == nside, f"nside changed: {back.nside}"
         assert np.asarray(back.scale_factors).shape[0] == nsh, "scale_factors length != n_shells"
         assert np.asarray(back.comoving_centers).shape[0] == nsh, "comoving_centers length != n_shells"
-        print("[self-test] PASS — split-path uint16 round-trip preserved array (dtype/shape/values) "
-              "and the LIGHTCONE status + per-shell metadata raytrace needs.")
+        print(
+            "[self-test] PASS — split-path uint16 round-trip preserved array (dtype/shape/values) "
+            "and the LIGHTCONE status + per-shell metadata raytrace needs."
+        )
     finally:
         fc._INT32_MAX = saved
 
@@ -257,8 +259,10 @@ def main() -> None:
     print("Built SphericalDensity:")
     print(f"   shape={tuple(field.array.shape)} dtype={field.array.dtype} nside={nside}  unit={field.unit.name}")
     print(f"   shells={field.array.shape[0]}  z=[{float(z.min()):.3f}, {float(z.max()):.3f}]")
-    print(f"   cosmo: Oc={float(cosmo.Omega_c):.4f} Ob={float(cosmo.Omega_b):.4f} h={float(cosmo.h):.4f} "
-          f"s8={float(cosmo.sigma8):.4f} ns={float(cosmo.n_s):.4f} w0={float(cosmo.w0):.4f}")
+    print(
+        f"   cosmo: Oc={float(cosmo.Omega_c):.4f} Ob={float(cosmo.Omega_b):.4f} h={float(cosmo.h):.4f} "
+        f"s8={float(cosmo.sigma8):.4f} ns={float(cosmo.n_s):.4f} w0={float(cosmo.w0):.4f}"
+    )
 
     out = Path(args.out) if args.out else HERE / "cosmogrid_density_nside2048.parquet"
     print(f"Writing parquet → {out} (this materializes ~7 GB through arrow) …")

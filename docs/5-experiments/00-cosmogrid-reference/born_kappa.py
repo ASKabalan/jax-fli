@@ -163,14 +163,20 @@ def main() -> None:
             field = field.ud_sample(int(args.nside))
 
     if lead:
-        print(f"   density: {type(field).__name__} {tuple(field.array.shape)} nside={field.nside} "
-              f"sharding={field.array.sharding}  | n(z)={args.nz} ({len(nz_shear)} bins)", flush=True)
+        print(
+            f"   density: {type(field).__name__} {tuple(field.array.shape)} nside={field.nside} "
+            f"sharding={field.array.sharding}  | n(z)={args.nz} ({len(nz_shear)} bins)",
+            flush=True,
+        )
 
     kappa = jfli.born(cosmo, field, nz_shear=nz_shear)
 
     if lead:
-        print(f"   born κ: {type(kappa).__name__} {tuple(kappa.array.shape)} nside={kappa.nside} "
-              f"sharding={kappa.array.sharding}", flush=True)
+        print(
+            f"   born κ: {type(kappa).__name__} {tuple(kappa.array.shape)} nside={kappa.nside} "
+            f"sharding={kappa.array.sharding}",
+            flush=True,
+        )
         if args.smoke_test:
             assert kappa.array.shape[-1] == 12 * field.nside * field.nside
             print(

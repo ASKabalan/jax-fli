@@ -113,7 +113,6 @@ def main() -> None:
     sharding = NamedSharding(mesh, P("x", "y"))
     print(f"Created device mesh {mesh} with {n_dev} devices, sharding {sharding}")
 
-    
     key = jax.random.PRNGKey(0)
 
     # Ghost-cell width for the halo exchange at shard boundaries. Without it
@@ -155,12 +154,10 @@ def main() -> None:
 
     print("simulation finished")
 
-    # Only the lead process writes the gathered result.
-    if jax.process_index() == 0:
-        jfli.io.Catalog(field=kappa, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_kappa.parquet"))
-        print(f"wrote {args.out}: {type(kappa).__name__} {kappa.shape}")
-        jfli.io.Catalog(field=shear, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_shear.parquet"))
-        print(f"wrote {args.out}: {type(shear).__name__} {shear.shape}")
+    jfli.io.Catalog(field=kappa, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_kappa.parquet"))
+    print(f"wrote {args.out}: {type(kappa).__name__} {kappa.shape}")
+    jfli.io.Catalog(field=shear, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_shear.parquet"))
+    print(f"wrote {args.out}: {type(shear).__name__} {shear.shape}")
 
     sync_global_devices("Done")
     jax.distributed.shutdown()
