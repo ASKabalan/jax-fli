@@ -854,7 +854,7 @@ class SphericalDensity(AbstractField):
 
         With ``mask=None`` this is the plain spectrum (unchanged). With an apodized ``mask`` it
         returns the masked pseudo-``C_l`` **decoupled** into bandpowers (``wavenumber`` = effective
-        bandpower multipoles), via :func:`jax_fli.power.anafast_masked`. The MCM is built once from
+        bandpower multipoles), via :func:`jax_fli.summary_statistics.anafast_masked`. The MCM is built once from
         ``mask`` (or pass a precomputed ``mcm``). ``purify_e``/``purify_b`` are spin-2 only and are
         ignored for a scalar field. Masked estimation uses a jax_healpy ``method`` (``"jax"`` /
         ``"jax_cuda"``); ``"healpy"`` falls back to ``"jax"``.

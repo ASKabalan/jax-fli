@@ -1,7 +1,7 @@
 """Differentiable HEALPix mask apodization (pure ``jax_healpy``).
 
 Lives next to the survey masks (:mod:`jax_fli.data.masks`). A binary mask rings in harmonic
-space, so before computing masked-sky power spectra (see :mod:`jax_fli.power.decouple`) the mask
+space, so before computing masked-sky power spectra (see :mod:`jax_fli.summary_statistics.decouple`) the mask
 is tapered. The caller is responsible for building this apodized mask and passing it to
 ``angular_cl(mask=...)`` / ``anafast_masked(mask=...)``.
 """

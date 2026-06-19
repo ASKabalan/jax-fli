@@ -311,7 +311,7 @@ class DensityField(AbstractField):
     ) -> PowerSpectrum:
         """Compute the 3D matter power spectrum P(k).
 
-        Parameters mirror :func:`jax_fli.power.power`. Any keyword
+        Parameters mirror :func:`jax_fli.summary_statistics.power`. Any keyword
         arguments are forwarded verbatim to that helper.
 
         ``compensate_order`` deconvolves the mass-assignment window of that

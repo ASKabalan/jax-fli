@@ -1,7 +1,7 @@
 """Tests for ``SphericalDensity.deconvolve()`` — HEALPix window deconvolution.
 
 Added in response to the Copilot review on PR #44: the new public deconvolution API
-(``jax_fli.power.deconvolve_spherical`` and ``SphericalDensity.deconvolve``) was
+(``jax_fli.summary_statistics.deconvolve_spherical`` and ``SphericalDensity.deconvolve``) was
 introduced without automated tests. All coverage here drives the method
 ``SphericalDensity.deconvolve()`` directly (the functional ``power`` wrapper is not
 called).
