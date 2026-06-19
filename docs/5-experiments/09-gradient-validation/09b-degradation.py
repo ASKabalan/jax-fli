@@ -88,9 +88,7 @@ ACC_LABEL = "median |g_i − FD_i| / |FD_i|   (top-16 |grad| voxels)"
 
 
 def _ic(res, box, nside):
-    return jfli.gaussian_initial_conditions(
-        jax.random.key(0), res, (box, box, box), cosmo=cosmo, nside=nside
-    )
+    return jfli.gaussian_initial_conditions(jax.random.key(0), res, (box, box, box), cosmo=cosmo, nside=nside)
 
 
 def _solver(name, n_steps, nside):
