@@ -45,8 +45,6 @@ runs sharing a directory don't clobber each other; if ``--output`` / ``--path``
 looks like a directory, ``<dir>/args.log`` is used instead.
 """
 
-from __future__ import annotations
-
 import argparse
 import math
 import os
