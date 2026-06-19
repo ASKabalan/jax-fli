@@ -1,7 +1,7 @@
 from .._src.base import AbstractField, DensityUnit, FieldMetadata, FieldStatus, PhysicalUnit, PositionUnit, SpectralUnit
 from .density import DensityField
 from .lensing_maps import FlatKappaField, FlatShearField, SphericalKappaField, SphericalShearField
-from .lightcone import FlatDensity, SphericalDensity
+from .lightcone import FlatDensity, SphericalDensity, StarletCoefficients
 from .painting import PaintingOptions
 from .particles import ParticleField
 from .units import convert_units
@@ -14,6 +14,7 @@ __all__ = [
     "ParticleField",
     "FlatDensity",
     "SphericalDensity",
+    "StarletCoefficients",
     "FlatKappaField",
     "SphericalKappaField",
     "FlatShearField",

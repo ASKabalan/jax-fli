@@ -96,6 +96,11 @@ sampling = [
   "numpyro",
   "orbax-checkpoint"
 ]
+# Spherical starlet wavelets (SphericalDensity.starlet_coefficients) need CosmoStat, which
+# imports as `pycs` and ships a C++ backend with a non-trivial build. Deliberately kept out of
+# `all` so `pip install jax_fli[all]` doesn't fail on the native build; install on demand. The
+# distribution name may need adjusting for your environment (see CosmoStat install docs).
+starlet = ["pycs@git+https://github.com/CosmoStat/cosmostat.git@main"]
 
 [project.urls]
 Documentation = "https://jax-fli.readthedocs.io"

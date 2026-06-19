@@ -415,7 +415,7 @@ class CatalogExtract(eqx.Module):
         # --- Power spectra ---
         power_spectra = None
         if "ps_wavenumber" in row and row.get("ps_wavenumber") is not None:
-            from ..power.power_spec import PowerSpectrum
+            from ..summary_statistics.power_spec import PowerSpectrum
 
             k = jnp.asarray(row["ps_wavenumber"], dtype=jnp.float64)
             mean_tf = PowerSpectrum(wavenumber=k, array=jnp.asarray(row["ps_mean_tf"], dtype=jnp.float64))
