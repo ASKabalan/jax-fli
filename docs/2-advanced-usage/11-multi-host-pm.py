@@ -23,7 +23,7 @@ os.environ["JAX_ENABLE_X64"] = "True"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.97"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-#os.environ["NCCL_DEBUG"] = "INFO"
+# os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["--xla_gpu_nccl_termination_timeout_seconds"] = "100"
 os.environ["--xla_gpu_executable_warn_stuck_timeout"] = "60"
 
@@ -78,10 +78,10 @@ import argparse
 
 import jax
 import jax_cosmo as jc
-from jax.experimental.multihost_utils import sync_global_devices
-from jax.sharding import AxisType, NamedSharding, Mesh
-from jax.sharding import PartitionSpec as P
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
+from jax.experimental.multihost_utils import sync_global_devices
+from jax.sharding import AxisType, Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
 
@@ -99,7 +99,7 @@ def main() -> None:
     print(f"local process {jax.process_index()} with local GPU {jax.local_devices()}")
 
     if args.gpus_per_node is None:
-        gpus_per_node = os.environ.get("SLURM_GPUS_ON_NODE" , None)
+        gpus_per_node = os.environ.get("SLURM_GPUS_ON_NODE", None)
         if gpus_per_node is None:
             raise RuntimeError("some error")
     else:
@@ -117,7 +117,7 @@ def main() -> None:
     print(f"Going to create a mesh with shape {(P_X, P_Y)} for a total number of devices {jax.device_count()}")
 
     if not hasattr(jax.devices()[0], "slice_index"):
-        print(f"Single Node uniform bandwidth setup")
+        print("Single Node uniform bandwidth setup")
         # 2-D device mesh: partition the first two spatial axes (jaxpm convention).
         mesh = jax.make_mesh((P_X, P_Y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
         sharding = NamedSharding(mesh, P("x", "y"))
@@ -128,8 +128,7 @@ def main() -> None:
         print(f"mesh_shape: {mesh_shape}, dcn_shape: {dcn_shape}")
         mesh = Mesh(create_hybrid_device_mesh(mesh_shape, dcn_shape), axis_names=("x", "y"))
         sharding = NamedSharding(mesh, P("x", "y"))
-    
-    
+
     print(f"Created device mesh {mesh} with {n_dev} devices, sharding {sharding}")
 
     key = jax.random.PRNGKey(0)

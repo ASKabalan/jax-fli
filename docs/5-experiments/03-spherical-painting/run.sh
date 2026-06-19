@@ -21,4 +21,3 @@ for cfg in "ngp::" "bilinear::" "rbf_neighbor:0.8:rbf08" "rbf_neighbor:1.5:rbf15
   emit3 "$scheme" "$kw" 1024 ""                   "exp3_${tag}_native1024"
   emit3 "$scheme" "$kw" 2048 ""                   "exp3_${tag}_paint2048"
 done
-  
