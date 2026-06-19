@@ -11,9 +11,9 @@ from .lightcone import FlatDensity, SphericalDensity
 from .units import ConvergenceUnit, convert_units
 
 if TYPE_CHECKING:
-    from ..power.power_spec import PowerSpectrum
+    from ..summary_statistics.power_spec import PowerSpectrum
 
-# NOTE: Kaiser-Squires (.._src.lensing) and the power estimators (..power) are imported lazily
+# NOTE: Kaiser-Squires (.._src.lensing) and the power estimators (..summary_statistics) are imported lazily
 # inside the methods below. lensing_maps is imported during ``jax_fli.fields`` initialization, and
 # ``.._src.lensing`` pulls in ``_born`` -> ``...fields`` (a cycle); deferring the imports to call
 # time avoids it (all modules are loaded by then).
@@ -389,8 +389,8 @@ class SphericalShearField(SphericalDensity):
           binned (coupled) pseudo. The MCM is built once from ``mask`` and reused across the batch
           (or pass a precomputed ``mcm``).
         """
-        from ..power.decouple import anafast_masked, compute_mcm
-        from ..power.power_spec import PowerSpectrum
+        from ..summary_statistics.decouple import anafast_masked, compute_mcm
+        from ..summary_statistics.power_spec import PowerSpectrum
 
         data = self.array
         npix = data.shape[-1]

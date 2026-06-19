@@ -66,8 +66,13 @@ plot = [
 benchmark = ["jax-hpc-profiler"]
 legacy = ["diffrax"]
 raytrace = ["dorian-raytrace-mpi"]
+# Spherical starlet wavelets (SphericalDensity.starlet_coefficients) need CosmoStat, which
+# imports as `pycs` and ships a C++ backend with a non-trivial build. Deliberately kept out of
+# `all` so `pip install jax_fli[all]` doesn't fail on the native build; install on demand. The
+# distribution name may need adjusting for your environment (see CosmoStat install docs).
+starlet = ["pycs@git+https://github.com/CosmoStat/cosmostat.git@main"]
 
-all = ["jax_fli[catalog, sampling, legacy, raytrace, plot, benchmark]"]
+all = ["jax_fli[catalog, sampling, legacy, raytrace, plot,starlet, benchmark]"]
 
 [project.urls]
 Homepage = "https://github.com/DifferentiableUniverseInitiative/jax-fli"

@@ -19,8 +19,8 @@ from .._src.base._core import AbstractField
 from .._src.base._enums import DensityUnit, FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_3d_density, prepare_axes
-from ..power import PowerSpectrum, coherence, transfer
-from ..power import power as power_fn
+from ..summary_statistics import PowerSpectrum, coherence, transfer
+from ..summary_statistics import power as power_fn
 from .lightcone import FlatDensity
 from .units import convert_units
 

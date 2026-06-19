@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
+import equinox as eqx
 import jax
 import jax.core
 import jax.numpy as jnp
@@ -18,15 +19,21 @@ from .._src.base._core import AbstractField
 from .._src.base._enums import FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_flat_density, plot_spherical_density, prepare_axes
-from ..power import (
+from ..summary_statistics import (
+    PDF,
+    PeakCounts,
     PowerSpectrum,
     angular_cl_flat,
     angular_cl_spherical,
     compute_mcm,
     cross_angular_cl_spherical,
     deconvolve_spherical,
+    pdf_spherical,
+    peak_counts_spherical,
+    starlet_coefficients_spherical,
 )
-from ..power.decouple import anafast_masked
+from ..summary_statistics.binned import resolve_bin_edges
+from ..summary_statistics.decouple import anafast_masked
 from .units import DensityUnit, convert_units
 
 
@@ -1128,6 +1135,131 @@ class SphericalDensity(AbstractField):
             unit=SpectralUnit.ANGULAR_CL,
         )
 
+    def _binned_metadata(self) -> dict:
+        """Field metadata copied onto a binned-statistic result (PDF / peak counts)."""
+        return dict(
+            name=self.name,
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            nside=self.nside,
+            field_size=self.field_size,
+            status=FieldStatus.SPECTRA,
+        )
+
+    def compute_pdf(
+        self,
+        *,
+        bins: int | jnp.ndarray = 50,
+        range: tuple[float, float] | None = None,
+        density: bool = True,
+        soft: bool = False,
+        bandwidth: float | None = None,
+        batch_size: int | None = None,
+    ) -> PDF:
+        """One-point PDF of the map's pixel values.
+
+        ``bins`` is a bin count (spanned by ``range``, or the concrete data ``[min, max]`` when
+        ``range`` is omitted — eager only) or an explicit 1-D edges array. ``density=True``
+        normalises the histogram to unit integral. ``soft=True`` evaluates a differentiable
+        Gaussian KDE at the bin centers (``bandwidth`` defaults to the mean bin width). Batched
+        maps ``(S, npix)`` / ``(N, S, npix)`` are reduced map-by-map via ``jax.lax.map`` into a
+        ``(B, n_bins)`` result. Returns a :class:`~jax_fli.summary_statistics.pdf.PDF`.
+        """
+        data = self.array
+        edges = resolve_bin_edges(data, bins, range)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+
+        def _fn(m):
+            return pdf_spherical(m, bins=edges, density=density, soft=soft, bandwidth=bandwidth)[1]
+
+        if data.ndim == 1:
+            arr = _fn(data)
+        else:
+            flat = data.reshape((-1, data.shape[-1]))
+            arr = jax.lax.map(_fn, flat, batch_size=batch_size)
+
+        return PDF(bins=centers, array=arr, **self._binned_metadata())
+
+    def compute_peak_counts(
+        self,
+        *,
+        bins: int | jnp.ndarray = 50,
+        range: tuple[float, float] | None = None,
+        normalize: bool = False,
+        soft: bool = False,
+        bandwidth: float | None = None,
+        batch_size: int | None = None,
+    ) -> PeakCounts:
+        """Peak counts: histogram of local-maxima heights.
+
+        A pixel is a peak iff it strictly exceeds all of its HEALPix neighbours. With
+        ``normalize=True`` the map is binned in S/N units (``(m - mean) / std`` per map; default
+        span ``(-2, 6)`` σ when ``bins`` is a count and ``range`` is omitted). ``soft=True`` uses a
+        differentiable Gaussian soft-binning of the peak heights (peak *detection* stays hard).
+        Batched maps are reduced map-by-map. Returns a
+        :class:`~jax_fli.summary_statistics.peak_counts.PeakCounts`.
+        """
+        data = self.array
+        default_range = (-2.0, 6.0) if normalize else None
+        edges = resolve_bin_edges(data, bins, range, default_range=default_range)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+
+        def _fn(m):
+            return peak_counts_spherical(
+                m, nside=self.nside, bins=edges, normalize=normalize, soft=soft, bandwidth=bandwidth
+            )[1]
+
+        if data.ndim == 1:
+            arr = _fn(data)
+        else:
+            flat = data.reshape((-1, data.shape[-1]))
+            arr = jax.lax.map(_fn, flat, batch_size=batch_size)
+
+        return PeakCounts(bins=centers, array=arr, **self._binned_metadata())
+
+    def starlet_coefficients(self, *, nscales: int = 5, normalize: bool = False) -> StarletCoefficients:
+        """Spherical starlet (undecimated wavelet) coefficients — one HEALPix map per scale.
+
+        Requires the optional CosmoStat backend (``pip install jax-fli[starlet]``) and is
+        concrete-only (cannot run under ``jit``). Operates on a single map — index a single
+        shell/bin first (e.g. ``field[i]``) if batched. ``normalize=True`` divides each scale by
+        its ``TabNorm``. Returns a :class:`StarletCoefficients` (a ``SphericalDensity`` batched
+        over scales, shape ``(nscales, npix)``).
+        """
+        if not jax.core.is_concrete(self.array):
+            raise ValueError("starlet_coefficients is concrete-only; call outside of a jit context.")
+        if self.array.ndim != 1:
+            raise ValueError(
+                "starlet_coefficients expects a single map (array ndim == 1); "
+                "index a single shell/bin first (e.g. field[i])."
+            )
+        coef, tab_norm = starlet_coefficients_spherical(self.array, nside=self.nside, nscales=nscales)
+        coeffs = StarletCoefficients(
+            array=jnp.asarray(coef),
+            nscales=nscales,
+            tab_norm=jnp.asarray(tab_norm),
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            observer_position=self.observer_position,
+            field_sharding=self.field_sharding,
+            halo_size=self.halo_size,
+            nside=self.nside,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            z_sources=self.z_sources,
+            scale_factors=self.scale_factors,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            status=self.status,
+            unit=self.unit,
+            name=self.name,
+        )
+        return coeffs.normalized if normalize else coeffs
+
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> SphericalDensity:
         """
@@ -1149,3 +1281,31 @@ class SphericalDensity(AbstractField):
     def is_multi_batched(self) -> bool:
         """Return True when the field has both a simulation-batch (N) and snapshot (S) dimension."""
         return self.array.ndim == 3
+
+
+class StarletCoefficients(SphericalDensity):
+    """Spherical starlet wavelet coefficients — one HEALPix map per scale.
+
+    A :class:`SphericalDensity` whose batch axis is the wavelet scale, so the array has shape
+    ``(nscales, npix)`` and the inherited ``.plot()`` (healpy mollview), ``.stack()`` and field
+    IO/catalog machinery all apply. ``tab_norm`` is the per-scale normalisation returned by the
+    CosmoStat transform; :attr:`normalized` rescales each scale by it. Produced by
+    :meth:`SphericalDensity.starlet_coefficients`.
+    """
+
+    nscales: int = eqx.field(static=True, default=0)
+    tab_norm: jax.Array | None = None
+
+    @property
+    def normalized(self) -> StarletCoefficients:
+        """Each scale divided by its ``tab_norm`` (zeros left unscaled). Identity if no norm."""
+        if self.tab_norm is None:
+            return self
+        norm = jnp.where(self.tab_norm == 0, 1.0, self.tab_norm)
+        return self.replace(array=self.array / norm[:, None])
+
+    def plot(self, *, titles: str | Sequence[str] | None = None, **kwargs):
+        """Mollview one panel per starlet scale (titles default to ``"Starlet scale i"``)."""
+        if titles is None:
+            titles = [f"Starlet scale {i + 1}" for i in range(self.array.shape[0])]
+        return super().plot(titles=titles, **kwargs)

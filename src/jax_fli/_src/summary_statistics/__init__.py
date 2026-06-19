@@ -1,11 +1,4 @@
-"""Backward-compatibility shim.
-
-The internal power-spectrum implementation moved to
-:mod:`jax_fli._src.summary_statistics`. This re-exports the original symbols so
-existing ``from jax_fli._src.power import ...`` imports keep working.
-"""
-
-from ..summary_statistics import (
+from ._compute import (
     _coherence,
     _cross_spherical_cl,
     _deconvolve_spherical,
@@ -13,6 +6,11 @@ from ..summary_statistics import (
     _power,
     _spherical_cl,
     _transfer,
+)
+from ._summary_statistics import (
+    _pdf,
+    _peak_counts,
+    _starlet_transform,
 )
 
 __all__ = [
@@ -23,4 +21,7 @@ __all__ = [
     "_spherical_cl",
     "_cross_spherical_cl",
     "_deconvolve_spherical",
+    "_pdf",
+    "_peak_counts",
+    "_starlet_transform",
 ]

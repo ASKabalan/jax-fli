@@ -7,7 +7,7 @@ import jax_cosmo as jc
 import numpy as np
 from jax.experimental.multihost_utils import process_allgather
 
-from ...power.power_spec import PowerSpectrum
+from ...summary_statistics.power_spec import PowerSpectrum
 from ..base._enums import FieldStatus, SpectralUnit
 
 PS_CATALOG_VERSION = 2

@@ -71,3 +71,29 @@ def cosmology():
     import jax_cosmo as jc
 
     return jc.Planck18()
+
+
+@pytest.fixture(scope="session")
+def lpt_spherical(cosmology):
+    """A 5-shell spherical LPT density map (batched ``SphericalDensity``, nside 16).
+
+    The shells (comoving ~30-156 Mpc/h) fit inside the 512 Mpc/h box, so the painted map carries
+    real structure (non-degenerate) and full per-shell lightcone metadata — the data source for the
+    summary-statistic API and catalog tests. Built once per session.
+    """
+    import jax
+    import jax.numpy as jnp
+    import jax_fli as jfli
+
+    ic = jfli.gaussian_initial_conditions(
+        jax.random.PRNGKey(0), (16, 16, 16), (512.0, 512.0, 512.0), cosmo=cosmology, nside=16
+    )
+    painting = jfli.PaintingOptions(target="spherical", paint_nside=16)
+    sph, _ = jfli.lpt(
+        cosmology,
+        ic,
+        ts=jnp.linspace(0.95, 0.99, 5),
+        density_widths=jnp.full(5, 20.0),
+        painting=painting,
+    )
+    return sph
