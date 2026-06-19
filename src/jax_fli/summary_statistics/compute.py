@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -18,8 +17,7 @@ from .._src.summary_statistics import (
 )
 
 
-@partial(
-    jax.jit,
+@jax.jit(
     static_argnames=["box_shape", "multipoles", "los", "kmax", "dk", "compensate_order", "shotnoise"],
 )
 def power(
@@ -57,6 +55,7 @@ def power(
     return wavenumber, spectra
 
 
+@jax.jit(static_argnames=["box_shape", "kmax", "dk", "compensate_order", "shotnoise"])
 def transfer(
     mesh0,
     mesh1,
@@ -85,6 +84,7 @@ def transfer(
     return wavenumber, tr
 
 
+@jax.jit(static_argnames=["box_shape", "kmax", "dk", "compensate_order", "shotnoise"])
 def coherence(
     mesh0,
     mesh1,
@@ -114,6 +114,7 @@ def coherence(
     return wavenumber, coh
 
 
+@jax.jit(static_argnames=["pixel_size", "field_size"])
 def angular_cl_flat(
     map1,
     map2=None,

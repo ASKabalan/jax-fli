@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 
 from .._src.summary_statistics import _pdf
@@ -21,6 +22,7 @@ class PDF(BinnedStatistic):
     kind: str = eqx.field(static=True, default="pdf")
 
 
+@jax.jit(static_argnames=["density", "soft", "bandwidth"])
 def pdf_spherical(
     map_sphere,
     *,

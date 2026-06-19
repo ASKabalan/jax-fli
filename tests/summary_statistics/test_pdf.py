@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from jax_fli.summary_statistics import PDF, pdf_spherical
 
 # ---- API / shapes --------------------------------------------------------

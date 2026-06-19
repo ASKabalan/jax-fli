@@ -13,6 +13,7 @@ import pytest
 datasets = pytest.importorskip("datasets")
 
 import jax_cosmo as jc
+
 from jax_fli.io.catalog import Catalog
 
 

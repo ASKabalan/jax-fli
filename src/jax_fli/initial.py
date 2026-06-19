@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from functools import partial
 from typing import Any
 
 import jax
@@ -14,8 +13,7 @@ from jaxtyping import Array, PRNGKeyArray
 from .fields import DensityField, DensityUnit, FieldStatus
 
 
-@partial(
-    jax.jit,
+@jax.jit(
     static_argnames=[
         "mesh_size",
         "box_size",
@@ -103,8 +101,7 @@ def gaussian_initial_conditions(
     )
 
 
-@partial(
-    jax.jit,
+@jax.jit(
     static_argnames=[
         "mesh_size",
         "box_size",

@@ -8,6 +8,7 @@ The :class:`PeakCounts` result object is built by
 from __future__ import annotations
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 
 from .._src.summary_statistics import _peak_counts
@@ -22,6 +23,7 @@ class PeakCounts(BinnedStatistic):
     kind: str = eqx.field(static=True, default="peak_counts")
 
 
+@jax.jit(static_argnames=["nside", "normalize", "soft", "bandwidth"])
 def peak_counts_spherical(
     map_sphere,
     *,

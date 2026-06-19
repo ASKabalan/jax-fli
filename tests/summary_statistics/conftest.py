@@ -12,6 +12,7 @@ import healpy as hp
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from jax_fli import SphericalDensity
 
 NSIDE = 16

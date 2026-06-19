@@ -176,7 +176,7 @@ def shear2kappa_spherical(gamma, *, lmax: int | None = None, method: str = "jax"
 def _flat_ks_factors(n0: int, n1: int):
     """Spin-2 phase factors ``A = cos 2phi``, ``B = sin 2phi`` on the FFT grid, DC zeroed.
 
-    Axis convention matches ``_src/power/_compute.py:_flat_cl`` (``meshgrid(..., indexing="ij")``):
+    Axis convention matches ``_src/summary_statistics/_compute.py:_flat_cl`` (``meshgrid(..., indexing="ij")``):
     axis -2 carries the first frequency, axis -1 the second. The factors are scale-invariant, so
     plain ``fftfreq`` (unit spacing) is used.
     """

@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from jax_fli.summary_statistics import PeakCounts, peak_counts_spherical
 
 # ---- API / shapes --------------------------------------------------------

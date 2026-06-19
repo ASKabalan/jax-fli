@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from functools import partial
 from typing import TYPE_CHECKING
 
 import jax
@@ -143,7 +142,7 @@ class DensityField(AbstractField):
 
         return self.replace(array=new_array, unit=unit)
 
-    @partial(jax.jit, static_argnames=["nz_slices"])
+    @jax.jit(static_argnames=["nz_slices"])
     def project(self, nz_slices: int = 10) -> FlatDensity:
         """
         Create a 2D projection by summing slices along the z-axis.
@@ -294,8 +293,7 @@ class DensityField(AbstractField):
         plt.show()
 
     # -------------------------------------------------------- power-spectrum API
-    @partial(
-        jax.jit,
+    @jax.jit(
         static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
     )
     def power(
@@ -365,8 +363,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(
-        jax.jit,
+    @jax.jit(
         static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
     )
     def cross_power(
@@ -476,7 +473,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
+    @jax.jit(static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def transfer(
         self,
         other: DensityField,
@@ -533,7 +530,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
+    @jax.jit(static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def coherence(
         self,
         other: DensityField,

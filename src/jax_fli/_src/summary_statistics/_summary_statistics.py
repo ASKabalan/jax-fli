@@ -14,7 +14,9 @@ starlet}.py``) and in :class:`jax_fli.fields.SphericalDensity`.
 
 from __future__ import annotations
 
+import jax.core
 import jax.numpy as jnp
+import jax_healpy as jhp
 import numpy as np
 from jax.scipy.stats import norm
 
@@ -91,17 +93,15 @@ def _peak_counts(
 
     Assumes RING ordering (the repo default).
     """
-    import healpy as hp
-
     m = jnp.ravel(m)
     if normalize:
         m = (m - jnp.mean(m)) / (jnp.std(m) + 1e-30)
 
-    npix = hp.nside2npix(nside)
-    # (8, npix) neighbour indices; -1 marks a missing neighbour. Concrete (nside is static).
-    neighbours = np.asarray(hp.get_all_neighbours(nside, np.arange(npix)))
-    valid = jnp.asarray(neighbours >= 0)
-    neigh_safe = jnp.asarray(np.where(neighbours >= 0, neighbours, 0))
+    npix = jhp.nside2npix(nside)
+    # (8, npix) neighbour indices; -1 marks a missing neighbour. Depends only on nside (static).
+    neighbours = jhp.get_all_neighbours(nside, jnp.arange(npix))
+    valid = neighbours >= 0
+    neigh_safe = jnp.where(valid, neighbours, 0)
 
     neigh_vals = jnp.where(valid, m[neigh_safe], -jnp.inf)  # (8, npix)
     is_peak = m > jnp.max(neigh_vals, axis=0)  # (npix,) bool
@@ -126,6 +126,9 @@ def _starlet_transform(m, *, nside: int, nscales: int) -> tuple[np.ndarray, np.n
     normalisation (length ``nscales``).
     """
     from pycs.sparsity.mrs.mrs_starlet import CMRStarlet
+
+    if not jax.core.is_concrete(m):
+        raise ValueError("starlet transform requires concrete (non-traced) arrays")
 
     m_np = np.asarray(m, dtype=np.float64)
     transform = CMRStarlet()

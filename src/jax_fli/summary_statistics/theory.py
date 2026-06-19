@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import numbers
 from collections.abc import Callable, Iterable
-from functools import partial
 from typing import Union
 
 import jax
@@ -115,7 +114,7 @@ def _get_auto_indices(n_bins: int) -> jnp.ndarray:
     return jnp.where(rows == cols, size=n_bins)[0]
 
 
-@partial(jax.jit, static_argnames=["probe_type", "nonlinear_fn", "cross"])
+@jax.jit(static_argnames=["probe_type", "nonlinear_fn", "cross"])
 def compute_theory_cl(
     cosmo: jc.Cosmology,
     ell: jnp.ndarray,
@@ -238,7 +237,7 @@ def compute_theory_cl(
     )
 
 
-@partial(jax.jit, static_argnames=["nonlinear_fn", "cross", "nz_zmax"])
+@jax.jit(static_argnames=["nonlinear_fn", "cross", "nz_zmax"])
 def compute_theory_cl_for_density(
     cosmo: jc.Cosmology,
     lightcone,

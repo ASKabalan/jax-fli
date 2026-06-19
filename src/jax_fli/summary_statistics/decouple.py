@@ -22,8 +22,6 @@ passed back via ``mcm=`` (e.g. frozen for inference).
 
 from __future__ import annotations
 
-from functools import partial
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -65,7 +63,7 @@ def _wigner_d2_all(x, lmax, mp):
     return jnp.concatenate([jnp.zeros((2,) + x.shape), dstk], axis=0)
 
 
-@partial(jax.jit, static_argnums=(1,))
+@jax.jit(static_argnums=(1,))
 def _mcm_spin0(Wl, lmax):
     """Spin-0 mode-coupling matrix M[l1,l2]."""
     ells = jnp.arange(lmax + 1)
@@ -76,7 +74,7 @@ def _mcm_spin0(Wl, lmax):
     return (2 * ells + 1)[None, :] / (8 * jnp.pi) * ((P * (wq * G)[None, :]) @ P.T)
 
 
-@partial(jax.jit, static_argnums=(1,))
+@jax.jit(static_argnums=(1,))
 def _mcm_spin2(Wl, lmax):
     """Spin-2 MCM blocks (EE<-EE, EE<-BB) from the +/-2 Wigner-d kernels."""
     ells = jnp.arange(lmax + 1)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import warnings
-from functools import partial
 
 import equinox as eqx
 import jax
@@ -46,8 +45,7 @@ def _validate_t0_cb(lpt_t0, t0):
         raise ValueError(f"Starting scale factor t0={t0} does not match LPT fields' scale factor {lpt_t0}.")
 
 
-@partial(
-    jax.jit,
+@jax.jit(
     static_argnames=[
         "nb_shells",
         "adjoint",

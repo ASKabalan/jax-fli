@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 import jax
@@ -120,7 +119,7 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ painting: 3D
 
-    @partial(jax.jit, static_argnames=("batch_size", "order", "deconvolution"))
+    @jax.jit(static_argnames=("batch_size", "order", "deconvolution"))
     def paint(
         self,
         *,
@@ -180,7 +179,7 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ read-out from mesh
 
-    @partial(jax.jit)
+    @jax.jit
     def read_out(
         self,
         density_mesh: DensityField,
@@ -217,7 +216,7 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ 2D flat-sky painting
 
-    @partial(jax.jit, static_argnames=("batch_size",))
+    @jax.jit(static_argnames=("batch_size",))
     def paint_2d(
         self,
         center: Float | Array,
@@ -310,8 +309,7 @@ class ParticleField(AbstractField):
 
     # ------------------------------------------------------------------ spherical painting
 
-    @partial(
-        jax.jit,
+    @jax.jit(
         static_argnames=(
             "scheme",
             "kernel_width_arcmin",

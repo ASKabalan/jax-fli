@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
@@ -18,7 +16,7 @@ __all__ = [
 ]
 
 
-@partial(jax.jit, static_argnames=["max_redshift", "observer_position"])
+@jax.jit(static_argnames=["max_redshift", "observer_position"])
 def compute_box_size_from_redshift(cosmo, max_redshift, observer_position):
     """
     Compute simulation box size from maximum redshift and observer position.
@@ -70,7 +68,7 @@ def compute_box_size_from_redshift(cosmo, max_redshift, observer_position):
     return box_size
 
 
-@partial(jax.jit, static_argnames=["box_size", "observer_position"])
+@jax.jit(static_argnames=["box_size", "observer_position"])
 def compute_max_redshift_from_box_size(cosmo, box_size, observer_position):
     """
     Compute maximum redshift from simulation box size and observer position.
