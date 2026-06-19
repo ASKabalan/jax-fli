@@ -23,7 +23,7 @@ os.environ["JAX_ENABLE_X64"] = "False"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.97"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-os.environ["NCCL_DEBUG"] = "INFO"
+# os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["--xla_gpu_nccl_termination_timeout_seconds"] = "100"
 os.environ["--xla_gpu_executable_warn_stuck_timeout"] = "60"
 
@@ -87,16 +87,11 @@ import jax_fli as jfli
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mesh", type=int, default=256, help="cells per axis")
+    parser.add_argument("--mesh", type=int, default=1024, help="cells per axis")
     parser.add_argument("--nbins", type=int, default=2, help="source bins")
-    parser.add_argument("--nside", type=int, default=256, help="HEALPix nside")
-    parser.add_argument("--nb-shells", type=int, default=8, help="lightcone shells")
-    parser.add_argument("--out", type=str, default="kappa_sim.parquet")
-    parser.add_argument(
-        "--multihost",
-        action="store_true",
-        help="call jax.distributed.initialize() (one process per device across nodes)",
-    )
+    parser.add_argument("--nside", type=int, default=1024, help="HEALPix nside")
+    parser.add_argument("--nb-shells", type=int, default=20, help="lightcone shells")
+    parser.add_argument("--out", type=str, default="sim.parquet")
     args = parser.parse_args()
 
     # Compute the box size from the redshift of the lightcone (z=1.0) and the observer position.
@@ -149,17 +144,16 @@ def main() -> None:
     print(f"Born finished: kappa {kappa.shape} | sharding {kappa.array.sharding}")
     # In multi host setup we can use jax_cuda for the shear computation
     # In single host setup you have to use jax (due to a bug in s2fft)
-    shear = kappa.get_shear(method="jax")
+    shear = kappa.get_shear(method="jax_cuda").block_until_ready()
     print(f"Shear finished: shear {shear.shape} | sharding {shear.array.sharding}")
+    sync_global_devices("Done")
 
     print("simulation finished")
-
     jfli.io.Catalog(field=kappa, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_kappa.parquet"))
     print(f"wrote {args.out}: {type(kappa).__name__} {kappa.shape}")
     jfli.io.Catalog(field=shear, cosmology=cosmo).to_parquet(args.out.replace(".parquet", "_shear.parquet"))
     print(f"wrote {args.out}: {type(shear).__name__} {shear.shape}")
 
-    sync_global_devices("Done")
     jax.distributed.shutdown()
 
 

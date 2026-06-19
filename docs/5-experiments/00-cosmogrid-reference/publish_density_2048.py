@@ -17,6 +17,7 @@ path (``array_0..N`` + ``_n_splits`` + ``_original_n0``) that the old 512 file n
 Run on CPU (pure I/O + serialization; avoids GPU OOM on the 7 GB array). ~16 GB host RAM recommended:
 
     python publish_density_2048.py --self-test     # fast: validate the split round-trip, then exit
+    python publish_density_2048.py --check          # inspect the PUBLISHED 00-cosmogrid-density config on HF + its attrs
     python publish_density_2048.py                 # build + save locally (no upload)
     python publish_density_2048.py --publish       # build + OVERWRITE 00-cosmogrid-density on HF
 
@@ -199,6 +200,56 @@ def self_test() -> None:
 
 
 # --------------------------------------------------------------------------------------------------
+# Check — does the published HF config exist, and what is in it?
+# --------------------------------------------------------------------------------------------------
+def _fmt_array(x) -> str:
+    if x is None:
+        return "None"
+    a = np.asarray(x).ravel()
+    if a.size > 8:
+        return f"len={a.size} min={float(a.min()):.4g} max={float(a.max()):.4g}"
+    return np.array2string(a, precision=4, separator=", ")
+
+
+def check(config: str) -> None:
+    """Report whether the published HuggingFace config exists and print its field + cosmology attributes.
+
+    Downloads the config's parquet from the Hub and loads via ``Catalog.from_parquet``, which
+    materializes the full array — so once the 2048 reference is published this pulls/reads the whole
+    ≈ 7 GB density (cached under ``HF_HOME``; run on the CPU box).
+    """
+    from huggingface_hub import HfApi, hf_hub_download
+
+    api = HfApi()
+    try:
+        target = _hf_data_files_path(api, config)
+    except RuntimeError as e:
+        print(f"[check] config {config} is not in the dataset card on {REPO}: {e}")
+        return
+    if not api.file_exists(REPO, target, repo_type="dataset"):
+        print(f"[check] config {config} points at {target}, which does NOT exist on {REPO}.")
+        return
+    print(f"[check] {REPO}:{config} → {target} exists. Downloading + loading …")
+    local = hf_hub_download(REPO, target, repo_type="dataset")
+    cat = jfli.io.Catalog.from_parquet(local)
+    f = cat.field[0]
+    c = cat.cosmology[0]
+    print(f"  source     : {local} ({os.path.getsize(local) / 1e9:.2f} GB)")
+    print(f"  field      : {type(f).__name__}  status={f.status.name}  unit={f.unit.name}")
+    print(f"  array      : shape={tuple(f.array.shape)}  dtype={f.array.dtype}  nside={f.nside}")
+    print(f"  geometry   : mesh_size={f.mesh_size}  box_size={f.box_size}  observer={f.observer_position}")
+    print(f"  z_sources  : {_fmt_array(f.z_sources)}")
+    print(f"  scale_facs : {_fmt_array(f.scale_factors)}")
+    print(f"  comoving   : {_fmt_array(f.comoving_centers)}")
+    print(f"  width      : {_fmt_array(f.density_width)}")
+    print(
+        f"  cosmo      : Oc={float(c.Omega_c):.4f} Ob={float(c.Omega_b):.4f} h={float(c.h):.4f} "
+        f"s8={float(c.sigma8):.4f} ns={float(c.n_s):.4f} w0={float(c.w0):.4f} wa={float(c.wa):.4f} "
+        f"Onu={float(c.Omega_nu):.5f}"
+    )
+
+
+# --------------------------------------------------------------------------------------------------
 # Publish
 # --------------------------------------------------------------------------------------------------
 def _hf_data_files_path(api, config_name: str) -> str:
@@ -227,6 +278,11 @@ def _hf_data_files_path(api, config_name: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help=f"only check the published {DENSITY_CONFIG} config on HuggingFace and print its field attributes, then exit",
+    )
     ap.add_argument("--self-test", action="store_true", help="run only the split-path round-trip test, then exit")
     ap.add_argument("--skip-self-test", action="store_true", help="skip the pre-flight test before the big build")
     ap.add_argument("--sim-root", default=str(DEFAULT_SIM_ROOT))
@@ -234,6 +290,12 @@ def main() -> None:
     ap.add_argument("--out", default=None, help="local parquet path (default: next to this script)")
     ap.add_argument("--publish", action="store_true", help="OVERWRITE 00-cosmogrid-density on HuggingFace")
     args = ap.parse_args()
+
+    if args.check:
+        check(DENSITY_CONFIG)
+        return
+
+    out = Path(args.out) if args.out else HERE / "cosmogrid_density_nside2048.parquet"
 
     if args.self_test:
         self_test()
@@ -264,7 +326,6 @@ def main() -> None:
         f"s8={float(cosmo.sigma8):.4f} ns={float(cosmo.n_s):.4f} w0={float(cosmo.w0):.4f}"
     )
 
-    out = Path(args.out) if args.out else HERE / "cosmogrid_density_nside2048.parquet"
     print(f"Writing parquet → {out} (this materializes ~7 GB through arrow) …")
     cat.to_parquet(str(out))
     print(f"   wrote {out}  ({out.stat().st_size / 1e9:.2f} GB)")

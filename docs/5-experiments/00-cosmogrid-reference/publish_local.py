@@ -5,8 +5,8 @@
 The compute scripts run on the cluster and only SAVE parquet (raytrace_kappa.py -> kappa_raytrace.parquet,
 born_kappa.py -> kappa_born.parquet). Run THIS locally (where ``HF_TOKEN`` lives) to upload them:
 
-  - ray-traced κ -> ``00-cosmogrid-kappa``        (overwrites the old Stage-3 nside-512 forecast map)
-  - Born κ       -> ``00-cosmogrid-kappa-born``   (new config; registered in the dataset card YAML)
+  - ray-traced κ -> ``00-cosmogrid-kappa-raytrace``  (new config; CosmoGrid's forecast κ stays at ``00-cosmogrid-kappa``)
+  - Born κ       -> ``00-cosmogrid-kappa-born``      (new config; registered in the dataset card YAML)
 
 Whichever parquet exists is published; the card's ``configs:`` are updated so both load with
 ``datasets.load_dataset(REPO, <config>)``.
@@ -24,10 +24,10 @@ from pathlib import Path
 REPO = "ASKabalan/jax-fli-experiments"
 HERE = Path(__file__).resolve().parent
 
-# kind -> (config_name, default local parquet)
+# kind -> (config_name, default local parquet, repo basename under the dataset's catalogs dir)
 TARGETS = {
-    "raytrace": ("00-cosmogrid-kappa", "kappa_raytrace.parquet"),
-    "born": ("00-cosmogrid-kappa-born", "kappa_born.parquet"),
+    "raytrace": ("00-cosmogrid-kappa-raytrace", "kappa_raytrace.parquet", "cosmogrid_kappa_raytrace.parquet"),
+    "born": ("00-cosmogrid-kappa-born", "kappa_born.parquet", "cosmogrid_kappa_born.parquet"),
 }
 
 
@@ -79,21 +79,19 @@ def main() -> None:
     api = HfApi()
     meta, body = _load_card(api)
 
-    # The ray-traced κ overwrites the existing 00-cosmogrid-kappa file; the Born κ lands next to it.
-    kappa_path = _config_path(meta, TARGETS["raytrace"][0]) or "00-cosmogrid/catalogs/cosmogrid_sample_kappa.parquet"
-    born_dir = str(Path(kappa_path).parent)
+    # Both κ land next to CosmoGrid's forecast κ (00-cosmogrid-kappa) under distinct filenames. The
+    # forecast config is owned by publish_kappa_512.py and is left untouched here.
+    forecast_kappa = _config_path(meta, "00-cosmogrid-kappa") or "00-cosmogrid/catalogs/cosmogrid_sample_kappa.parquet"
+    catalogs_dir = str(Path(forecast_kappa).parent)
 
     plan = []  # (kind, config, local, repo_path, is_new)
     for kind, local in (("raytrace", args.raytrace), ("born", args.born)):
-        config = TARGETS[kind][0]
+        config, _default_local, repo_basename = TARGETS[kind]
         lp = Path(local)
         if not lp.exists():
             print(f"skip {kind}: {lp} not found")
             continue
-        if kind == "raytrace":
-            repo_path = kappa_path
-        else:
-            repo_path = _config_path(meta, config) or f"{born_dir}/cosmogrid_kappa_born.parquet"
+        repo_path = _config_path(meta, config) or f"{catalogs_dir}/{repo_basename}"
         plan.append((kind, config, str(lp), repo_path, _config_path(meta, config) is None))
 
     if not plan:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 
@@ -11,6 +12,7 @@ from ..fields import FieldStatus, FlatKappaField, SphericalDensity, SphericalKap
 __all__ = ["born"]
 
 
+@jax.jit(static_argnames=["min_z", "max_z", "n_integrate", "normalization"])
 def born(
     cosmo,
     lightcone,

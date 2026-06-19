@@ -87,7 +87,7 @@ legacy = ["diffrax"]
 plot = [
   "matplotlib>=3.0",
   "getdist",
-  "arviz[preview]",
+  "arviz",
   "tabulate"
 ]
 raytrace = ["dorian-raytrace-mpi"]
