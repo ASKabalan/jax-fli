@@ -67,6 +67,7 @@ def _maybe_init_distributed() -> None:
 _maybe_init_distributed()
 
 import argparse
+import re
 from pathlib import Path
 
 import jax
@@ -146,21 +147,34 @@ def main() -> None:
         import tempfile
 
         cosmo, dens = _synthetic_density()
-        with tempfile.TemporaryDirectory() as d:
-            p = str(Path(d) / "dens.parquet")
-            Catalog(field=dens, cosmology=cosmo).to_parquet(p)
-            catalog = Catalog.from_parquet(p, sharding=sharding)  # the sharded LOAD path under test
+        # All ranks must call to_parquet (catalog_to_row does a collective all_gather), but only rank 0
+        # writes — so use a SHARED path (one node) all ranks can read. A per-rank TemporaryDirectory
+        # would give rank 0 a path the others can't see (FileNotFoundError under multi-process).
+        p = str(Path(tempfile.gettempdir()) / "born_kappa_smoke_dens.parquet")
+        Catalog(field=dens, cosmology=cosmo).to_parquet(p)
+        if _is_multiprocess():
+            sync_global_devices("smoke-test density written")
+        catalog = Catalog.from_parquet(p, sharding=sharding)  # the sharded LOAD path under test
         field, cosmo = catalog.field[0], catalog.cosmology[0]
     else:
-        from datasets import load_dataset
+        # The density is published as per-redshift set configs DENSITY_CONFIG-NN (one config would
+        # overflow arrow's INT32 offset on load). Load each sharded and concatenate along the shell
+        # axis — each set keeps its P("x","y") npix sharding, so the concat stays sharded.
+        from datasets import get_dataset_config_names, load_dataset
 
-        ds = load_dataset(REPO, DENSITY_CONFIG, split="train").with_format("numpy")
-        catalog = Catalog.from_dataset(ds, sharding=sharding)
-        field, cosmo = catalog.field[0], catalog.cosmology[0]
-        if args.nside is not None and int(args.nside) != int(field.nside):
-            # ud_sample gathers the (smaller, downsampled) map to replicated P(); Born re-shards its
-            # output back to P("y","x"). Fine — the downsampled field is smaller than the native one.
-            field = field.ud_sample(int(args.nside))
+        cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_CONFIG) + r"-\d+", n))
+        fields, cosmo = [], None
+        for n in cfgs:
+            cat = Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy"), sharding=sharding)
+            fld = cat.field[0]
+            # Downgrade EACH chunk right after loading (before concatenating). ud_sample gathers the
+            # (smaller) chunk to replicated P(); doing it per-chunk avoids gathering the full 13 GB
+            # lightcone to replicated. Born re-shards its output to P("y","x").
+            if args.nside is not None and int(args.nside) != int(fld.nside):
+                fld = fld.ud_sample(int(args.nside))
+            fields.append(fld)
+            cosmo = cat.cosmology[0]
+        field = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields) if len(fields) > 1 else fields[0]
 
     if lead:
         print(

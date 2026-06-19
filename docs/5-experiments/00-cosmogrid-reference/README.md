@@ -8,28 +8,38 @@ a **Born** κ — all published to the HuggingFace dataset `ASKabalan/jax-fli-ex
 ## Data
 
 Built from `cosmo_000001` (density from `raw/cosmo_000001/run_0`; the forecast κ from the matching
-`stage3_forecast/cosmo_000001/perm_0000`, so it shares the same cosmology). Four HuggingFace dataset
-configs:
+`stage3_forecast/cosmo_000001/perm_0000`, so it shares the same cosmology). HuggingFace dataset configs:
 
 | config | field | nside | dtype | contents |
 |--------|-------|------:|-------|----------|
-| `00-cosmogrid-density`        | `SphericalDensity`    | 2048 | uint16  | 69 lightcone shells, particle counts, z < 3.5 (native resolution) |
+| `00-cosmogrid-density-NN`     | `SphericalDensity`    | 2048 | float32 | density (ρ = N/V), ~67 shells covering the source n(z) (z≲3.0), split into **N set configs** (`-00`,`-01`,…) |
 | `00-cosmogrid-kappa`          | `SphericalKappaField` |  512 | float32 | 4 bins, CosmoGrid's own **Stage-3 forecast** κ (the simulation's published convergence maps) |
 | `00-cosmogrid-kappa-raytrace` | `SphericalKappaField` | 2048 | float32 | 4 bins, **ray-traced** (dorian, full distortion matrix) from the density |
 | `00-cosmogrid-kappa-born`     | `SphericalKappaField` | 2048 | float32 | 4 bins, **Born** approximation from the same density |
 
-The density is stored at the **raw uint16 precision** of CosmoGrid's `compressed_shells.npz` (≈ 7 GB,
-lossless) rather than upcast to float32 — the jax-fli catalog serializer preserves the array dtype.
-The computed κ (ray-traced + Born) use the Stage-3 source n(z) by default (DES Y3 is a one-line
-`--nz des` switch); `00-cosmogrid-kappa` keeps CosmoGrid's own forecast κ at its native nside 512 as an
-independent reference.
+The 2048 density is too large to be a single config: serializing all shells at once OOMs (the `datasets`
+ArrayND path balloons ~10×), and even if it fit, `load_dataset` combining ~67·npix ≈ 3.4 G elements
+overflows arrow's INT32 list offset. So the shell axis is split into a few **set configs**
+`00-cosmogrid-density-NN`, each small enough to write and to load independently — reassemble the full
+lightcone by loading each and concatenating along the shell axis. It is saved as **density** (ρ = N/V,
+float32) covering the source redshift support of **both** shears in `jfli.data` (Stage-3 z≈1.7, DES Y3
+z≈3.0). The computed κ (ray-traced + Born) use the Stage-3 source n(z) by default (DES Y3 is a one-line
+`--nz des` switch); `00-cosmogrid-kappa` keeps CosmoGrid's own forecast κ at its native nside 512.
 
 ```python
-from datasets import load_dataset
+import re
+import jax
+import jax.numpy as jnp
+from datasets import get_dataset_config_names, load_dataset
 from jax_fli.io import Catalog
 
-ds = load_dataset("ASKabalan/jax-fli-experiments", "00-cosmogrid-density", split="train").with_format("numpy")
-density = Catalog.from_dataset(ds).field[0]   # SphericalDensity (69, npix) uint16, nside 2048
+REPO = "ASKabalan/jax-fli-experiments"
+# the density is split into set configs 00-cosmogrid-density-NN — load each, concatenate along shells
+cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(r"00-cosmogrid-density-\d+", n))
+fields = []
+for n in cfgs:
+    fields += Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy")).field
+density = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields)   # (~67, npix) float32, nside 2048
 ```
 
 ## How to run
@@ -40,13 +50,17 @@ directly; the two computed-κ scripts run on the cluster and **only save parquet
 publisher also takes `--check`, which loads its **published** config from HuggingFace and prints the
 stored field attributes (no rebuild) — i.e. it inspects what is actually live on the Hub.
 
-**1 · Density — `publish_density_2048.py`** (CPU, ~16 GB RAM). Rebuilds the 2048 uint16 lightcone from
-the local raw npz and overwrites `00-cosmogrid-density`:
+**1 · Density — `publish_density_2048.py`** (CPU, ~16 GB RAM/set). Rebuilds the 2048 lightcone from the
+local raw npz, converts COUNTS→**density** (ρ = N/V, float32), splits the shell axis into `--n-sets`
+sets (default 4) and publishes each as its own config `00-cosmogrid-density-NN` (one config for all
+shells would OOM on write and overflow arrow's INT32 offset on load). Keeps only the shells covering the
+`jfli.data` source n(z) by default (`--all-shells` for all 69):
 
 ```bash
-python publish_density_2048.py --self-test   # validate the >2 GB parquet split round-trip (fast)
-python publish_density_2048.py --check       # inspect the published 00-cosmogrid-density config on HF
-python publish_density_2048.py --publish     # build + overwrite the HuggingFace config
+python publish_density_2048.py --self-test                 # validate the serializer round-trip (fast)
+python publish_density_2048.py --out /scratch/d.parquet     # build the set parquets locally (no upload) to verify
+python publish_density_2048.py --check                      # inspect the published 00-cosmogrid-density-NN configs on HF
+python publish_density_2048.py --publish                    # build sets + upload as 00-cosmogrid-density-NN configs
 ```
 
 **2 · CosmoGrid forecast κ — `publish_kappa_512.py`** (CPU). Loads CosmoGrid's own Stage-3 forecast κ

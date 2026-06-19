@@ -103,11 +103,7 @@ def _convert_to_overdensity(field, field_type: str, normalization: str):
         return field
     from jax_fli.fields.units import DensityUnit
 
-    try:
-        return field.to(DensityUnit.OVERDENSITY, normalization=normalization)
-    except Exception as e:
-        print(f"    WARNING: OVERDENSITY conversion failed ({e}). Proceeding with original unit.")
-        return field
+    return field.to(DensityUnit.OVERDENSITY, normalization=normalization)
 
 
 def _resolve_mask_for_field(field, field_type: str, args):
@@ -211,9 +207,10 @@ def main() -> None:
         field = catalog.field[0]
         import numpy as np
 
-        field = field.apply_fn(
-            lambda x: np.asarray(x, dtype=np.float32)
-        )  # Ensure array is in numpy for JAX compatibility
+        # Materialize the array as concrete numpy (method="healpy" requires it), honoring
+        # --enable-x64 for precision rather than unconditionally downcasting to float32.
+        dtype = np.float64 if args.enable_x64 else np.float32
+        field = field.apply_fn(lambda x: np.asarray(x, dtype=dtype))
         cosmo = catalog.cosmology[0]
         field_type = type(field).__name__
 

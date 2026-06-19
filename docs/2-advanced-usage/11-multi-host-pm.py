@@ -19,11 +19,11 @@ cosmology, ready to load with ``jax_fli.io.Catalog.from_parquet`` (see 11-multi-
 import os
 
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
-os.environ["JAX_ENABLE_X64"] = "False"
+os.environ["JAX_ENABLE_X64"] = "True"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.97"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-# os.environ["NCCL_DEBUG"] = "INFO"
+#os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["--xla_gpu_nccl_termination_timeout_seconds"] = "100"
 os.environ["--xla_gpu_executable_warn_stuck_timeout"] = "60"
 
@@ -79,20 +79,31 @@ import argparse
 import jax
 import jax_cosmo as jc
 from jax.experimental.multihost_utils import sync_global_devices
-from jax.sharding import AxisType, NamedSharding
+from jax.sharding import AxisType, NamedSharding, Mesh
 from jax.sharding import PartitionSpec as P
+from jax.experimental.mesh_utils import create_hybrid_device_mesh
 
 import jax_fli as jfli
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mesh", type=int, default=1024, help="cells per axis")
+    parser.add_argument("--mesh", type=int, default=1200, help="cells per axis")
     parser.add_argument("--nbins", type=int, default=2, help="source bins")
     parser.add_argument("--nside", type=int, default=1024, help="HEALPix nside")
     parser.add_argument("--nb-shells", type=int, default=20, help="lightcone shells")
+    parser.add_argument("--gpus-per-node", type=int, default=4)
     parser.add_argument("--out", type=str, default="sim.parquet")
     args = parser.parse_args()
+
+    print(f"local process {jax.process_index()} with local GPU {jax.local_devices()}")
+
+    if args.gpus_per_node is None:
+        gpus_per_node = os.environ.get("SLURM_GPUS_ON_NODE" , None)
+        if gpus_per_node is None:
+            raise RuntimeError("some error")
+    else:
+        gpus_per_node = args.gpus_per_node
 
     # Compute the box size from the redshift of the lightcone (z=1.0) and the observer position.
     # Z=1.0 is good for nbins = 2
@@ -103,9 +114,22 @@ def main() -> None:
     n_dev = jax.device_count()
     P_X = n_dev // args.nbins
     P_Y = args.nbins
-    # 2-D device mesh: partition the first two spatial axes (jaxpm convention).
-    mesh = jax.make_mesh((P_X, P_Y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
-    sharding = NamedSharding(mesh, P("x", "y"))
+    print(f"Going to create a mesh with shape {(P_X, P_Y)} for a total number of devices {jax.device_count()}")
+
+    if not hasattr(jax.devices()[0], "slice_index"):
+        print(f"Single Node uniform bandwidth setup")
+        # 2-D device mesh: partition the first two spatial axes (jaxpm convention).
+        mesh = jax.make_mesh((P_X, P_Y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
+        sharding = NamedSharding(mesh, P("x", "y"))
+    else:
+        print("Multiple bandwith levels detected, using a hybrid mesh")
+        mesh_shape = (gpus_per_node, 1)
+        dcn_shape = (P_X // mesh_shape[0], P_Y // mesh_shape[1])
+        print(f"mesh_shape: {mesh_shape}, dcn_shape: {dcn_shape}")
+        mesh = Mesh(create_hybrid_device_mesh(mesh_shape, dcn_shape), axis_names=("x", "y"))
+        sharding = NamedSharding(mesh, P("x", "y"))
+    
+    
     print(f"Created device mesh {mesh} with {n_dev} devices, sharding {sharding}")
 
     key = jax.random.PRNGKey(0)

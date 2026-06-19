@@ -19,5 +19,6 @@ emit3() { # $1=scheme  $2=kernel-width-pixels ("" if none)  $3=nside  $4=paint-f
 for cfg in "ngp::" "bilinear::" "rbf_neighbor:0.8:rbf08" "rbf_neighbor:1.5:rbf15"; do
   IFS=: read -r scheme kw tag <<<"$cfg"; tag="${tag:-$scheme}"
   emit3 "$scheme" "$kw" 1024 ""                   "exp3_${tag}_native1024"
-  emit3 "$scheme" "$kw" 1024 "--paint-nside 2048" "exp3_${tag}_paint2048"
+  emit3 "$scheme" "$kw" 2048 ""                   "exp3_${tag}_paint2048"
 done
+  

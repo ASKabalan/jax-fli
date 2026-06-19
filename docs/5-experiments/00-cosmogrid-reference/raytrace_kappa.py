@@ -32,8 +32,10 @@ import os
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import argparse
+import re
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
@@ -108,21 +110,37 @@ def main() -> None:
             print(f"[smoke-test] MPI ranks={size}; synthetic lightcone {tuple(field.array.shape)} nside={field.nside}")
     else:
         nz_shear = NZ_CHOICES[args.nz]()
+        # Catalog/datasets I/O is JAX-process-aware, NOT mpi4py-aware: if every MPI rank loads
+        # independently we pay N× the multi-GB datasets/arrow transient and OOM. So load + per-chunk
+        # downgrade on rank 0 only (the density is published as per-redshift set configs
+        # DENSITY_CONFIG-NN — one config would overflow arrow's INT32 offset on load), then
+        # MPI-broadcast the (downgraded) replicated lightcone to every rank for dorian.
+        field, cosmo = None, None
         if rank == 0:
-            print(f"MPI ranks={size}. Loading {DENSITY_CONFIG} from {REPO} …")
-        from datasets import load_dataset
+            from datasets import get_dataset_config_names, load_dataset
 
-        ds = load_dataset(REPO, DENSITY_CONFIG, split="train").with_format("numpy")
-        catalog = Catalog.from_dataset(ds)
-        field = catalog.field[0]
-        cosmo = catalog.cosmology[0]
-        if args.nside is not None and int(args.nside) != int(field.nside):
-            field = field.ud_sample(int(args.nside))
-        if rank == 0:
+            cfgs = sorted(
+                n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_CONFIG) + r"-\d+", n)
+            )
+            print(f"MPI ranks={size}. Loading {len(cfgs)} density sets {cfgs} on rank 0 …")
+            fields = []
+            for n in cfgs:
+                cat = Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy"))
+                fld = cat.field[0]
+                # downgrade each chunk right after loading → small broadcast, bounded RAM on rank 0
+                if args.nside is not None and int(args.nside) != int(fld.nside):
+                    fld = fld.ud_sample(int(args.nside))
+                fields.append(fld)
+                cosmo = cat.cosmology[0]
+            field = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields) if len(fields) > 1 else fields[0]
             print(
                 f"   density: {type(field).__name__} shape={tuple(field.array.shape)} "
                 f"nside={field.nside} dtype={field.array.dtype} | n(z)={args.nz}, interp={args.interp}"
             )
+        # dorian needs the full (downgraded) lightcone on every rank — broadcast it from rank 0.
+        if comm is not None:
+            field = comm.bcast(field, root=0)
+            cosmo = comm.bcast(cosmo, root=0)
 
     # The synthetic smoke-test geometry produces degenerate parallel-transport angles (dorian raises
     # "THETA out of range"); PT is orthogonal to the MPI path we want to exercise, so force it off
