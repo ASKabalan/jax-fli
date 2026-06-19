@@ -15,8 +15,9 @@ pytest.importorskip("numpyro")
 datasets = pytest.importorskip("datasets")
 
 import jax_cosmo as jc
-import jax_fli as jfli
 from numpyro.handlers import seed, trace
+
+import jax_fli as jfli
 
 NSIDE = 16
 NPIX = 12 * NSIDE**2

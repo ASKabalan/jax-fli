@@ -52,6 +52,7 @@ def _validate_t0_cb(lpt_t0, t0):
         "nb_shells",
         "adjoint",
         "checkpoints",
+        "step_checkpoints",
         "shell_spacing",
         "min_width",
     ],
@@ -67,8 +68,9 @@ def nbody(
     density_widths=None,
     shell_spacing: str = "a",
     min_width: float = 50.0,
-    adjoint: AdjointType = "checkpointed",
+    adjoint: AdjointType | None = "checkpointed",
     checkpoints: int | None = None,
+    step_checkpoints: int | None = None,
 ) -> jax.Array:
     """
     Evolve particles forward in time and save lightcone density planes.
@@ -92,10 +94,18 @@ def nbody(
         Number of radial lightcone shells (alternative to *ts*).
     density_widths : float or array, optional
         Override shell widths.
-    adjoint : AdjointType, default='checkpointed'
-        Adjoint mode: 'checkpointed' or 'reverse'.
+    adjoint : AdjointType or None, default='checkpointed'
+        'checkpointed' or 'reverse' for reverse-mode gradients (``grad``/``vjp``); ``None`` selects a
+        plain ``jax.lax`` forward loop that supports forward-mode AD (``jvp``/``jacfwd``) but is not
+        reverse-differentiable.
     checkpoints : int or None, optional
-        Number of checkpoints for 'checkpointed' adjoint.
+        Number of checkpoints for the *shell* scan (the outer loop over saved snapshots),
+        used by the 'checkpointed' adjoint. ``None`` = equinox default.
+    step_checkpoints : int or None, optional
+        Number of checkpoints for the *integration-step* loop within each shell, used by the
+        'checkpointed' adjoint. ``None`` = equinox default. This is distinct from *checkpoints*,
+        which checkpoints the shell scan; *step_checkpoints* trades recompute for memory along the
+        time-integration steps. Has no effect on the 'reverse' adjoint.
 
     Returns
     -------
@@ -103,12 +113,12 @@ def nbody(
         Lightcone as a stacked Field PyTree.
     """
 
-    assert (
-        dx_field.status == FieldStatus.LPT1 or dx_field.status == FieldStatus.LPT2
-    ), "dx_field must have status FieldStatus.LPT1 or FieldStatus.LPT2."
-    assert (
-        p_field.status == FieldStatus.LPT1 or p_field.status == FieldStatus.LPT2
-    ), "p_field must have status FieldStatus.LPT1 or FieldStatus.LPT2."
+    assert dx_field.status == FieldStatus.LPT1 or dx_field.status == FieldStatus.LPT2, (
+        "dx_field must have status FieldStatus.LPT1 or FieldStatus.LPT2."
+    )
+    assert p_field.status == FieldStatus.LPT1 or p_field.status == FieldStatus.LPT2, (
+        "p_field must have status FieldStatus.LPT1 or FieldStatus.LPT2."
+    )
 
     if dx_field.mesh_size != p_field.mesh_size:
         raise ValueError("dx_field and p_field must have matching mesh_size")
@@ -175,6 +185,7 @@ def nbody(
         n_steps=n_steps_final,
         adjoint=adjoint,
         checkpoints=checkpoints,
+        step_checkpoints=step_checkpoints,
     )
 
     if ts_resolved.ndim == 1 and ts_resolved.size == 1:
@@ -195,6 +206,16 @@ def nbody(
     lightcone = lightcone.replace(
         z_sources=z_sources, comoving_centers=r_centers, density_width=density_plane_width, status=FieldStatus.LIGHTCONE
     )
+
+    # Post-paint HEALPix window deconvolution (a_lm level), distinct from the 3D force window.
+    painting = solver.interp_kernel.painting
+    if painting.target == "spherical" and painting.pixel_window_deconvolution:
+        lightcone = lightcone.deconvolve(
+            method=painting.scheme,
+            kernel_width_arcmin=painting.kernel_width_arcmin,
+            kernel_width_pixels=painting.kernel_width_pixels,
+            smoothing_interpretation=painting.smoothing_interpretation,
+        )
 
     _warn_if_spherical_npix_unsharded(lightcone)
     return lightcone

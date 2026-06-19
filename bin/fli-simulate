@@ -4,6 +4,7 @@
 Runs JAX distributed init BEFORE importing the package, so that
 jax.distributed.initialize() happens before any JAX backend touches.
 """
+
 import os
 
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
@@ -11,6 +12,8 @@ os.environ["JAX_ENABLE_X64"] = "False"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.97"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+os.environ["--xla_gpu_nccl_termination_timeout_seconds"] = "100"
+os.environ["--xla_gpu_executable_warn_stuck_timeout"] = "60"
 
 
 def _maybe_init_distributed():
@@ -22,10 +25,18 @@ def _maybe_init_distributed():
     ):
         for key in ("VSCODE_PROXY_URI", "no_proxy", "NO_PROXY"):
             os.environ.pop(key, None)
+        # print time stamp
+        from datetime import datetime
+
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Detected multi-host environment, initializing JAX distributed ..."
+        )
         import jax
 
         jax.distributed.initialize()
-        print(f"Initialized JAX distributed with {jax.process_count()} processes, rank {jax.process_index()}")
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] JAX distributed initialized with {jax.process_count()} processes, rank {jax.process_index()}"
+        )
 
 
 _maybe_init_distributed()

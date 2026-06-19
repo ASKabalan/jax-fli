@@ -7,9 +7,10 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import jax_cosmo.background as bg
 import jax_cosmo.constants as const
-import jax_fli as jfli
 import numpy as np
 import pytest
+
+import jax_fli as jfli
 
 # ---------------------------------------------------------------------------
 # Simulation parameters

@@ -72,6 +72,7 @@ class FlatKappaField(FlatDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
+    @jax.jit(static_argnames=["reduced_shear"])
     def get_shear(self, *, reduced_shear: bool = False) -> FlatShearField:
         """Compute shear ``(gamma1, gamma2)`` from convergence via flat-sky Kaiser-Squires.
 
@@ -139,6 +140,7 @@ class SphericalKappaField(SphericalDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
+    @jax.jit(static_argnames=["reduced_shear", "lmax", "method", "iter", "debug_sharding"])
     def get_shear(
         self,
         *,

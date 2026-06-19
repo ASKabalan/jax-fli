@@ -5,12 +5,12 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
-import jax_fli as jfli
 import pytest
 from discodj.cosmology.cosmology import Cosmology as DiscoDJCosmology
+
+import jax_fli as jfli
 from jax_fli.fields import DensityField, FieldStatus
 from jax_fli.fields.units import DensityUnit
-
 from tests.helpers import compare_fields
 
 _FIELD_RTOL = 1e-5

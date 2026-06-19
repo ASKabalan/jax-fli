@@ -32,19 +32,39 @@ ICs ──> LPT ──> PM N-body ──> Lightcone Painting ──> Lensing ─
 
 ## Installation
 
-```bash
-pip install -e ".[all]"
-```
-
-This installs all optional dependencies (lensing, ray-tracing, catalogs, sampling). For specific extras:
+This project is managed with [uv](https://docs.astral.sh/uv/) and a committed
+`uv.lock` for reproducibility. Dependency groups are **not** installed by default —
+request them explicitly:
 
 ```bash
-pip install -e ".[dev]"        # Development tools (pytest, ruff, pre-commit)
-pip install -e ".[raytrace]"   # Ray-tracing via Dorian
-pip install -e ".[catalog]"    # Parquet / HuggingFace catalog support
+uv sync                              # runtime package only (base dependencies)
+uv sync --group dev                  # + dev tooling: ruff, pyright, prek, toml-sort
+uv sync --group tests                # + test suite: pytest, ALL feature extras, and the
+                                     #   reference/oracle backends (fastpm, pmesh, glass, ...)
+uv sync --group dev --group tests    # everything for development AND testing
 ```
 
-> **Note:** This package depends on custom forks of `jaxpm` and `jax_cosmo` that are git-pinned in `pyproject.toml`.
+Individual feature extras can also be picked, e.g. `uv sync --extra raytrace`,
+`--extra catalog`, `--extra sampling`; `--extra cuda` installs a CUDA build of JAX
+(the base install is CPU).
+
+Run anything inside the environment with `uv run` (e.g. `uv run fli-simulate ...`,
+`uv run pytest`), or activate `.venv` directly.
+
+> **Note:** This package depends on custom forks of `jaxpm` and `jax-cosmo`. They are
+> declared by their PyPI names in `pyproject.toml` and pinned to the right git
+> branches via `[tool.uv.sources]`, which **only `uv` reads** — installing with plain
+> `pip` would fetch the upstream PyPI releases instead of the forks, so use `uv`.
+
+Recommended installation : `uv sync --extra all`
+
+If you have a CUDA-capable GPU, you can also install JAX with GPU support:
+
+```bash
+uv sync --extra all --extra cuda
+```
+
+__note__: You can also compile the spherical harmonics cuda kernel in s2fft just my making sure that you have a working CUDA compiler before running the above command.
 
 ## Quick Start
 
@@ -111,7 +131,7 @@ code); rerun them on a GPU/cluster to reproduce the full-resolution figures.
 | 10 | [Multi-host PM](docs/2-advanced-usage/10-multi-host-pm.md) | Launching across nodes + validation vs CosmoGrid |
 
 **Command-line tools** — one page per script under
-[Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`, `fli-spectra`,
+[Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`, `fli-summary-stats`,
 `fli-born-rt`, `fli-dorian-rt`, `fli-samples`, `fli-infer`, `fli-2pcf`, `fli-extract`,
 `fli-launcher`. Sampling/inference tutorials and experiments are in preparation.
 
@@ -133,17 +153,18 @@ code); rerun them on a GPU/cluster to reproduce the full-resolution figures.
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+# Set up the full dev + test environment (locked; groups are explicit)
+uv sync --group dev --group tests
 
-# Run tests
-pytest
+# Run tests (requires the `tests` group)
+uv run pytest
 
-# Lint
-ruff check .
+# Lint / format / run hooks (prek runs the local ruff + toml-sort hooks)
+uv run prek run --all-files
+uv run pyright            # type-check on demand (manual hook, not a CI gate)
 
-# Format + import sort (pre-commit uses yapf + isort)
-pre-commit run --all-files
+# Build a wheel + sdist
+uv build
 ```
 
 ## License

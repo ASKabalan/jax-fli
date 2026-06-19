@@ -73,10 +73,13 @@ def _load_initial_condition(path: str):
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-infer."""
     from jax_fli.scripts.parser import (
+        add_common_args,
         add_distributed_args,
         add_forward_model_args,
         add_infer_args,
         add_integration_settings_args,
+        add_lensing_args,
+        add_output_target_args,
         add_prior_args,
         add_simulation_settings_args,
     )
@@ -102,10 +105,13 @@ def parser() -> argparse.ArgumentParser:
         help="Output directory for MCMC checkpoints and parquet catalogs.",
     )
 
+    add_common_args(p)
     add_distributed_args(p)
     add_simulation_settings_args(p)
+    add_output_target_args(p)
     # Full-field model uses BullFrog by default (the Configurations default); set it in the parser.
     add_integration_settings_args(p, solver_default="bf")
+    add_lensing_args(p)
     add_prior_args(p)
     add_infer_args(p)
     add_forward_model_args(p)
@@ -237,6 +243,7 @@ def main() -> None:
         paint_nside=args.paint_nside,
         kernel_width_arcmin=args.kernel_width_arcmin,
         kernel_width_pixels=args.kernel_width_pixels,
+        pixel_window_deconvolution=args.pixel_window_deconvolution,
         adjoint=args.adjoint,
         checkpoints=args.checkpoints,
         field_sharding=sharding,

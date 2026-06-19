@@ -6,13 +6,13 @@ verifying bitwise equivalence between single-device and multi-device execution.
 
 from __future__ import annotations
 
-import jax_fli as jfli
 import numpy as np
 import pytest
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 
+import jax_fli as jfli
 from tests.helpers import compare_fields
 
 from .conftest import _PDIMS, N_STEPS, NB_SHELLS, PAINT_NSIDE, T0, T1, Z_SOURCE_BORN, make_sharded_ics
@@ -62,9 +62,9 @@ def _check_sharding(array, input_sharding, field_type):
 
     print(f"Checking sharding for {field_type}: expected {expected_sharding}, got {array.sharding}")
 
-    assert array.sharding.is_equivalent_to(
-        expected_sharding, ndim=array.ndim
-    ), f"Expected sharding {expected_sharding}, got {array.sharding}"
+    assert array.sharding.is_equivalent_to(expected_sharding, ndim=array.ndim), (
+        f"Expected sharding {expected_sharding}, got {array.sharding}"
+    )
 
 
 # ---------------------------------------------------------------------------

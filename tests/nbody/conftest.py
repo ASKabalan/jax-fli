@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
 import pytest
+
 from jax_fli.fields import DensityField, FieldStatus
 from jax_fli.fields.units import DensityUnit
 

@@ -13,8 +13,8 @@ pytestmark = pytest.mark.scripts
 
 import jax
 import jax.numpy as jnp
-import jax_fli as jfli
 
+import jax_fli as jfli
 from tests.helpers import compare_fields
 from tests.scripts.conftest import (
     _BASE_CLI,

@@ -64,6 +64,13 @@ class PaintingOptions(eqx.Module):
         intended for Fourier / P(k) use, not a density to visualise. ``target="density"``
         only; never used for force computation.
 
+    pixel_window_deconvolution : bool, default=False
+        Deconvolve the HEALPix assignment window from the painted ``target="spherical"`` map at
+        the a_lm level (one factor of W_l: the pixel window for ``scheme="ngp"``, pixel window x
+        Gaussian beam for ``"rbf_neighbor"``) via ``SphericalDensity.deconvolve``. Distinct from
+        ``deconvolution`` above (the 3D force/density window). Requires ``scheme`` in
+        {"ngp", "rbf_neighbor"}; applied at the ``lpt()`` / ``nbody()`` spherical output.
+
     weights : array, float, or None, default=None
         Weights for painting.
 
@@ -102,6 +109,22 @@ class PaintingOptions(eqx.Module):
     order: str = eqx.field(static=True, default="cic")
     deconvolution: bool = eqx.field(static=True, default=False)
 
+    # Spherical post-paint window deconvolution
+    pixel_window_deconvolution: bool = eqx.field(static=True, default=False)
+
     # Shared
     weights: Array | float | None = 1.0
     batch_size: int | None = eqx.field(static=True, default=None)
+
+    def __post_init__(self):
+        # The post-paint spherical deconvolution removes the HEALPix assignment window at the
+        # a_lm level; "bilinear" painting has no closed-form window (see SphericalDensity.deconvolve).
+        if (
+            self.pixel_window_deconvolution
+            and self.target == "spherical"
+            and self.scheme not in ("ngp", "rbf_neighbor")
+        ):
+            raise ValueError(
+                "pixel_window_deconvolution requires scheme 'ngp' or 'rbf_neighbor' "
+                f"('{self.scheme}' has no closed-form HEALPix pixel window)."
+            )

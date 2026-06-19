@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 import jax_cosmo as jc
-import jax_fli as jfli
 import pytest
 from numpy.testing import assert_allclose
+
+import jax_fli as jfli
 
 PAINT_NSIDE = 16
 

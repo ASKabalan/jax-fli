@@ -6,6 +6,8 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
 import pytest
+from jaxpm.growth import growth_factor
+
 from jax_fli.pm._resolve_geometry import (
     _VALID_SHELL_SPACINGS,
     compute_n_steps_for_shells,
@@ -13,7 +15,6 @@ from jax_fli.pm._resolve_geometry import (
     simulation_stepping,
 )
 from jax_fli.utils import distances
-from jaxpm.growth import growth_factor
 
 # ---------------------------------------------------------------------------
 # Constants & fixtures

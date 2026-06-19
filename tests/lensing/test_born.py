@@ -52,7 +52,7 @@ def _plot_ratio(ells, ratio_list, z_sources, ref_label, path):
     """Ratio plot with shaded 2%/5%/10% bands."""
     fig, ax = plt.subplots()
     for pct, alpha in [(0.10, 0.15), (0.05, 0.25), (0.02, 0.4)]:
-        ax.axhspan(1 - pct, 1 + pct, color="gray", alpha=alpha, label=f"±{int(pct*100)}%")
+        ax.axhspan(1 - pct, 1 + pct, color="gray", alpha=alpha, label=f"±{int(pct * 100)}%")
     ax.axhline(1.0, color="k", lw=0.5)
     for i, z in enumerate(z_sources):
         ax.plot(ells[i], ratio_list[i], label=f"z={z:.2f}")

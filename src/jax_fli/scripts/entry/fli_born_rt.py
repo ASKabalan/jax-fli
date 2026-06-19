@@ -14,7 +14,7 @@ from pathlib import Path
 
 def parser() -> ArgumentParser:
     """Build the argument parser for fli-born-rt."""
-    from jax_fli.scripts.parser import add_distributed_args, add_lensing_args
+    from jax_fli.scripts.parser import add_common_args, add_distributed_args, add_lensing_args
 
     p = ArgumentParser(
         prog="fli-born-rt",
@@ -27,8 +27,8 @@ def parser() -> ArgumentParser:
         help="Input parquet file(s) — single path or shell glob (e.g. 'results/*.parquet')",
     )
     p.add_argument("--output", "-o", default=".", metavar="DIR", help="Output directory (default: .)")
-    p.add_argument("--enable-x64", action="store_true", help="Enable JAX 64-bit precision (default: False)")
 
+    add_common_args(p)
     add_lensing_args(p)
     add_distributed_args(p)
 

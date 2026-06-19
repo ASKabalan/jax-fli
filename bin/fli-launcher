@@ -38,12 +38,12 @@ Typical use:
     --output results/%constraint%_M%mesh_size%_S%seed%.parquet
     --name   cosmo_c%omega_c%_S8%sigma8%
 
-After substitution, the launcher writes ``<output_dir>/args.log`` with the
-resolved command so each run is self-documenting. ``<output_dir>`` is the
-parent of ``--output`` (when it looks like a file) or the value of
-``--output`` / ``--path`` (when it looks like a directory).
+After substitution, the launcher writes a per-run ``*.args.log`` with the
+resolved command so each run is self-documenting. The log sits next to
+``--output`` with a matching stem (``m512.parquet`` -> ``m512.args.log``) so
+runs sharing a directory don't clobber each other; if ``--output`` / ``--path``
+looks like a directory, ``<dir>/args.log`` is used instead.
 """
-from __future__ import annotations
 
 import argparse
 import math
@@ -189,12 +189,15 @@ def _apply_templates(payload: list[str], table: dict[str, str]) -> list[str]:
 # ── Log / output-dir resolution ─────────────────────────────────────────────
 
 
-def _resolve_output_dir(payload: list[str]) -> Path | None:
-    """Find the directory to drop ``args.log`` into.
+def _resolve_args_log_path(payload: list[str]) -> Path | None:
+    """Find the per-run ``*.args.log`` path to write.
 
     Looks for ``--output`` first, then ``--path``. If the value has a common
-    archive-ish suffix (``.parquet``, ``.h5``, ``.nc``) we use its parent.
-    Returns ``None`` if no output-like flag is present (e.g. ``fli-spectra``).
+    archive-ish suffix (``.parquet``, ``.h5``, ``.nc``) the log sits next to it
+    with a matching stem (``m512.parquet`` -> ``m512.args.log``) so runs sharing
+    a directory don't clobber each other; otherwise the value is treated as a
+    directory and ``<dir>/args.log`` is used. Returns ``None`` if no output-like
+    flag is present (e.g. ``fli-summary-stats``).
     """
     for key in _OUTPUT_KEYS:
         if key not in payload:
@@ -205,14 +208,15 @@ def _resolve_output_dir(payload: list[str]) -> Path | None:
         raw = payload[idx + 1]
         p = Path(raw)
         file_suffixes = {".parquet", ".h5", ".hdf5", ".nc", ".json", ".zarr"}
-        return p.parent if p.suffix.lower() in file_suffixes else p
+        if p.suffix.lower() in file_suffixes:
+            return p.with_suffix(".args.log")
+        return p / "args.log"
     return None
 
 
-def _write_log(out_dir: Path, cmd: list[str], launcher_args: argparse.Namespace) -> None:
-    """Write ``<out_dir>/args.log`` with a shell-quoted, reproducible command."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    log_path = out_dir / "args.log"
+def _write_log(log_path: Path, cmd: list[str], launcher_args: argparse.Namespace) -> None:
+    """Append a shell-quoted, reproducible command to ``log_path`` (a per-run ``*.args.log``)."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as f:
         f.write(f"# {datetime.now().isoformat(timespec='seconds')} mode={launcher_args.mode}\n")
         f.write(shlex.join(["fli-launcher", *sys.argv[1 : sys.argv.index("--")], "--"] + cmd) + "\n")
@@ -287,7 +291,7 @@ def main() -> None:
     argv = sys.argv[1:]
     launcher_argv, payload = _split_on_separator(argv)
     if not payload:
-        sys.exit("Error: missing command payload. Usage:\n" "  fli-launcher [SLURM OPTS] -- <cmd> [cmd args...]")
+        sys.exit("Error: missing command payload. Usage:\n  fli-launcher [SLURM OPTS] -- <cmd> [cmd args...]")
 
     parser = argparse.ArgumentParser(
         prog="fli-launcher",
@@ -311,10 +315,10 @@ def main() -> None:
         str(args.pdim[1]),
     ]
 
-    # Write a per-run log in the resolved output directory (when there is one).
-    out_dir = _resolve_output_dir(resolved_payload)
-    if out_dir is not None and args.mode != "dryrun":
-        _write_log(out_dir, cmd, args)
+    # Write a per-run *.args.log next to the output file (when there is one).
+    log_path = _resolve_args_log_path(resolved_payload)
+    if log_path is not None and args.mode != "dryrun":
+        _write_log(log_path, cmd, args)
 
     if args.mode == "dryrun":
         _print_dryrun(args, cmd)

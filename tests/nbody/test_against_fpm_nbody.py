@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import jax_fli as jfli
 import pytest
 
+import jax_fli as jfli
 from tests.helpers import compare_fields
 
 _FIELD_RTOL = 1e-5

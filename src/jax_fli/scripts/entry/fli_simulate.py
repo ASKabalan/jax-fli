@@ -63,6 +63,7 @@ def _build_painting(args: Namespace):
                 paint_nside=args.paint_nside,
                 kernel_width_arcmin=getattr(args, "kernel_width_arcmin", None),
                 kernel_width_pixels=getattr(args, "kernel_width_pixels", None),
+                pixel_window_deconvolution=getattr(args, "pixel_window_deconvolution", False),
             ),
             nside,
             None,
@@ -189,16 +190,30 @@ def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> N
 def parser() -> ArgumentParser:
     """Build the flat argument parser with --sim-mode."""
     from jax_fli.scripts.parser import (
+        add_common_args,
         add_cosmo_args,
         add_distributed_args,
         add_integration_settings_args,
+        add_lensing_args,
+        add_output_target_args,
         add_simulation_settings_args,
     )
 
     p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
+    # --sim-mode is fli-simulate-only (lpt / pm / lensing select the pipeline depth).
+    p.add_argument(
+        "--sim-mode",
+        choices=["lpt", "pm", "lensing"],
+        required=True,
+        dest="sim_mode",
+        help="Simulation pipeline: lpt, pm (N-body), or lensing (N-body + Born)",
+    )
+    add_common_args(p)
     add_distributed_args(p)
     add_simulation_settings_args(p)
+    add_output_target_args(p)
     add_integration_settings_args(p)
+    add_lensing_args(p)
     add_cosmo_args(p)
     p.add_argument(
         "--grad",
@@ -257,6 +272,16 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
     nside = getattr(args, "nside", None)
     if interp == "onion" and nside is None:
         parser.error("--interp onion requires --nside")
+
+    # --pixel-window-deconvolution: spherical only, needs a closed-form window scheme
+    if getattr(args, "pixel_window_deconvolution", False):
+        if nside is None:
+            parser.error("--pixel-window-deconvolution requires --nside (spherical painting)")
+        if args.scheme not in ("ngp", "rbf_neighbor"):
+            parser.error(
+                "--pixel-window-deconvolution requires --scheme ngp or rbf_neighbor "
+                "(bilinear has no closed-form HEALPix pixel window)"
+            )
 
     # --grad: valid spec, pm/lensing only, and reverse adjoint requires uniform a-stepping
     try:
@@ -466,7 +491,10 @@ def main() -> None:
     compute_grad, grad_adjoint, grad_checkpoints = _parse_grad(args.grad)
 
     output_dir = os.path.dirname(args.output) or "."
-    _save_args_log(args, output_dir, f"fli-simulate {args.sim_mode}")
+    # Per-run log name from the output file (e.g. m512.parquet -> m512.args.log) so runs sharing a
+    # directory don't clobber one another; append so it sits after the fli-launcher command.
+    args_log_name = f"{os.path.splitext(os.path.basename(args.output))[0]}.args.log"
+    _save_args_log(args, output_dir, f"fli-simulate {args.sim_mode}", filename=args_log_name, mode="a")
 
     mesh = tuple(args.mesh_size)
     px, py = args.pdim
@@ -558,11 +586,13 @@ def main() -> None:
             print("Error: jax-hpc-profiler not found. Please install it to use --perf.", file=sys.stderr)
             sys.exit(1)
 
+        # Positional indices of the run_lpt / run_simulations static_argnames listed above: the
+        # timer re-jits with static_argnums, so every static_argname must appear here or it gets
+        # traced (a traced bool then fails the inner jit's static-hash). Keep in sync with the sigs.
         if sim_type == "lpt":
-            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11)
+            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13)
         else:
-            # 19=lensing_output, 21=adjoint, 22=checkpoints, 23=compute_grad (all static)
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 16, 19, 21, 22, 23)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 21, 22, 23)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

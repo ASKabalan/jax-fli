@@ -46,6 +46,8 @@ Command-line entry points for batch / HPC runs — one page per script under
 
 ## Experiments
 
+@CLAUDE this should have a general description then points to 5-experiments/README.md
+
 Reproduction studies that produce paper-ready figures — see [Experiments](5-experiments/).
 
 - [Experiment 08 — Masked shear](5-experiments/08-masked-shear/README.md) — Kaiser–Squires

@@ -14,12 +14,12 @@ import pytest
 
 jax.config.update("jax_enable_x64", True)
 
-import jax_fli as jfli
 from discodj import DiscoDJ
 from discodj.cosmology.cosmology import Cosmology as DiscoDJCosmology
+
+import jax_fli as jfli
 from jax_fli.fields import DensityField, FieldStatus
 from jax_fli.fields.units import DensityUnit
-
 from tests.helpers import compare_fields
 
 _FIELD_RTOL = 1e-5

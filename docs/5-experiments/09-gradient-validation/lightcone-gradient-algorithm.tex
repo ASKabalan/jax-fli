@@ -1,0 +1,43 @@
+% Reverse-mode gradient accumulation through a saved-snapshot lightcone.
+% Forward integration and its reverse-mode adjoint, in a single figure.
+% Source of truth for the algorithm shown in README.md. Render with:
+%   pdflatex lightcone-gradient-algorithm.tex
+%   pdftocairo -svg lightcone-gradient-algorithm.pdf assets/algorithm.svg
+\documentclass[varwidth=17.5cm, border=8pt]{standalone}
+\usepackage{amsmath}
+\usepackage{algpseudocode}
+\begin{document}
+\begin{minipage}{17cm}
+{\bfseries Reverse-mode gradient accumulation through a saved-snapshot lightcone}\\[3pt]
+\hrule\vspace{5pt}
+{\footnotesize\textit{step}$(y,a,a',\Delta a)$: one \emph{reversible} integrator step $a\!\to\!a'$, exactly inverted by \textit{step}$^{-1}$.\quad
+\textit{paint}$(y,t_s)$: write shell~$s$.\quad
+$(\partial\,\cdot\,/\partial\,\cdot)^{\!\top}$: VJP, returning cotangents for the state \emph{and} for $\theta$.}\\[5pt]
+\begin{algorithmic}[1]
+\Procedure{Forward}{$y_0,\ \theta,\ t_0<\dots<t_S,\ \Delta a$}
+  \State $y \gets y_0$
+  \For{$s = 1$ \textbf{to} $S$}
+    \State $a \gets t_{s-1}$
+    \While{$a < t_s$}
+      \State $a' \gets \min(a+\Delta a,\ t_s)$ \Comment{grid re-anchored at $t_{s-1}$; final step clipped onto $t_s$}
+      \State $y \gets \textit{step}(y,a,a',\Delta a)$;\quad $a \gets a'$
+    \EndWhile
+    \State $o_s \gets \textit{paint}(y,t_s)$ \Comment{paint shell $s$ (backward needs only $\bar o_s$)}
+  \EndFor
+  \State $y_S \gets y$;\quad \textbf{return} $\{o_s\}_{s=1}^{S},\ y_S$ \Comment{keep only the final state}
+\EndProcedure
+\vspace{4pt}
+\Procedure{Backward}{$\{\bar o_s\}_{s=1}^{S},\ y_S,\ \theta,\ t_0<\dots<t_S,\ \Delta a$}
+  \State $\lambda \gets 0$;\quad $y \gets y_S$ \Comment{trajectory adjoint; running (reconstructed) state}
+  \For{$s = S$ \textbf{down to} $1$}
+    \State $\lambda \gets \lambda + \big(\partial\,\textit{paint}(y,t_s)/\partial y\big)^{\!\top} \bar o_s$ \Comment{inject shell $s$ --- the fan-in (accumulate)}
+    \For{each forward step $a \to a'$ of $(t_{s-1},t_s]$, \textbf{in reverse}}
+      \State $y \gets \textit{step}^{-1}(y,a,a',\Delta a)$ \Comment{exact reconstruction; replays the same clipped grid}
+      \State $\lambda \gets \big(\partial\,\textit{step}(y,a,a',\Delta a)/\partial y\big)^{\!\top} \lambda$ \Comment{step VJP --- $\lambda$ overwritten}
+    \EndFor
+  \EndFor
+  \State \textbf{return} $\bar y_0 \gets \lambda$ \Comment{$\partial L/\partial y_0$; cosmology/solver adjoints accumulate likewise}
+\EndProcedure
+\end{algorithmic}
+\end{minipage}
+\end{document}

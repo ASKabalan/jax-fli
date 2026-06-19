@@ -8,10 +8,11 @@ from __future__ import annotations
 import healpy as hp
 import jax
 import jax.numpy as jnp
-import jax_fli as jfli
 import jax_healpy as jhp
 import numpy as np
 import pytest
+
+import jax_fli as jfli
 from jax_fli.power.decouple import anafast_masked, compute_mcm
 
 NS = 64

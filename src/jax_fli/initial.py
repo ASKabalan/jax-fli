@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 from jaxpm.distributed import fft3d, ifft3d, normal_field
-from jaxpm.kernels import fftk, interpolate_power_spectrum
+from jaxpm.kernels import fftk
 from jaxtyping import Array, PRNGKeyArray
 
 from .fields import DensityField, DensityUnit, FieldStatus
@@ -167,7 +167,7 @@ def interpolate_initial_conditions(
         else:
             k = jnp.logspace(-4, 1, 128)
             pk = jc.power.linear_matter_power(cosmo, k)
-            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, field_sharding)
+            pk_fn = lambda x: jnp.interp(x, k, pk)
 
     field = fft3d(initial_field)
     kvec = fftk(field)
