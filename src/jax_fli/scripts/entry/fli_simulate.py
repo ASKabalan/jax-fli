@@ -376,8 +376,6 @@ def run_lpt(
         "laplace_fd",
         "dealiased",
         "exact_growth",
-        "min_z",
-        "max_z",
         "n_integrate",
         "lensing_output",
         "adjoint",
@@ -594,7 +592,7 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 21, 22, 23)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)
