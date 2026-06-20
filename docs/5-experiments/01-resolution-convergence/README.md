@@ -145,6 +145,8 @@ fli-summary-stats results/exp1 --method healpy --normalization per_plane --mask 
 uv run --no-sync python 01-resolution-convergence.py   # -> assets/fig01..fig04.svg
 ```
 
-Parquet maps, both spectra sets, the perf CSV/report and the launch logs are published to the
-`ASKabalan/jax-fli-experiments` HuggingFace dataset (subset `01-resolution-convergence`); the figure
-script can load them from there instead of a local `results/exp1`.
+Density maps, both spectra sets, and the perf CSV/reports + launch logs are published to the
+`ASKabalan/jax-fli-experiments` HuggingFace dataset as four configs — `01-resolution-density`,
+`01-resolution-spectra`, `01-resolution-deconvolved-spectra`, and `01-resolution-perf` — each
+bundling all five resolutions as rows (index by `field.mesh_size`). The figure script loads them
+from there, with a local `results/exp1` fallback.

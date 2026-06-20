@@ -47,7 +47,10 @@ from _exputils import savefig, set_style  # noqa: E402
 ASSETS = HERE / "assets"
 DATA_DIR = HERE.parents[1] / "000_RUNS" / "results" / "exp1"  # local fallback (docs/000_RUNS/results/exp1)
 REPO = "ASKabalan/jax-fli-experiments"
-BASE = "01-resolution-convergence"  # HF dataset config prefix / folder
+# 4 HF configs; each bundles all 5 resolutions as rows (mapped to mesh below). perf is CSV-only.
+CFG_DENSITY = "01-resolution-density"
+CFG_SPECTRA = "01-resolution-spectra"
+CFG_DECONV = "01-resolution-deconvolved-spectra"
 
 NSIDE = 512
 BOX = 2000.0  # Mpc/h
@@ -62,25 +65,40 @@ BAND = (30, 200)  # intermediate-ℓ window where the full-sky cosmic variance i
 # --------------------------------------------------------------------------------------------
 # Loading + theory
 # --------------------------------------------------------------------------------------------
-def _catalog(config, local_path):
-    """Load a Catalog from the published HF dataset config; fall back to the local parquet."""
+def _load_config(config, local_glob):
+    """Return ``{mesh: (field, cosmo)}`` for a multi-row HF config (one row per resolution), keyed
+    by mesh size; fall back to the local flat parquet if the HF config is unavailable/offline."""
     try:
         from datasets import load_dataset
 
-        return Catalog.from_dataset(load_dataset(REPO, config, split="train").with_format("numpy"))
+        cat = Catalog.from_dataset(load_dataset(REPO, config, split="train").with_format("numpy"))
+        fields, cosmos = cat.field, cat.cosmology
     except Exception:
-        return Catalog.from_parquet(str(local_path))
+        from glob import glob as _glob
+
+        fields, cosmos = [], []
+        for p in sorted(_glob(local_glob)):
+            c = Catalog.from_parquet(p)
+            fields, cosmos = fields + c.field, cosmos + c.cosmology
+    return {int(np.asarray(f.mesh_size)[0]): (f, co) for f, co in zip(fields, cosmos)}
+
+
+print("Loading spectra configs from HF …")
+_spectra = _load_config(CFG_SPECTRA, str(DATA_DIR / "spectra_m*.parquet"))
+_deconv = _load_config(CFG_DECONV, str(DATA_DIR / "spectra_deconv_m*.parquet"))
+_density: dict = {}  # density maps (~1.2 GB) are loaded lazily, only for fig04
 
 
 def load_ps(mesh, deconv=False):
-    kind = "spectra-deconv" if deconv else "spectra"
-    fname = f"spectra{'_deconv' if deconv else ''}_m{mesh}.parquet"
-    cat = _catalog(f"{BASE}-{kind}-m{mesh}", DATA_DIR / fname)
-    return cat.field[0], cat.cosmology[0]
+    """``(PowerSpectrum, cosmology)`` for one resolution from the (deconvolved-)spectra config."""
+    return (_deconv if deconv else _spectra)[mesh]
 
 
 def load_map(mesh):
-    return _catalog(f"{BASE}-map-m{mesh}", DATA_DIR / f"m{mesh}.parquet").field[0]
+    """``SphericalDensity`` map for one resolution (lazy-loads the density config on first call)."""
+    if not _density:
+        _density.update(_load_config(CFG_DENSITY, str(DATA_DIR / "m*.parquet")))
+    return _density[mesh][0]
 
 
 def log_bin(ell, cl_2d, edges):
@@ -107,7 +125,7 @@ def band_ratio(ell, meas_2d, theo_2d, lo, hi):
     return mb / tb, float(np.sqrt(2.0 / w.sum()))
 
 
-print("Loading spectra + computing theory …")
+print("Computing theory …")
 raw = {m: np.asarray(load_ps(m)[0].array) for m in MESHES}
 dec = {m: np.asarray(load_ps(m, deconv=True)[0].array) for m in MESHES}
 ps_ref, cosmo = load_ps(MESHES[0])
