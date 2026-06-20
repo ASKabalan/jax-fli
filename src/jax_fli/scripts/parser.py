@@ -4,7 +4,7 @@ All functions are pure argparse — no jax_fli imports. Each builder owns **one*
 entry scripts compose only the groups they actually consume:
 
 * runtime               — ``add_common_args`` (``--enable-x64``)
-* distributed           — ``add_distributed_args`` (``--pdim`` / ``--nodes``)
+* distributed           — ``add_distributed_args`` (``--pdim`` / ``--nodes`` / ``--gpus-per-node``)
 * cosmology             — ``add_cosmo_args``
 * simulation geometry   — ``add_simulation_settings_args`` (box/mesh/halo/observer/seed)
                           + ``add_output_target_args`` (nside / density / flat-sky + painting)
@@ -36,7 +36,7 @@ def add_common_args(p):
 
 
 def add_distributed_args(p):
-    """Process-grid dimensions (pdim) and node count — single-device defaults."""
+    """Process-grid dimensions (pdim), node count, and GPUs-per-node — single-device defaults."""
     g = p.add_argument_group("distributed")
     g.add_argument(
         "--pdim",
@@ -47,6 +47,14 @@ def add_distributed_args(p):
         help="Process mesh dimensions (default: 1 1 = single device)",
     )
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
+    g.add_argument(
+        "--gpus-per-node",
+        type=int,
+        default=None,
+        dest="gpus_per_node",
+        help="GPUs per node (intra-node NVLink slice width) for the hybrid device mesh on "
+        "non-uniform interconnects. Default: None (falls back to $SLURM_GPUS_ON_NODE).",
+    )
 
 
 # ---------------------------------------------------------------------------

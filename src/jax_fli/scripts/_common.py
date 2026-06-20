@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 import warnings
 from argparse import Namespace
 
 import jax
-from jax.sharding import AxisType, NamedSharding
+from jax.experimental.mesh_utils import create_hybrid_device_mesh
+from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
@@ -228,10 +230,26 @@ def _save_args_log(args: Namespace, output_dir: str, prog: str, filename: str = 
     print(f"Args saved to {log_path}")
 
 
+def _resolve_gpus_per_node(args: Namespace) -> int:
+    """GPUs per node for the hybrid mesh: ``--gpus-per-node``, else ``$SLURM_GPUS_ON_NODE``."""
+    if getattr(args, "gpus_per_node", None) is not None:
+        return int(args.gpus_per_node)
+    env = os.environ.get("SLURM_GPUS_ON_NODE")
+    if env is None:
+        raise RuntimeError(
+            "Hybrid (multi-bandwidth) mesh detected but GPUs-per-node is unknown: pass "
+            "--gpus-per-node or set $SLURM_GPUS_ON_NODE."
+        )
+    return int(env)
+
+
 def _build_sharding(args: Namespace):
     """Return sharding or None for single-device runs.
 
-    Warns if the product of pdim dimensions does not match the available device count.
+    Warns if the product of pdim dimensions does not match the available device count. On a
+    non-uniform interconnect (NVLink intra-node + InfiniBand inter-node, detected via the
+    ``slice_index`` attribute on the devices) a hybrid mesh is built so the fast NVLink axis
+    stays inside each node; otherwise a plain uniform-bandwidth mesh is used.
     """
     print(f"jax devices: {jax.devices()}")
     pdim = tuple(args.pdim)
@@ -247,6 +265,19 @@ def _build_sharding(args: Namespace):
     if pdim == (1, 1):
         return None
 
-    mesh = jax.make_mesh(pdim, ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
+    if not hasattr(jax.devices()[0], "slice_index"):
+        # Uniform interconnect (single node / NVLink only).
+        mesh = jax.make_mesh(pdim, ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
+    else:
+        # Non-uniform interconnect (NVLink intra-node + InfiniBand inter-node): hybrid mesh.
+        gpus_per_node = _resolve_gpus_per_node(args)
+        if gpus_per_node <= 0 or pdim[0] % gpus_per_node != 0:
+            raise ValueError(
+                f"--pdim {pdim} with gpus_per_node={gpus_per_node}: the first pdim axis "
+                f"({pdim[0]}) must be a positive multiple of gpus_per_node for the hybrid mesh."
+            )
+        mesh_shape = (gpus_per_node, 1)
+        dcn_shape = (pdim[0] // gpus_per_node, pdim[1])
+        mesh = Mesh(create_hybrid_device_mesh(mesh_shape, dcn_shape), axis_names=("x", "y"))
     sharding = NamedSharding(mesh, P("x", "y"))
     return sharding

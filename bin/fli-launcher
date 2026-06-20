@@ -310,6 +310,8 @@ def main() -> None:
     cmd = list(resolved_payload) + [
         "--nodes",
         str(args.nodes),
+        "--gpus-per-node",
+        str(args.gpus_per_node),
         "--pdim",
         str(args.pdim[0]),
         str(args.pdim[1]),
