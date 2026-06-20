@@ -70,7 +70,7 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 # Deliberately excludes `cuda` so `tests` (which pulls jax-fli[all]) keeps CI on CPU JAX.
 all = ["jax_fli[catalog, sampling, raytrace, plot, benchmark]"]
-benchmark = ["jax-hpc-profiler"]
+benchmark = ["jax-hpc-profiler>=0.3.3"]
 catalog = [
   "datasets>=2.0",
   "huggingface_hub>=0.20",

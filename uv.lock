@@ -2077,8 +2077,8 @@ requires-dist = [
     { name = "jax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.10.0" },
     { name = "jax-cosmo", git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache" },
     { name = "jax-healpy", extras = ["recommended"], specifier = ">=0.7.0" },
-    { name = "jax-hpc-profiler", marker = "extra == 'all'" },
-    { name = "jax-hpc-profiler", marker = "extra == 'benchmark'" },
+    { name = "jax-hpc-profiler", marker = "extra == 'all'", specifier = ">=0.3.3" },
+    { name = "jax-hpc-profiler", marker = "extra == 'benchmark'", specifier = ">=0.3.3" },
     { name = "jaxpm", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=higher-order-paint" },
     { name = "jaxtyping" },
     { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.0" },
@@ -2141,7 +2141,7 @@ recommended = [
 
 [[package]]
 name = "jax-hpc-profiler"
-version = "0.3.2"
+version = "0.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "adjusttext" },
@@ -2153,9 +2153,9 @@ dependencies = [
     { name = "seaborn" },
     { name = "tabulate" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/d0/8d3492e61503920674ef2bffb241c0ca4014df52b0c274cf45e2affda255/jax_hpc_profiler-0.3.2.tar.gz", hash = "sha256:e814a6883380abf1a846d9ecd46e1a7bc824b1b3f309468ab380c616ded0c066", size = 62462, upload-time = "2026-02-11T14:03:39.547Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/4b/fff127d5ccb02f74a7b6454b7f9ae6b465dd9ff771635e28981235107fd8/jax_hpc_profiler-0.3.3.tar.gz", hash = "sha256:0b10b010d9523ac2a2e98469b5eee7ed5716be57291fd64c535f4b32519dd62f", size = 62563, upload-time = "2026-06-20T09:38:23.765Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/fa/5a92bc64c9ded903f3df1214ea15d747ae59a327404a557f378d6f63f9f9/jax_hpc_profiler-0.3.2-py3-none-any.whl", hash = "sha256:1b4a4d97d573e67270cdfc427db1109dc9f94de8ad5870232e2cb91cd538d720", size = 46671, upload-time = "2026-02-11T14:03:37.759Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/38/aeaad396da103c4ed2aba2d50390a8ba8294a7bbcde5a662e5db72a67f68/jax_hpc_profiler-0.3.3-py3-none-any.whl", hash = "sha256:cc46ff9d77a818d99e1bc01fc2726f2e782e1727dcd6b7159f300dc3815a6997", size = 46735, upload-time = "2026-06-20T09:38:22.374Z" },
 ]
 
 [[package]]
