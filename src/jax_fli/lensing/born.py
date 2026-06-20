@@ -12,7 +12,7 @@ from ..fields import FieldStatus, FlatKappaField, SphericalDensity, SphericalKap
 __all__ = ["born"]
 
 
-@jax.jit(static_argnames=["min_z", "max_z", "n_integrate", "normalization"])
+@jax.jit(static_argnames=["n_integrate", "normalization"])
 def born(
     cosmo,
     lightcone,

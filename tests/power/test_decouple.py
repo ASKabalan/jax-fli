@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import jax_fli as jfli
-from jax_fli.power.decouple import anafast_masked, compute_mcm
+from jax_fli.summary_statistics.decouple import anafast_masked, compute_mcm
 
 NS = 64
 LMAX = 3 * NS - 1

@@ -11,9 +11,9 @@ from .lightcone import FlatDensity, SphericalDensity
 from .units import ConvergenceUnit, convert_units
 
 if TYPE_CHECKING:
-    from ..power.power_spec import PowerSpectrum
+    from ..summary_statistics.power_spec import PowerSpectrum
 
-# NOTE: Kaiser-Squires (.._src.lensing) and the power estimators (..power) are imported lazily
+# NOTE: Kaiser-Squires (.._src.lensing) and the power estimators (..summary_statistics) are imported lazily
 # inside the methods below. lensing_maps is imported during ``jax_fli.fields`` initialization, and
 # ``.._src.lensing`` pulls in ``_born`` -> ``...fields`` (a cycle); deferring the imports to call
 # time avoids it (all modules are loaded by then).
@@ -310,6 +310,7 @@ class FlatShearField(FlatDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
+    @jax.jit
     def get_convergence(self) -> FlatKappaField:
         """Compute convergence from shear via inverse flat-sky Kaiser-Squires.
 
@@ -399,6 +400,7 @@ class SphericalShearField(SphericalDensity):
         )
         return self.replace(array=new_array, unit=unit)
 
+    @jax.jit(static_argnames=["lmax", "method", "iter"])
     def get_convergence(self, *, lmax: int | None = None, method: str = "jax", iter: int = 3) -> SphericalKappaField:
         """Compute convergence from shear via inverse Kaiser-Squires (uses the E-mode).
 
@@ -408,6 +410,8 @@ class SphericalShearField(SphericalDensity):
         """
         from .._src.lensing import shear2kappa_spherical
 
+        # NOTE: this inverse transform could mirror get_shear's distributed sharding (the inverse of
+        # the shear sharding logic in _src/lensing/_sharding.py). Deferred — not yet wired here.
         kappa = shear2kappa_spherical(self.array, lmax=lmax, method=method, iter=iter)
         return SphericalKappaField.FromDensityMetadata(
             array=kappa,
@@ -459,8 +463,8 @@ class SphericalShearField(SphericalDensity):
           binned (coupled) pseudo. The MCM is built once from ``mask`` and reused across the batch
           (or pass a precomputed ``mcm``).
         """
-        from ..power.decouple import anafast_masked, compute_mcm
-        from ..power.power_spec import PowerSpectrum
+        from ..summary_statistics.decouple import anafast_masked, compute_mcm
+        from ..summary_statistics.power_spec import PowerSpectrum
 
         data = self.array
         npix = data.shape[-1]

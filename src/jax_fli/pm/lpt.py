@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import partial
 from typing import Any
 
 import jax
@@ -17,8 +16,7 @@ from ._resolve_geometry import resolve_geometry
 __all__ = ["lpt"]
 
 
-@partial(
-    jax.jit,
+@jax.jit(
     static_argnames=[
         "order",
         "paint_order",

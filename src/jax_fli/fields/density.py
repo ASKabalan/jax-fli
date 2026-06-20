@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from functools import partial
 from typing import TYPE_CHECKING
 
 import jax
@@ -19,8 +18,8 @@ from .._src.base._core import AbstractField
 from .._src.base._enums import DensityUnit, FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_3d_density, prepare_axes
-from ..power import PowerSpectrum, coherence, transfer
-from ..power import power as power_fn
+from ..summary_statistics import PowerSpectrum, coherence, transfer
+from ..summary_statistics import power as power_fn
 from .lightcone import FlatDensity
 from .units import convert_units
 
@@ -143,7 +142,7 @@ class DensityField(AbstractField):
 
         return self.replace(array=new_array, unit=unit)
 
-    @partial(jax.jit, static_argnames=["nz_slices"])
+    @jax.jit(static_argnames=["nz_slices"])
     def project(self, nz_slices: int = 10) -> FlatDensity:
         """
         Create a 2D projection by summing slices along the z-axis.
@@ -294,8 +293,7 @@ class DensityField(AbstractField):
         plt.show()
 
     # -------------------------------------------------------- power-spectrum API
-    @partial(
-        jax.jit,
+    @jax.jit(
         static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
     )
     def power(
@@ -313,7 +311,7 @@ class DensityField(AbstractField):
     ) -> PowerSpectrum:
         """Compute the 3D matter power spectrum P(k).
 
-        Parameters mirror :func:`jax_fli.power.power`. Any keyword
+        Parameters mirror :func:`jax_fli.summary_statistics.power`. Any keyword
         arguments are forwarded verbatim to that helper.
 
         ``compensate_order`` deconvolves the mass-assignment window of that
@@ -365,8 +363,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(
-        jax.jit,
+    @jax.jit(
         static_argnames=["multipoles", "los", "batch_size", "kmax", "dk", "compensate_order", "shotnoise"],
     )
     def cross_power(
@@ -476,7 +473,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
+    @jax.jit(static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def transfer(
         self,
         other: DensityField,
@@ -533,7 +530,7 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
-    @partial(jax.jit, static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
+    @jax.jit(static_argnames=["batch_size", "kmax", "dk", "compensate_order", "shotnoise"])
     def coherence(
         self,
         other: DensityField,

@@ -25,7 +25,17 @@ from .._src.io._power_spec_catalog import (
     ps_to_row,
     row_to_ps_cosmo,
 )
-from ..power.power_spec import PowerSpectrum
+from .._src.io._summary_stat_catalog import (
+    SUMMARY_CATALOG_VERSION,
+    build_summary_features,
+    is_summary_stat,
+    row_to_summary_cosmo,
+    summary_to_row,
+)
+from ..summary_statistics.power_spec import PowerSpectrum
+
+# entry_type values handled by the summary-statistic backend (PDF/PeakCounts/StarletCoefficients).
+_SUMMARY_ENTRY_TYPES = {"PDF", "PeakCounts", "StarletCoefficients"}
 
 try:
     import datasets
@@ -56,20 +66,24 @@ def requires_datasets(func: Callable[Param, ReturnType]) -> Callable[Param, Retu
 
 
 def _detect_backend(entries: list) -> str:
-    """Return 'field' or 'power_spec' based on the first entry type.
+    """Return 'field', 'power_spec', or 'summary_stat' based on the first entry type.
 
-    PowerSpectrum is checked first because it now inherits AbstractField.
+    PowerSpectrum and the summary-statistic types are checked before the generic AbstractField
+    branch because they all inherit AbstractField.
     """
     if not entries:
         raise ValueError("Cannot determine backend from an empty list.")
     first = entries[0]
     if isinstance(first, PowerSpectrum):  # must precede AbstractField check
         return "power_spec"
+    elif is_summary_stat(first):  # PDF / PeakCounts / StarletCoefficients (also AbstractField)
+        return "summary_stat"
     elif isinstance(first, AbstractField):
         return "field"
     else:
         raise TypeError(
-            f"Catalog entries must be AbstractField or PowerSpectrum instances, got {type(first).__name__}."
+            f"Catalog entries must be AbstractField, PowerSpectrum, or a summary statistic "
+            f"(PDF/PeakCounts/StarletCoefficients), got {type(first).__name__}."
         )
 
 
@@ -77,10 +91,17 @@ def _validate_homogeneous(entries: list, backend: str) -> None:
     """Raise TypeError if entries are not all the same backend type."""
     if backend == "field":
         for i, entry in enumerate(entries):
-            # Explicitly reject PowerSpectrum since it is now a subclass of AbstractField
-            if isinstance(entry, PowerSpectrum) or not isinstance(entry, AbstractField):
+            # Reject PowerSpectrum and the summary-statistic types (all subclass AbstractField).
+            if isinstance(entry, PowerSpectrum) or is_summary_stat(entry) or not isinstance(entry, AbstractField):
                 raise TypeError(
                     f"Catalog must be homogeneous: entry 0 is a field, "
+                    f"but entry {i} is {type(entry).__name__}. Mixed catalogs are not supported."
+                )
+    elif backend == "summary_stat":
+        for i, entry in enumerate(entries):
+            if not is_summary_stat(entry):
+                raise TypeError(
+                    f"Catalog must be homogeneous: entry 0 is a summary statistic, "
                     f"but entry {i} is {type(entry).__name__}. Mixed catalogs are not supported."
                 )
     else:
@@ -185,11 +206,12 @@ class Catalog(eqx.Module):
         """
         backend = self.backend
 
+        for entry in self.field:
+            if not jax.core.is_concrete(entry.array):
+                raise ValueError("Cannot convert to dataset inside a jit context (arrays are tracers).")
+
+        ds_list = []
         if backend == "field":
-            for f in self.field:
-                if not jax.core.is_concrete(f.array):
-                    raise ValueError("Cannot convert to dataset inside a jit context (arrays are tracers).")
-            ds_list = []
             for f, c in zip(self.field, self.cosmology):
                 from datasets import Dataset
 
@@ -197,14 +219,20 @@ class Catalog(eqx.Module):
                 if data is not None:
                     features = build_features(f)
                     ds_list.append(Dataset.from_dict(data, features=features))
+        elif backend == "summary_stat":
+            for obj, c in zip(self.field, self.cosmology):
+                from datasets import Dataset
+
+                data = summary_to_row(obj, c, SUMMARY_CATALOG_VERSION)
+                if data is not None:
+                    features = build_summary_features(obj)
+                    ds_list.append(Dataset.from_dict(data, features=features))
         else:
             # power_spec backend
-            version = PS_CATALOG_VERSION
-            ds_list = []
             for ps, c in zip(self.field, self.cosmology):
                 from datasets import Dataset
 
-                data = ps_to_row(ps, c, version)
+                data = ps_to_row(ps, c, PS_CATALOG_VERSION)
                 if data is not None:
                     features = build_ps_features(ps, c)
                     ds_list.append(Dataset.from_dict(data, features=features))
@@ -245,30 +273,33 @@ class Catalog(eqx.Module):
             # Single-row dict
             entry_type = ds.get("entry_type", ["field"])
             entry_type = entry_type[0] if isinstance(entry_type, list) else entry_type
-            if entry_type == "PowerSpectrum":
-                ps, c, v = row_to_ps_cosmo(ds, sharding=sharding)
-                return cls(field=[ps], cosmology=[c], version=v)
+            if str(entry_type) == "PowerSpectrum":
+                e, c, v = row_to_ps_cosmo(ds, sharding=sharding)
+            elif str(entry_type) in _SUMMARY_ENTRY_TYPES:
+                e, c, v = row_to_summary_cosmo(ds, sharding=sharding)
             else:
-                f, c, v = row_to_field_cosmo(ds, sharding=sharding)
-                return cls(field=[f], cosmology=[c], version=v)
+                e, c, v = row_to_field_cosmo(ds, sharding=sharding)
+            return cls(field=[e], cosmology=[c], version=v)
 
         elif isinstance(ds, datasets.Dataset | datasets.IterableDataset):
             ds_jax = ds.with_format("numpy")
 
-            # Detect backend from the first row
+            # Detect backend from the first row's entry_type
             first_row = ds_jax[0]
             raw_entry_type = first_row.get("entry_type", "field")
             if isinstance(raw_entry_type, (list | Array)):
                 raw_entry_type = raw_entry_type[0]
-            is_ps = str(raw_entry_type) == "PowerSpectrum"
+            entry_type = str(raw_entry_type)
 
             entries = []
             cosmologies = []
             version = CATALOG_VERSION
             for i in range(len(ds_jax)):
                 row = ds_jax[i]
-                if is_ps:
+                if entry_type == "PowerSpectrum":
                     e, c, v = row_to_ps_cosmo(row, sharding=sharding)
+                elif entry_type in _SUMMARY_ENTRY_TYPES:
+                    e, c, v = row_to_summary_cosmo(row, sharding=sharding)
                 else:
                     e, c, v = row_to_field_cosmo(row, sharding=sharding)
                 entries.append(e)

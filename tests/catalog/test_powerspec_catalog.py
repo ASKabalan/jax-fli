@@ -19,7 +19,7 @@ import jax_cosmo as jc
 import jax_fli as jfli
 from jax_fli._src.io._power_spec_catalog import PS_CATALOG_VERSION
 from jax_fli.io.catalog import Catalog
-from jax_fli.power import cross_angular_cl_spherical
+from jax_fli.summary_statistics import cross_angular_cl_spherical
 
 jax.config.update("jax_enable_x64", True)  # Use float64 for better precision in tests
 

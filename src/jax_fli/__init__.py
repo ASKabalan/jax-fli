@@ -23,6 +23,7 @@ from .fields import (
     SphericalDensity,
     SphericalKappaField,
     SphericalShearField,
+    StarletCoefficients,
     convert_units,
     units,
 )
@@ -54,15 +55,21 @@ from .pm import (
     simulation_stepping,
 )
 
-# From power
-from .power import (
+# From summary_statistics (formerly jax_fli.power)
+from .summary_statistics import (
+    PDF,
+    BinnedStatistic,
+    PeakCounts,
     PowerSpectrum,
     angular_cl_flat,
     angular_cl_spherical,
     coherence,
     compute_theory_cl,
     compute_theory_cl_for_density,
+    pdf_spherical,
+    peak_counts_spherical,
     power,
+    starlet_coefficients_spherical,
     tophat_z,
     transfer,
 )
@@ -109,6 +116,7 @@ __all__ = [
     "SphericalDensity",
     "SphericalKappaField",
     "SphericalShearField",
+    "StarletCoefficients",
     "convert_units",
     "units",
     # From pm
@@ -129,7 +137,7 @@ __all__ = [
     "resolve_geometry",
     "compute_n_steps_for_shells",
     "simulation_stepping",
-    # From power
+    # From summary_statistics
     "PowerSpectrum",
     "power",
     "transfer",
@@ -139,6 +147,12 @@ __all__ = [
     "compute_theory_cl",
     "compute_theory_cl_for_density",
     "tophat_z",
+    "BinnedStatistic",
+    "PDF",
+    "pdf_spherical",
+    "PeakCounts",
+    "peak_counts_spherical",
+    "starlet_coefficients_spherical",
     # From lensing
     "born",
     "raytrace",
