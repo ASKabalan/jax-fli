@@ -34,7 +34,7 @@ _SPHERICAL_TYPES = {"SphericalDensity", "SphericalKappaField"}
 _SUPPORTED_TYPES = _DENSITY_TYPES | _KAPPA_TYPES | _DENSITY3D_TYPE
 
 # Output files are written next to the input with this prefix; re-runs skip their own outputs.
-_OUTPUT_PREFIX = "summary_stats_"
+_OUTPUT_PREFIX = "spectra_"
 
 
 def parser() -> ArgumentParser:
