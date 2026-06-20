@@ -67,6 +67,7 @@ def _maybe_init_distributed() -> None:
 _maybe_init_distributed()
 
 import argparse
+import os
 import re
 from pathlib import Path
 
@@ -74,8 +75,9 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
+from jax.experimental.mesh_utils import create_hybrid_device_mesh
 from jax.experimental.multihost_utils import sync_global_devices
-from jax.sharding import AxisType, NamedSharding
+from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jax_fli as jfli
@@ -88,16 +90,40 @@ HERE = Path(__file__).resolve().parent
 NZ_CHOICES = {"s3": get_stage3_nz_shear, "des": get_des_y3_nz_shear}
 
 
-def _mesh_sharding(nbins: int):
+def _mesh_sharding(nbins: int, gpus_per_node: int | None = None):
     """2-D device mesh + the canonical spherical-lightcone sharding (npix on "x", bins on "y").
 
     Mirrors 11-multi-host-pm.py (P_Y = source bins, P_X = the rest). ``apply_sharding`` trims this
     ``P("x","y")`` to the loaded map's actual shape (npix → "x"); Born then emits κ as ``P("y","x")``.
+
+    On a non-uniform interconnect (NVLink intra-node + InfiniBand inter-node, detected via the
+    ``slice_index`` attribute) a hybrid mesh is built so the fast NVLink axis stays inside each
+    node; ``gpus_per_node`` (``--gpus-per-node`` or ``$SLURM_GPUS_ON_NODE``) is the slice width.
     """
     n_dev = jax.device_count()
     p_y = nbins if (nbins > 0 and n_dev % nbins == 0) else 1
     p_x = n_dev // p_y
-    mesh = jax.make_mesh((p_x, p_y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
+    if not hasattr(jax.devices()[0], "slice_index"):
+        # Uniform interconnect (single node / NVLink only).
+        mesh = jax.make_mesh((p_x, p_y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
+    else:
+        # Non-uniform interconnect (NVLink intra-node + InfiniBand inter-node): hybrid mesh.
+        if gpus_per_node is None:
+            env = os.environ.get("SLURM_GPUS_ON_NODE")
+            if env is None:
+                raise RuntimeError(
+                    "Hybrid (multi-bandwidth) mesh detected but GPUs-per-node is unknown: pass "
+                    "--gpus-per-node or set $SLURM_GPUS_ON_NODE."
+                )
+            gpus_per_node = int(env)
+        if gpus_per_node <= 0 or p_x % gpus_per_node != 0:
+            raise ValueError(
+                f"mesh ({p_x}, {p_y}) with gpus_per_node={gpus_per_node}: the first mesh axis "
+                f"({p_x}) must be a positive multiple of gpus_per_node for the hybrid mesh."
+            )
+        mesh_shape = (gpus_per_node, 1)
+        dcn_shape = (p_x // gpus_per_node, p_y)
+        mesh = Mesh(create_hybrid_device_mesh(mesh_shape, dcn_shape), axis_names=("x", "y"))
     return mesh, NamedSharding(mesh, P("x", "y"))
 
 
@@ -132,6 +158,14 @@ def main() -> None:
     ap.add_argument("--nz", choices=list(NZ_CHOICES), default="s3", help="source n(z): s3 (Stage-3) or des (DES Y3)")
     ap.add_argument("--nside", type=int, default=None, help="downsample density to this nside (default: native)")
     ap.add_argument("--nbins", type=int, default=4, help="number of source bins (also the mesh 'y' size)")
+    ap.add_argument(
+        "--gpus-per-node",
+        type=int,
+        default=None,
+        dest="gpus_per_node",
+        help="GPUs per node (intra-node NVLink slice width) for the hybrid device mesh on "
+        "non-uniform interconnects. Default: None (falls back to $SLURM_GPUS_ON_NODE).",
+    )
     ap.add_argument("--out", default=None, help="output parquet path (default: kappa_born.parquet next to this script)")
     ap.add_argument("--multihost", action="store_true", help="(informational) distributed init is auto-detected")
     ap.add_argument("--smoke-test", action="store_true", help="round-trip a tiny sharded density, then Born it")
@@ -139,7 +173,7 @@ def main() -> None:
 
     lead = jax.process_index() == 0
     nz_shear = NZ_CHOICES[args.nz]()[: args.nbins]
-    mesh, sharding = _mesh_sharding(args.nbins)
+    mesh, sharding = _mesh_sharding(args.nbins, args.gpus_per_node)
     if lead:
         print(f"devices={jax.device_count()} mesh={tuple(mesh.devices.shape)} sharding={sharding.spec}", flush=True)
 
