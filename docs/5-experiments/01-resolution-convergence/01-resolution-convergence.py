@@ -325,6 +325,7 @@ def fig04_maps(shell=9):
             cmap="inferno",
             cbar=False,
             notext=True,
+            bgcolor=(0.0,) * 4,
         )
     fig.suptitle(
         f"δ maps, shell {shell} (z={z_shells[shell]:.2f}), $\\log_{{10}}(1+\\delta)$ — "
