@@ -9,20 +9,24 @@ Works out, *before* any cluster run, the box / mesh / shell geometry needed to s
   * **big quadrant** observer near a corner ``(0.1, 0.5, 0.9)``      -> box ``(1.2r, 2.0r, 1.2r)``
 
 and for two source depths (a **2-bin** set = DES Y3 bins 1+2, a **3-bin** set = bins 1+2+3;
-bin 4's tail reaches too far). That is a **2x2 set of sims**.
+bin 4's tail reaches too far). Each of that **2x2** is run under both a 1-D **slab** (``pdim 128 1``)
+and a 2-D **pencil** (``pdim 32 4``) device decomposition -> **8 sims**.
 
 What it does (all on CPU):
   1. Load DES Y3 ``n(z)`` and measure each bin's *effective end* — the redshift past which the
      density has dropped to ~zero (``n(z) >= THRESH_FRAC * peak``), calibrated so bin 3 ~ z 1.0.
-  2. Size each box with ``jax_fli.compute_box_size_from_redshift(cosmo, z_max, observer)``.
+  2. Size each box from the observer factors 1 + 2*min(f, 1-f) (cf.
+     ``jax_fli.compute_box_size_from_redshift``): round 2r(z_max) up to a tidy side L; the quadrant is
+     (0.6L, L, 0.6L), i.e. (1.2r, 2.0r, 1.2r) for observer (0.1, 0.5, 0.9).
   3. Pull the published CosmoGrid nside-2048 density back from HuggingFace, **downsample every
      shell to nside 4** (memory only — we just want the per-shell metadata), and read each
      shell's scale factor + comoving edges.
   4. Select the shells that fall inside each box and emit the ``--ts-near`` / ``--ts-far`` edge
      lists (CosmoGrid scale-factor edges) that reproduce them.
-  5. Size the mesh + GPU layout: full sky 2560^3; quadrant packs the SAME 2560^3 cell budget into its
-     smaller volume at isotropic, finer dx. Both on 128 GPUs.
-  6. Save the geometry figure (assets/exp06-geometry.svg) and write geometry.sh for run.sh.
+  5. Size the mesh + GPU layout: full sky 2560^3; quadrant packs the SAME ~2560^3 cell budget into its
+     smaller volume at isotropic, finer dx, with a mesh chosen so it is valid under BOTH the slab and
+     pencil device grids. Both on 128 GPUs.
+  6. Save the geometry + visibility-mask figures (assets/exp06-*.svg) and write geometry.sh for run.sh.
 
     python prep_geometry.py
 """
@@ -37,6 +41,7 @@ os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import gc  # noqa: E402
 import re  # noqa: E402
 import sys  # noqa: E402
+from math import lcm  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import jax  # noqa: E402
@@ -69,14 +74,21 @@ UD_NSIDE = 4  # downsample the nside-2048 shells to this purely to save memory (
 THRESH_FRAC = 0.10
 
 OBS_FULL = (0.5, 0.5, 0.5)  # full-sky observer (box centre) -> isotropic 2r cube
-# Big-quadrant observer: the Experiment 08 geometry (one centred axis, two corner axes), reoriented so
-# the centred (long, factor-2.0) axis is FIRST. That axis is the one sharded over pdim_x and the one the
-# spherical npix is partitioned over, so making it the longest lets the full 2560^3 cell budget pack into
-# the quadrant's smaller volume at isotropic dx (finer than full sky). (0.1,0.5,0.9) -> (0.5,0.1,0.9).
-OBS_QUAD = (0.5, 0.1, 0.9)
+# Big-quadrant observer: EXACTLY the Experiment 08 corner geometry (one centred axis, two corner axes),
+# so the lightcone visibility footprint is identical to Exp 08's and a later masking analysis recovers the
+# same mask. The factors 1 + 2*min(f, 1-f) = (1.2, 2.0, 1.2) give box (1.2r, 2.0r, 1.2r): the long
+# (centred) axis is SECOND, so the short sharded axis is first. We therefore size the quadrant mesh so it
+# is valid under BOTH the slab and the pencil device grid (see quadrant_mesh). Earlier revisions
+# X/Y-reoriented this to (0.5,0.1,0.9) to keep the long axis first; that reflected the footprint across
+# x=y and no longer matched Exp 08 — fixed here.
+OBS_QUAD = (0.1, 0.5, 0.9)
 MESH_FULL = 2560  # full-sky cubic mesh side (the m2560 template), float64 on 128 GPUs
 N_GPUS = 128  # h100: 4 GPU/node -> 32 nodes
-PDIM = (128, 1)  # process grid (shard the first/M axis); same for full sky and quadrant
+GPUS_PER_NODE = 4
+BOX_STEP = 200  # round 2r up to a multiple of this for tidy box sides (4200, 5000)
+PDIM_SLAB = (128, 1)  # 1-D slab decomposition (shard the first axis)
+PDIM_PENCIL = (32, 4)  # 2-D pencil decomposition (shard the first two axes)
+PDIMS = (PDIM_SLAB, PDIM_PENCIL)  # the meshes must be valid under both
 
 ZGRID = np.linspace(0.005, 2.995, 600)  # DES Y3 n(z) support
 
@@ -115,9 +127,11 @@ def nz_summary(nz_list):
 def load_cosmogrid_shells():
     from datasets import get_dataset_config_names, load_dataset
 
-    cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_PREFIX) + r"-\d+", n))
+    # Matches the single ``00-cosmogrid-density`` config (current layout, per-shell parquet files) and the
+    # older ``00-cosmogrid-density-NN`` split, whichever the dataset currently ships.
+    cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_PREFIX) + r"(-\d+)?", n))
     if not cfgs:
-        raise RuntimeError(f"no {DENSITY_PREFIX}-NN configs on {REPO}")
+        raise RuntimeError(f"no {DENSITY_PREFIX}[-NN] configs on {REPO}")
     print(f"[shells] loading {len(cfgs)} CosmoGrid density configs {cfgs}, ud_sample -> nside {UD_NSIDE}")
     fields, cosmo = [], None
     for n in cfgs:
@@ -148,23 +162,43 @@ def r_of_z(cosmo, z):
     return float(jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(float(z))).squeeze())
 
 
-def box_of(cosmo, z_max, obs):
-    return np.asarray(jfli.compute_box_size_from_redshift(cosmo, float(z_max), tuple(obs)), dtype=float)
+def _axis_ok(n, p, *, hm=0.5, detail=False):
+    """A mesh axis of size ``n`` sharded over ``p`` processes is valid iff ``n/p`` is an integer and the
+    halo ``int((n/p)*hm)`` is even (jaxpm ``slice_unpad`` crashes on an odd halo). The truncating ``int``
+    is why e.g. local=17 -> halo 8 is fine. Returns the bool, or ``(bool, halo)`` if ``detail``."""
+    ok = n % p == 0
+    halo = int((n // p) * hm) if ok else -1
+    ok = ok and halo % 2 == 0
+    return (ok, halo) if detail else ok
 
 
-def quadrant_mesh(box_quad, budget_side, pdim_x):
-    """Mesh ∝ box_quad with isotropic dx and ~``budget_side**3`` cells: the quadrant uses the same cell
-    budget as the full-sky run, packed into its smaller volume -> finer dx. ``box_quad`` has its longest
-    axis first (it is sharded over ``pdim_x`` and carries the spherical npix), so that axis is rounded to
-    a multiple of 512 (even halo at halo-multiplier 0.5); the two short axes round to a 5-smooth even size
-    (multiple of 80) for an efficient FFT, kept isotropic with the long axis."""
+def _round_valid(target, procs):
+    """Nearest mesh-axis size to ``target`` that is valid (integer local + even halo) under every process
+    count in ``procs`` — searched over multiples of ``lcm(procs)`` so divisibility is guaranteed."""
+    procs = sorted({int(p) for p in procs})
+    step = lcm(*procs) if len(procs) > 1 else procs[0]
+    base = max(step, int(round(target / step)) * step)
+    for k in range(1024):
+        for cand in (base + k * step, base - k * step):
+            if cand >= step and all(_axis_ok(cand, p) for p in procs):
+                return cand
+    raise RuntimeError(f"no valid mesh axis near {target:.0f} for procs {procs}")
+
+
+def quadrant_mesh(box_quad, budget_side, pdims):
+    """Mesh ∝ box_quad with isotropic dx and ~``budget_side**3`` cells, valid under EVERY process grid in
+    ``pdims`` so the SAME mesh runs as both a 1-D slab and a 2-D pencil. ``box_quad`` has its longest
+    (centred, factor-2.0) axis SECOND (observer (0.1,0.5,0.9)): axis 0 is sharded over pdim_x, axis 1 over
+    pdim_y, axis 2 is replicated. Axes 0/1 round to the nearest size with an even halo under both grids;
+    the replicated axis 2 only needs to be even."""
     box = np.asarray(box_quad, dtype=float)
-    assert box[0] == box.max(), "box_quad must have its longest (centred) axis first"
-    f = box / box.max()  # (1.0, s, s)
-    s = (budget_side**3 / float(np.prod(f))) ** (1.0 / 3.0)  # cells along the longest axis
-    n0 = int(round(f[0] * s / 512) * 512)  # sharded/M axis: multiple of 512
-    nshort = int(round(n0 * f[1] / f[0] / 80) * 80)  # 5-smooth even, isotropic with the long axis
-    return (n0, nshort, nshort)
+    assert box[1] == box.max(), "box_quad must have its longest (centred) axis second"
+    f = box / box.max()  # (s, 1.0, s), s = 0.6
+    long = (budget_side**3 / float(np.prod(f))) ** (1.0 / 3.0)  # cells along the long (2nd) axis
+    n1 = _round_valid(long, [pd[1] for pd in pdims])  # long axis, sharded over pdim_y
+    n0 = _round_valid(long * f[0], [pd[0] for pd in pdims])  # short axis 0, sharded over pdim_x
+    n2 = int(round(long * f[2] / 2.0) * 2)  # short axis 2, replicated -> just even
+    return (n0, n1, n2)
 
 
 def select_shells(shells, r_max):
@@ -249,6 +283,30 @@ def make_figure(cosmo, nz_list, rows, nz_vals, shells, sets):
     savefig(ASSETS / "exp06-geometry", fig)
 
 
+def make_mask_figure():
+    """The big-quadrant visibility footprint (``jaxpm.spherical.spherical_visibility_mask``) at the
+    corrected observer — documents that it IS the Exp 08 corner geometry (a centred cap, not the
+    X/Y-reflected one), so a later masking analysis recovers the same mask. ``R_min`` is set to a
+    representative deepest-shell fraction to expose the cap (the orientation, not the exact size, is the
+    point); the full-sky observer sees the whole sphere."""
+    import healpy as hp
+    from jaxpm.spherical import spherical_visibility_mask
+
+    nside = 128
+    mask = np.asarray(spherical_visibility_mask(nside, jnp.asarray(OBS_QUAD), box_size=1.0, R_min=0.45, R_max=np.inf))
+    set_style()
+    fig = plt.figure(figsize=(6.0, 4.4))
+    hp.mollview(
+        mask,
+        fig=fig,
+        cmap="viridis",
+        cbar=False,
+        title=f"Big-quadrant visibility footprint — orientation only (illustrative R_min)\n"
+        f"observer {OBS_QUAD} — the Exp 08 corner geometry (a centred cap, not X/Y-reflected)",
+    )
+    savefig(ASSETS / "exp06-mask", fig)
+
+
 # --------------------------------------------------------------------------------------------------
 def main():
     nz_list = get_des_y3_nz_shear()
@@ -284,10 +342,15 @@ def main():
         ts_near, ts_far = shells["a_near"][m], shells["a_far"][m]
         sets[key]["ts_near"], sets[key]["ts_far"], sets[key]["nsel"] = ts_near, ts_far, int(m.sum())
 
-        box_full = box_of(cosmo, z_max, OBS_FULL)
-        box_quad = box_of(cosmo, z_max, OBS_QUAD)  # longest (centred) axis first -> (2r, 1.2r, 1.2r)
+        # Round 2r up to a tidy multiple of BOX_STEP that still contains the shells; the quadrant keeps the
+        # observer's (1.2, 2.0, 1.2) factor ratio off the SAME rounded full-sky side L (long axis SECOND).
+        # The natural box is jfli.compute_box_size_from_redshift(cosmo, z_max, obs); we round it for tidiness.
+        L = int(np.ceil(2.0 * r / BOX_STEP) * BOX_STEP)
+        assert L / 2.0 >= r, f"rounded box side {L} too small for r={r:.0f}"
+        box_full = np.array([L, L, L], dtype=float)
+        box_quad = np.array([0.6 * L, float(L), 0.6 * L], dtype=float)  # (1.2r', 2r', 1.2r'), r'=L/2
         dx_full = box_full[0] / MESH_FULL  # full-sky dx (cubic mesh)
-        mesh_quad = quadrant_mesh(box_quad, MESH_FULL, PDIM[0])  # full cell budget -> finer dx
+        mesh_quad = quadrant_mesh(box_quad, MESH_FULL, PDIMS)  # same cell budget, valid for slab+pencil
         dx_quad = box_quad / np.asarray(mesh_quad)  # per axis (isotropic by construction)
         sets[key].update(box_full=box_full, box_quad=box_quad, dx_full=dx_full, dx_quad=dx_quad, mesh_quad=mesh_quad)
 
@@ -300,20 +363,22 @@ def main():
         sets[key]["ell_quad"] = (float(ell_quad.min()), float(ell_quad.max()))
 
         print(f"\n  [{key}]  z_max={z_max:.3f}  r={r:.0f} Mpc/h  shells_selected={int(m.sum())}/{nshell}")
-        print(f"     full sky  : box {box_full[0]:.0f}^3   mesh {MESH_FULL}^3   dx={dx_full:.3f} Mpc/h   128 GPUs")
+        print(f"     full sky  : box {box_full[0]:.0f}^3   mesh {MESH_FULL}^3   dx={dx_full:.3f} Mpc/h   {N_GPUS} GPUs")
         print(
             f"     quadrant  : box ({box_quad[0]:.0f}, {box_quad[1]:.0f}, {box_quad[2]:.0f})  mesh {mesh_quad}  "
-            f"dx=({dx_quad[0]:.3f}, {dx_quad[1]:.3f}, {dx_quad[2]:.3f})   128 GPUs"
+            f"dx=({dx_quad[0]:.3f}, {dx_quad[1]:.3f}, {dx_quad[2]:.3f})   {N_GPUS} GPUs"
         )
-        # halo / divisibility sanity for the sharded first (M) axis (pdim_x = 128)
-        for name, n0 in (("full", MESH_FULL), ("quad", mesh_quad[0])):
-            loc = n0 / PDIM[0]
-            halo = int(loc * 0.5)
-            ok = (loc == int(loc)) and (halo % 2 == 0)
-            print(f"     {name:>4} M/pdim_x={n0}/{PDIM[0]}={loc:g}  halo={halo}  {'OK' if ok else 'BAD'}")
+        # halo / divisibility sanity: EVERY (mesh, pdim) pairing run.sh launches must give an even halo.
+        for mname, mesh in (("full", (MESH_FULL,) * 3), ("quad", tuple(mesh_quad))):
+            for pd in PDIMS:
+                ok0, h0 = _axis_ok(mesh[0], pd[0], detail=True)
+                ok1, h1 = _axis_ok(mesh[1], pd[1], detail=True)
+                tag = "slab" if pd == PDIM_SLAB else "pencil"
+                print(f"     {mname:>4} {tag:>6} pdim={pd}: halo=({h0},{h1})  {'OK' if ok0 and ok1 else 'BAD'}")
+                assert ok0 and ok1, f"{mname} mesh {mesh} invalid under pdim {pd}"
         cells_full = MESH_FULL**3 / N_GPUS
         cells_quad = float(np.prod(mesh_quad)) / N_GPUS
-        print(f"     per-GPU cells (128): full {cells_full:.2e}  quad {cells_quad:.2e}  (float64 ceiling ~1.34e8)")
+        print(f"     per-GPU cells ({N_GPUS}): full {cells_full:.2e}  quad {cells_quad:.2e}  (float64 ceiling ~1.34e8)")
         print(
             f"     mesh l_max ~ pi*d/dx (innermost..outermost shell): full {ell_full.min():.0f}..{ell_full.max():.0f}"
             f"   quad {ell_quad.min():.0f}..{ell_quad.max():.0f}   (nside 2048 carries l~6000)"
@@ -327,18 +392,17 @@ def main():
     out = HERE / "geometry.sh"
     with out.open("w") as fh:
         fh.write("# generated by prep_geometry.py — DO NOT EDIT. Sourced by run.sh.\n")
+        fh.write("# 2-bin set = DES Y3 bins 1+2 ; 3-bin set = bins 1+2+3. CosmoGrid shell a-edges (a_near > a_far).\n")
         fh.write(
-            "# 2-bin set = DES Y3 bins 1+2 ; 3-bin set = bins 1+2+3. CosmoGrid shell a-edges (a_near > a_far).\n\n"
+            f"# {N_GPUS} GPUs ({N_GPUS // GPUS_PER_NODE} nodes x {GPUS_PER_NODE}); each mesh runs as a slab AND a pencil.\n\n"
         )
         fh.write(f'MESH_FULL="{MESH_FULL} {MESH_FULL} {MESH_FULL}"\n')
         fh.write(f'MESH_QUAD="{mesh_quad[0]} {mesh_quad[1]} {mesh_quad[2]}"\n')
         fh.write(f'OBS_FULL="{" ".join(str(x) for x in OBS_FULL)}"\n')
         fh.write(f'OBS_QUAD="{" ".join(str(x) for x in OBS_QUAD)}"\n')
-        fh.write(f'NODES_FULL={N_GPUS // 4}; PDIM_FULL="{PDIM[0]} {PDIM[1]}"   # full sky: {N_GPUS} GPUs\n')
-        fh.write(
-            f'NODES_QUAD={N_GPUS // 4}; PDIM_QUAD="{PDIM[0]} {PDIM[1]}"   # quadrant: {N_GPUS} GPUs '
-            "(full 2560^3 cell budget -> finer dx)\n\n"
-        )
+        fh.write(f"NODES={N_GPUS // GPUS_PER_NODE}\n")
+        fh.write(f'PDIM_SLAB="{PDIM_SLAB[0]} {PDIM_SLAB[1]}"      # 1-D slab decomposition\n')
+        fh.write(f'PDIM_PENCIL="{PDIM_PENCIL[0]} {PDIM_PENCIL[1]}"   # 2-D pencil decomposition\n\n')
         for key in ("2bin", "3bin"):
             tag = key.upper()
             fh.write(f'BOX_{tag}_FULL="{vec(sets[key]["box_full"])}"\n')
@@ -349,6 +413,8 @@ def main():
 
     make_figure(cosmo, nz_list, rows, nz_vals, shells, sets)
     print(f"[write] {ASSETS / 'exp06-geometry.svg'}")
+    make_mask_figure()
+    print(f"[write] {ASSETS / 'exp06-mask.svg'}")
 
 
 if __name__ == "__main__":

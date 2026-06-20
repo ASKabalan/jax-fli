@@ -22,9 +22,25 @@ OUTPUT_LOGS="${OUTPUT_LOGS:-SLURM_LOGS}"
 RESULTS="${RESULTS:-results}"
 SEED="${SEED:-0}"
 
+# Cosmo grid run000 Cosmology
+# Cosmological parameters:
+#     h:        0.73
+#     Omega_b:  0.045
+#     Omega_c:  0.25378877
+#     Omega_k:  0.0
+#     w0:       -1.1665
+#     wa:       0.0
+#     n:        0.97
+#     sigma8:   0.9
+#     Omega_nu: 0.0012112348
+
 # CosmoGrid fiducial (== fli-simulate defaults; kept explicit for the record).
 COSMO="--h 0.6774 --Omega-b 0.0486 --Omega-c 0.2589 --sigma8 0.8159 --n-s 0.9667 \
 --Omega-k 0.0 --w0 -1.0 --wa 0.0 --Omega-nu 0.0"
+# Cosmo grid run000 Cosmology
+COSMOGRID_COSMO="--h 0.73 --Omega-b 0.045 --Omega-c 0.25378877 --sigma8 0.9 --n-s 0.97 \
+--Omega-k 0.0 --w0 -1.1665 --wa 0.0 --Omega-nu 0.0012112348"
+
 BOX2="2000.0 2000.0 2000.0"   # 2 Gpc/h accuracy box (Exp 1–7)
 
 # launch <nodes> <gpus_per_node> <pdim_x> <pdim_y> <time> -- <fli-simulate args...>
