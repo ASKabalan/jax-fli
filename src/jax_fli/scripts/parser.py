@@ -551,6 +551,13 @@ def add_summary_stats_spherical_args(p):
         default="healpy",
         help="SHT method for spherical Cl computation (default: healpy)",
     )
+    g.add_argument(
+        "--pixel-window-deconvolution",
+        action="store_true",
+        dest="pixel_window_deconvolution",
+        help="Deconvolve the HEALPix pixel window: divide the spherical Cl by pixwin(nside)^2 "
+        "(clipped near the band-limit rolloff). Output is written with a 'spectra_deconv_' prefix.",
+    )
 
 
 def add_summary_stats_density_args(p):

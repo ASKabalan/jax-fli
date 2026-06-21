@@ -2,32 +2,38 @@
 # ruff: noqa: E402
 """Experiment 00 — re-publish the CosmoGrid density reference at native nside 2048.
 
-The HuggingFace config ``00-cosmogrid-density`` was previously a float32 nside-512 downsample. The
-native CosmoGrid lightcone is **nside 2048, uint16 particle counts, 69 shells** (z < 3.5), stored in
-``compressed_shells.npz`` (confirmed against cosmogrid.ai/data_docs). This script rebuilds the field
-straight from that npz at full resolution and publishes it as **density** (ρ = N / V_shell, float32),
-split into a few per-redshift **set configs** ``00-cosmogrid-density-NN`` (see "Why sets + DENSITY").
+Streams the native CosmoGrid lightcone to disk with the shared loader
+``jfli.io.load_cosmogrid_lc(..., output=folder)`` (which parses the cosmology + shell geometry,
+**selects shells by redshift**, and writes **one parquet per shell** — ``shell_NNN.parquet`` — in its
+native **COUNTS** unit, float32), then publishes those files as **one config** ``00-cosmogrid-density``
+with **one row per shell** on HuggingFace. (COUNTS is what every other ``load_cosmogrid_lc`` consumer
+gets; ``jfli.born``/``jfli.raytrace`` convert to overdensity internally.)
 
-**Why sets + DENSITY.** The full nside-2048 lightcone array (~67 shells) can't be one dataset config:
-serializing it OOMs (``datasets.Dataset.from_dict`` balloons ~10× → > 62 GB RAM), and even if it fit,
-``load_dataset`` combining ~67·npix ≈ 3.4 G elements overflows arrow's INT32 list offset. So we split
-the **shell axis into ``--n-sets`` sets** (default 4), each published as its **own config**
-``00-cosmogrid-density-NN`` — small enough to write under RAM and to load independently with plain
-``load_dataset`` (each set's combine stays under INT32). We save as **DENSITY** (ρ = N / V_shell,
-float32) rather than raw uint16 counts: that is the physical quantity AND makes each cell genuinely
-4-byte, so the serializer's auto-split (sized by ``itemsize``) matches the parquet data-page size
-(uint16 is upcast to int32 on disk, so a uint16 cell mis-splits and overflows the page).
+**Extent (z ≤ ``--max-z``, default 1.6).** Depth is set by the **DES Y3** weak-lensing sources, whose
+deepest bin ends at z≈1.45 (10%-of-peak; see ``docs/5-experiments/06-cosmogrid-shells``). So we keep
+shells with ``lower_z <= max_z`` (~56 shells at 1.6) — the small Stage-3 bin-4 tail beyond 1.6 is
+negligible for the lensing kernel, so this one reference serves both the DES and Stage-3 born/raytrace
+paths. (``load_cosmogrid_lc(max_redshift=…)`` does the masking.)
 
-By default we keep only the leading shells covering the source n(z) of **both** shears in ``jfli.data``
-(Stage-3 reaches z≈1.7, DES Y3 z≈3.0 → ~67/69 shells); ``--all-shells`` keeps all 69. Reassemble the
-full lightcone by loading each ``-NN`` config and concatenating along the shell axis (see the README).
+**One config, one parquet per shell.** The full nside-2048 lightcone can't be one parquet: stacking it
+to write OOMs, and ``load_dataset`` combining ~n_shells·npix > INT32 elements overflows arrow's list
+offset. So the loader writes **one ``(npix,)`` parquet per shell** (~200 MB), and we register them all
+as separate **rows** under **one config** ``00-cosmogrid-density`` (a glob ``data_files``). Writing one
+shell at a time keeps peak RAM ~one shell. Reassemble by **streaming** the config and stacking:
 
-Run on CPU (pure I/O + serialization; no GPU). ~16 GB host RAM is enough per set:
+    ds = load_dataset(REPO, "00-cosmogrid-density", split="train", streaming=True)
+    field = SphericalDensity.stack([Catalog.from_dataset(r).field[0] for r in ds])  # (n_shells, npix)
+
+Each row is one ``(npix,)`` shell; ``stack`` adds the leading shell axis. Streaming is **required**: a
+plain (non-streaming) ``load_dataset`` would combine all shell rows into one arrow table and overflow
+the INT32 offset.
+
+Run on CPU (pure I/O + serialization; no GPU); the per-shell stream keeps peak RAM low:
 
     python publish_density_2048.py --self-test     # fast: validate the serializer split round-trip, then exit
-    python publish_density_2048.py --check          # inspect the PUBLISHED 00-cosmogrid-density-NN configs on HF
-    python publish_density_2048.py --out /scratch/d.parquet   # build the set parquets locally (no upload) to verify
-    python publish_density_2048.py --publish       # build sets + upload as 00-cosmogrid-density-NN configs
+    python publish_density_2048.py --check          # STREAM the PUBLISHED 00-cosmogrid-density config on HF
+    python publish_density_2048.py --out /scratch/density   # write the per-shell parquets to a folder (no upload)
+    python publish_density_2048.py --publish       # write shells + upload as one config 00-cosmogrid-density
 
 ``HF_TOKEN`` must be set in the environment for ``--publish``.
 """
@@ -41,12 +47,9 @@ import os
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import argparse
-import gc
 import re
-import tarfile
 from pathlib import Path
 
-import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
@@ -65,71 +68,6 @@ DEFAULT_RUN = "CosmoGrid/raw/cosmo_000001/run_0"
 # --------------------------------------------------------------------------------------------------
 # Build
 # --------------------------------------------------------------------------------------------------
-def _parse_cosmo_and_geometry(run_dir: Path, shell_info: np.ndarray):
-    """Mirror ``load_cosmogrid_lc``'s metadata parsing (cosmology + box/grid + shell geometry).
-
-    Reads only the small text/struct metadata — NOT the 7 GB ``shells`` array.
-    """
-    # Cosmology from params.yml
-    params: dict = {}
-    with open(run_dir / "params.yml") as f:
-        for line in f:
-            if ":" in line:
-                key, val = line.strip().split(":", 1)
-                try:
-                    params[key.strip()] = float(val.strip())
-                except ValueError:
-                    params[key.strip()] = val.strip()
-    cosmo = jc.Cosmology(
-        Omega_c=float(params["O_cdm"]),
-        Omega_b=float(params["Ob"]),
-        h=float(params["H0"]) / 100.0,
-        n_s=float(params["ns"]),
-        sigma8=float(params["s8"]),
-        w0=float(params["w0"]),
-        wa=float(params["wa"]),
-        Omega_k=0.0,
-        Omega_nu=float(params["O_nu"]),
-    )
-
-    # Box / grid from cosmology.par (flat or inside param_files.tar.gz)
-    sim_specs: dict = {}
-    flat = run_dir / "param_files" / "cosmology.par"
-    tar = run_dir / "param_files.tar.gz"
-    if flat.exists():
-        for line in open(flat):
-            line = line.split("#")[0].strip()
-            if "=" in line:
-                k, v = line.split("=", 1)
-                sim_specs[k.strip()] = v.strip()
-    elif tar.exists():
-        with tarfile.open(tar, "r:gz") as t:
-            try:
-                fobj = t.extractfile(t.getmember("cosmology.par"))
-                if fobj is not None:
-                    for line in fobj.read().decode("utf-8").splitlines():
-                        line = line.split("#")[0].strip()
-                        if "=" in line:
-                            k, v = line.split("=", 1)
-                            sim_specs[k.strip()] = v.strip()
-            except KeyError:
-                pass
-
-    upper_com = shell_info["upper_com"]
-    box = float(sim_specs.get("dBoxSize", np.max(upper_com)))
-    n_grid = int(sim_specs.get("nGrid", 0))
-    mesh_size = (n_grid, n_grid, n_grid) if n_grid > 0 else (int(box), int(box), int(box))
-    box_size = (box, box, box)
-
-    lower_z, upper_z = shell_info["lower_z"], shell_info["upper_z"]
-    lower_com = shell_info["lower_com"]
-    z_centers = 0.5 * (lower_z + upper_z)
-    comoving_centers = 0.5 * (lower_com + upper_com)
-    shell_widths = np.abs(upper_com - lower_com)
-    scale_factors = 1.0 / (1.0 + z_centers)
-    return cosmo, mesh_size, box_size, z_centers, scale_factors, comoving_centers, shell_widths
-
-
 def build_density_field(shells, nside, z_centers, scale_factors, comoving_centers, shell_widths, mesh_size, box_size):
     """One stacked ``SphericalDensity`` (n_shells, npix) keeping the raw dtype of ``shells``.
 
@@ -153,27 +91,8 @@ def build_density_field(shells, nside, z_centers, scale_factors, comoving_center
     )
 
 
-def _n_shells_for_sources(shell_info, frac: float = 1e-3) -> tuple[int, float]:
-    """Leading shells needed so the lightcone covers the source n(z) of BOTH shears in ``jfli.data``.
-
-    A shell is a lens plane for a source at z_s when its near edge z_lower < z_s, so we keep every
-    shell whose ``lower_z`` is below the max source redshift across Stage-3 + DES Y3 (Stage-3 reaches
-    z≈1.7, DES Y3 z≈3.0). Shells entirely beyond all sources contribute nothing and are dropped.
-    """
-    from jax_fli.data import get_des_y3_nz_shear, get_stage3_nz_shear
-
-    z_src_max = 0.0
-    for nz in list(get_stage3_nz_shear()) + list(get_des_y3_nz_shear()):
-        zc = np.asarray(nz.params[0])
-        w = np.asarray(nz.params[1])
-        zsup = zc[w > frac * w.max()]
-        z_src_max = max(z_src_max, float(zsup.max()))
-    lower_z = np.asarray(shell_info["lower_z"])
-    return int(np.sum(lower_z < z_src_max)), z_src_max
-
-
 # --------------------------------------------------------------------------------------------------
-# Pre-flight: the >2 GB split path is untested in the repo — validate it on a tiny array.
+# Pre-flight: validate the serializer split round-trip on a tiny array.
 # --------------------------------------------------------------------------------------------------
 def self_test() -> None:
     """Force the parquet split path on a tiny uint16 field; assert dtype/shape/values survive."""
@@ -230,7 +149,7 @@ def self_test() -> None:
 
 
 # --------------------------------------------------------------------------------------------------
-# Check — what do the published HF density entries (00-cosmogrid-density-NN) expose?
+# Check — what does the published HF config 00-cosmogrid-density expose? (one config, many shell rows)
 # --------------------------------------------------------------------------------------------------
 def _fmt_array(x) -> str:
     if x is None:
@@ -241,40 +160,37 @@ def _fmt_array(x) -> str:
     return np.array2string(a, precision=4, separator=", ")
 
 
-def _density_config_names(meta, prefix: str) -> list[str]:
-    """All set configs ``<prefix>-NN`` in the card (sorted); falls back to an exact ``prefix`` config."""
-    names = [c.get("config_name") for c in meta.get("configs") or []]
-    sets = sorted(n for n in names if n and re.fullmatch(re.escape(prefix) + r"-\d+", n))
-    if not sets and prefix in names:
-        sets = [prefix]
-    return sets
+def check(config: str) -> None:
+    """STREAM the published config's per-shell rows, stack along the shell axis, and summarize.
 
-
-def check(prefix: str) -> None:
-    """Report the published density entries: load each ``<prefix>-NN`` config, concatenate, summarize.
-
-    Each set config loads independently with plain ``load_dataset`` (no combine overflow); the sets are
-    concatenated along the shell axis into the full lightcone. Downloads the parquet(s) into ``HF_HOME``.
+    The config holds one ``(npix,)`` COUNTS row per shell. We must STREAM it (a non-streaming
+    ``load_dataset`` would combine ~n_shells·npix > INT32 elements and overflow arrow's list offset),
+    then ``SphericalDensity.stack`` the rows into a ``(n_shells, npix)`` lightcone.
     """
     from datasets import load_dataset
     from huggingface_hub import HfApi
 
     api = HfApi()
     meta, _ = _load_card(api)
-    sets = _density_config_names(meta, prefix)
-    if not sets:
-        print(f"[check] no '{prefix}' or '{prefix}-NN' configs in the dataset card on {REPO}.")
+    if _config_path(meta, config) is None:
+        print(f"[check] config {config} is not in the dataset card on {REPO}.")
         return
-    print(f"[check] {REPO}: {len(sets)} density entr(y/ies) {sets}. Loading each + concatenating …")
+    print(f"[check] {REPO}:{config} — streaming per-shell rows + concatenating …")
     fields, c = [], None
-    for n in sets:
-        cat = jfli.io.Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy"))
+    for row in load_dataset(REPO, config, split="train", streaming=True):
+        cat = jfli.io.Catalog.from_dataset(row)
         fields += cat.field
         c = cat.cosmology[0]
-        f = cat.field[0]
-        print(f"   {n}: {tuple(f.array.shape)} {f.array.dtype} nside={f.nside} {f.status.name}/{f.unit.name}")
-    full = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields) if len(fields) > 1 else fields[0]
+    if not fields:
+        print(f"[check] config {config} has no rows.")
+        return
+    # Each row is one (npix,) shell; stack adds the leading shell axis → (n_shells, npix).
+    full = jfli.SphericalDensity.stack(fields)
+    f0 = fields[0]
     z = np.asarray(full.z_sources)
+    print(
+        f"  rows={len(fields)} (per-shell)  each {tuple(f0.array.shape)} {f0.array.dtype} {f0.status.name}/{f0.unit.name}"
+    )
     print(
         f"  joined     : {tuple(full.array.shape)} {full.array.dtype} nside={full.nside} {full.status.name}/{full.unit.name}"
     )
@@ -338,24 +254,19 @@ def main() -> None:
     ap.add_argument("--skip-self-test", action="store_true", help="skip the pre-flight test before the big build")
     ap.add_argument("--sim-root", default=str(DEFAULT_SIM_ROOT))
     ap.add_argument("--run", default=DEFAULT_RUN, help="run dir relative to --sim-root")
+    ap.add_argument("--out", default=None, help="local folder for the per-shell parquets (default: a temp dir)")
     ap.add_argument(
-        "--out", default=None, help="local parquet path stem (sets append _setNNofMM; default: next to this script)"
-    )
-    ap.add_argument(
-        "--n-sets",
-        type=int,
-        default=4,
-        help="number of shell-sets / configs to split the lightcone into (each set keeps to_parquet under RAM)",
-    )
-    ap.add_argument(
-        "--all-shells",
-        action="store_true",
-        help="publish all 69 shells (default: only those covering the jfli.data source n(z), ~67)",
+        "--max-z",
+        type=float,
+        default=1.6,
+        dest="max_z",
+        help="keep shells with lower_z <= MAX_Z (DES Y3 source depth ~1.45, see exp 06; passed to "
+        "load_cosmogrid_lc(max_redshift=...)). Default 1.6.",
     )
     ap.add_argument(
         "--publish",
         action="store_true",
-        help="upload the sets to HuggingFace as 00-cosmogrid-density-NN configs (replacing the old single config)",
+        help="upload per-shell parquet rows to HuggingFace under one config 00-cosmogrid-density",
     )
     args = ap.parse_args()
 
@@ -369,88 +280,57 @@ def main() -> None:
     if not args.skip_self_test:
         self_test()
 
+    import tempfile
+
     run_dir = Path(args.sim_root) / args.run
-    npz = np.load(run_dir / "compressed_shells.npz")  # lazy NpzFile
-    shell_info = npz["shell_info"]  # small struct array
-    cosmo, mesh_size, box_size, z, a, com, dw = _parse_cosmo_and_geometry(run_dir, shell_info)
-
-    # Extent: keep enough leading shells to cover the source n(z) of BOTH shears in jfli.data
-    # (Stage-3 reaches z≈1.7, DES Y3 z≈3.0), unless --all-shells is given.
-    if args.all_shells:
-        n_keep, z_src_max = len(z), float(z.max())
-    else:
-        n_keep, z_src_max = _n_shells_for_sources(shell_info)
-    print(f"Source n(z) (Stage-3 + DES Y3) reach z≈{z_src_max:.3f} → keeping {n_keep}/{len(z)} shells.")
-
-    print(f"Loading raw uint16 shells from {run_dir / 'compressed_shells.npz'} …")
-    shells = npz["shells"]  # (69, 50331648) uint16 ≈ 7 GB
-    nside = int(round((shells.shape[-1] / 12) ** 0.5))
-    assert shells.dtype == np.uint16, f"expected uint16 raw counts, got {shells.dtype}"
-    assert 12 * nside * nside == shells.shape[-1], "npix is not 12·nside²"
+    # The loader streams ONE parquet per shell to a folder (shell_NNN.parquet) — it never stacks the
+    # whole lightcone, so peak RAM stays ~one shell (a full-stack load of the nside-2048 run OOMs).
+    # Native COUNTS float32 (born/raytrace convert to overdensity internally; this matches every other
+    # load_cosmogrid_lc consumer). Each file is one HF ROW; all register under ONE config via a glob.
+    out_dir = Path(args.out).resolve() if args.out else Path(tempfile.mkdtemp(prefix="cosmogrid_density_"))
+    print(f"Streaming CosmoGrid density shells (z ≤ {args.max_z}) → {out_dir} via load_cosmogrid_lc …")
+    jfli.io.load_cosmogrid_lc(run_dir, max_redshift=args.max_z, output=out_dir)
+    shell_paths = sorted(out_dir.glob("shell_*.parquet"))
+    if not shell_paths:
+        raise RuntimeError(f"no shell parquets written to {out_dir}")
+    s0 = jfli.io.Catalog.from_parquet(str(shell_paths[0]))
+    f0, cosmo = s0.field[0], s0.cosmology[0]
     print(
-        f"   cosmo: Oc={float(cosmo.Omega_c):.4f} Ob={float(cosmo.Omega_b):.4f} h={float(cosmo.h):.4f} "
-        f"s8={float(cosmo.sigma8):.4f} ns={float(cosmo.n_s):.4f} w0={float(cosmo.w0):.4f}"
+        f"   wrote {len(shell_paths)} shell parquet(s) (~{shell_paths[0].stat().st_size / 1e6:.0f} MB each); "
+        f"{type(f0).__name__} nside={f0.nside} {f0.array.dtype} {f0.unit.name}; "
+        f"cosmo Oc={float(cosmo.Omega_c):.4f} h={float(cosmo.h):.4f} s8={float(cosmo.sigma8):.4f}"
     )
-
-    # Split the shell axis into N sets, each saved as its OWN config ("entry"). A single config
-    # spanning all shells would overflow arrow's INT32 element offset when load_dataset combines it
-    # (67·npix ≈ 3.4 G > 2.1 G), so per-set configs let plain load_dataset read them one by one.
-    # Save as DENSITY (ρ = N / V_shell, float32): this is the physical quantity AND makes each cell
-    # genuinely 4-byte, so the serializer's auto-split (which sizes by itemsize) matches the parquet
-    # data page (raw uint16 is upcast to int32 on disk → mis-split → page overflow).
-    n_sets = args.n_sets
-    bounds = np.linspace(0, n_keep, n_sets + 1).astype(int)
-    ranges = [(int(bounds[i]), int(bounds[i + 1] - bounds[i])) for i in range(n_sets) if bounds[i + 1] > bounds[i]]
-    n_sets = len(ranges)
-    base = Path(args.out).parent if args.out else HERE
-    stem = Path(args.out).stem if args.out else "cosmogrid_density_nside2048"
-    print(
-        f"Splitting {n_keep} shells → {n_sets} sets of {[sz for _, sz in ranges]} shells, saved as DENSITY (float32):"
-    )
-
-    set_paths = []
-    for ci, (s, sz) in enumerate(ranges):
-        e = s + sz
-        fld = build_density_field(shells[s:e], nside, z[s:e], a[s:e], com[s:e], dw[s:e], mesh_size, box_size)
-        fld = fld.to(jfli.DensityUnit.DENSITY)  # COUNTS → ρ = N / V_shell (float32)
-        outp = base / f"{stem}_set{ci:02d}of{n_sets:02d}.parquet"
-        print(
-            f"   [{ci + 1}/{n_sets}] shells {s}:{e}  {tuple(fld.array.shape)} {fld.array.dtype} ({fld.array.nbytes / 1e9:.2f} GB) → {outp.name} …"
-        )
-        jfli.io.Catalog(field=fld, cosmology=cosmo).to_parquet(str(outp))
-        print(f"        wrote {outp} ({outp.stat().st_size / 1e9:.2f} GB)")
-        set_paths.append(outp)
-        del fld
-        gc.collect()
-    del shells, npz
 
     if not args.publish:
-        print(f"Not publishing (pass --publish). Wrote {n_sets} local set parquet(s) under {base}.")
-        print(f"   Load: concatenate the {n_sets} '{DENSITY_CONFIG}-NN' configs along the shell axis (see README).")
+        print(f"Not publishing (pass --publish). Wrote {len(shell_paths)} per-shell parquet(s) under {out_dir}.")
+        print(f"   Load: load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) → concatenate rows.")
         return
 
     from huggingface_hub import HfApi
 
     api = HfApi()
     meta, body = _load_card(api)
-    existing = _config_path(meta, DENSITY_CONFIG)
-    catalogs_dir = str(Path(existing).parent) if existing else "00-cosmogrid/catalogs"
-    print(f"\nPublishing {n_sets} sets to {REPO} as configs {DENSITY_CONFIG}-00..{n_sets - 1:02d}:")
-    for ci, outp in enumerate(set_paths):
-        repo_path = f"{catalogs_dir}/{outp.name}"
-        config_name = f"{DENSITY_CONFIG}-{ci:02d}"
-        print(f"   uploading [{ci + 1}/{n_sets}] → {repo_path}  (config {config_name}) …")
-        api.upload_file(path_or_fileobj=str(outp), path_in_repo=repo_path, repo_id=REPO, repo_type="dataset")
-        _ensure_config(meta, config_name, repo_path)
-    # Drop the stale single-file 00-cosmogrid-density config (old nside-512) — only the set entries remain.
-    meta["configs"] = [c for c in meta.get("configs", []) if c.get("config_name") != DENSITY_CONFIG]
+    catalogs_dir = "00-cosmogrid/catalogs"
+    prefix = "cosmogrid_density_nside2048"
+    glob = f"{catalogs_dir}/{prefix}_shell*.parquet"
+    print(f"\nUploading {len(shell_paths)} shell parquet(s) to {REPO} under ONE config {DENSITY_CONFIG} …")
+    for i, p in enumerate(shell_paths):
+        repo_path = f"{catalogs_dir}/{prefix}_{p.name}"  # cosmogrid_density_nside2048_shell_NNN.parquet
+        print(f"   [{i + 1}/{len(shell_paths)}] → {repo_path}")
+        api.upload_file(path_or_fileobj=str(p), path_in_repo=repo_path, repo_id=REPO, repo_type="dataset")
+    # ONE config pointing at all shell files via a glob; drop any stale per-set -NN configs.
+    meta["configs"] = [
+        c
+        for c in meta.get("configs", [])
+        if not re.fullmatch(re.escape(DENSITY_CONFIG) + r"-\d+", c.get("config_name", ""))
+    ]
+    _ensure_config(meta, DENSITY_CONFIG, glob)
     _save_card(api, meta, body)
+    print(f"   done. {len(shell_paths)} shells published as ONE config {DENSITY_CONFIG} (glob {glob}).")
     print(
-        f"   done. nside-{nside} DENSITY published as {n_sets} configs {DENSITY_CONFIG}-00..{n_sets - 1:02d} ({n_keep} shells)."
+        f"   Load: stream + concatenate — "
+        f"load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) (see README)."
     )
-    print("   Load each config, then concatenate along the shell axis (see README).")
-    if existing:
-        print(f"   NOTE: old parquet {existing} is now orphaned (config removed); delete it on the Hub if you want.")
 
 
 if __name__ == "__main__":

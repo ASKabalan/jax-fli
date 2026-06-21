@@ -169,14 +169,37 @@ def _build_solver(args: Namespace, painting):
 
 
 def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> None:
-    """Save result to parquet (process 0 only)."""
+    """Save result to parquet (process 0 only).
+
+    With ``--shells-per-file N`` (N >= 1) on a batched, multi-shell result, ``out_path`` is treated
+    as a *directory* and the lightcone is streamed N shells at a time into ``shell_{i:04d}.parquet``,
+    so only N shells are all-gathered to host RAM at once. This avoids the host OOM of gathering the
+    whole nside-2048 lightcone (e.g. 46 shells x ~402 MB at float64) onto every task. The per-chunk
+    write reuses the field ``__getitem__`` slice (array + per-shell metadata) and the loop runs in
+    lockstep on every rank, so each ``to_parquet`` stays a synchronized collective.
+
+    Otherwise (flag unset, or a non-batched single field), the whole result is written to one parquet.
+    """
     out_path = output if output is not None else args.output
-    parent_folder = os.path.dirname(out_path)
-    if parent_folder:
-        os.makedirs(parent_folder, exist_ok=True)
     name = getattr(args, "name", None)
     if name is not None:
         result = result.replace(name=name)
+
+    shells_per_file = int(getattr(args, "shells_per_file", 0) or 0)
+    if shells_per_file >= 1 and result.is_batched():
+        os.makedirs(out_path, exist_ok=True)
+        n_shells = int(result.array.shape[0])
+        for i in range(0, n_shells, shells_per_file):
+            chunk = result[i : i + shells_per_file]
+            chunk_path = os.path.join(out_path, f"shell_{i:04d}.parquet")
+            jfli.io.Catalog(field=chunk, cosmology=cosmo).to_parquet(chunk_path)
+        if jax.process_index() == 0:
+            print(f"Saved {n_shells} shells (chunks of {shells_per_file}) to {out_path}/")
+        return
+
+    parent_folder = os.path.dirname(out_path)
+    if parent_folder:
+        os.makedirs(parent_folder, exist_ok=True)
     catalog = jfli.io.Catalog(field=result, cosmology=cosmo)
     catalog.to_parquet(out_path)
     print(f"Saved to {out_path}")
@@ -236,6 +259,16 @@ def parser() -> ArgumentParser:
         default=5,
         metavar="N",
         help="Number of timed iterations for --perf (default: 5)",
+    )
+    p.add_argument(
+        "--shells-per-file",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Stream a multi-shell lightcone to disk N shells per parquet file (default: 0 = one "
+        "single file). When N>=1, --output is treated as a directory and one shell_NNNN.parquet is "
+        "written per N-shell chunk, gathering only N shells to host RAM at a time (avoids OOM at "
+        "large nside / many shells).",
     )
 
     return p
@@ -627,6 +660,8 @@ def main() -> None:
         func_name = f"{sim_type}{nb_steps}"
         timer.report(report_file, function=func_name, extra_info=extra_info, **metadata)
         print(f"Performance report saved to {report_file}")
+        # Keep the last timed result and fall through to the save below, so one --perf run yields BOTH
+        # the perf CSV and the parquet output(s) (per-shell when --shells-per-file is set).
     else:
         result = jax.block_until_ready(run_fn(cosmo, initial_field, **run_kwargs))
 

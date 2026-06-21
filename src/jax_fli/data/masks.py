@@ -45,5 +45,6 @@ def build_observer_visibility_mask(observer_position, nside, apodization_scale_d
 
     from .apodize import apodize
 
-    binary = spherical_visibility_mask(nside, jnp.asarray(observer_position), box_size=1.0)
+    coverage = spherical_visibility_mask(nside, jnp.asarray(observer_position), box_size=1.0, threshold=0.1)
+    binary = (coverage > 0).astype(jnp.uint8)  # keep the rim; a uint8 cast would truncate to coverage==1.0
     return apodize(binary, apodization_scale_deg)

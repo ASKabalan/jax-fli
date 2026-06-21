@@ -11,7 +11,11 @@ Distributed exactly like ``docs/2-advanced-usage/11-multi-host-pm.py``: one proc
 mesh). Unlike ray-tracing (replicated numpy+MPI), Born is JAX-native, so the density is *sharded*,
 not replicated — each device holds only its npix slab.
 
-    srun -n $SLURM_NTASKS python born_kappa.py --multihost --nz s3 --out kappa_born.parquet
+    srun -n $SLURM_NTASKS python born_kappa.py --nz s3 --out kappa_born.parquet
+
+    # local multi-process validation on CPU (a 1-GPU box can't host 8 JAX processes) — needs the
+    # explicit CPU platform; one MPI rank per CPU device, true multi-host via jax.distributed:
+    uv run mpirun -n 8 -x JAX_PLATFORMS=cpu python born_kappa.py --nside 32
 
     # smoke test on fake CPU devices — round-trips a tiny density through the sharded LOAD path,
     # then runs distributed Born on it:
@@ -26,6 +30,12 @@ os.environ.setdefault("JAX_ENABLE_X64", "False")
 os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.97")
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 os.environ.setdefault("XLA_PYTHON_CLIENT_ALLOCATOR", "platform")
+# Run fully offline from the warm HuggingFace cache (pre-populated by download.py): the per-shell
+# snapshot_download + streaming load below must NEVER touch the network. The cache LOCATION is still
+# $HF_HOME (site-specific) — set that separately on offline compute nodes. setdefault, so an explicit
+# HF_HUB_OFFLINE=0 can still re-warm the cache if ever needed.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
 
 from datetime import datetime
 
@@ -68,7 +78,6 @@ _maybe_init_distributed()
 
 import argparse
 import os
-import re
 from pathlib import Path
 
 import jax
@@ -86,6 +95,7 @@ from jax_fli.io import Catalog
 
 REPO = "ASKabalan/jax-fli-experiments"
 DENSITY_CONFIG = "00-cosmogrid-density"
+DENSITY_GLOB = "00-cosmogrid/catalogs/cosmogrid_density_nside2048_shell*.parquet"
 HERE = Path(__file__).resolve().parent
 NZ_CHOICES = {"s3": get_stage3_nz_shear, "des": get_des_y3_nz_shear}
 
@@ -103,8 +113,13 @@ def _mesh_sharding(nbins: int, gpus_per_node: int | None = None):
     n_dev = jax.device_count()
     p_y = nbins if (nbins > 0 and n_dev % nbins == 0) else 1
     p_x = n_dev // p_y
-    if not hasattr(jax.devices()[0], "slice_index"):
-        # Uniform interconnect (single node / NVLink only).
+    # A hybrid (multi-bandwidth) mesh is only needed when devices span MULTIPLE nodes/slices. On
+    # current jax every GPU device carries a ``slice_index`` attribute even on a single GPU, and CPU
+    # multi-process devices all report slice_index 0 — so detect multi-node by the number of DISTINCT
+    # slice indices, not by the attribute's presence. Single GPU, single-node multi-GPU, and CPU
+    # multi-process (one slice) take the uniform mesh; only genuine multi-node GPU takes the hybrid one.
+    if len({getattr(d, "slice_index", 0) for d in jax.devices()}) <= 1:
+        # Uniform interconnect (single node / NVLink only, or CPU).
         mesh = jax.make_mesh((p_x, p_y), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
     else:
         # Non-uniform interconnect (NVLink intra-node + InfiniBand inter-node): hybrid mesh.
@@ -156,6 +171,12 @@ def _synthetic_density(nside: int = 64, n_shells: int = 4):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--nz", choices=list(NZ_CHOICES), default="s3", help="source n(z): s3 (Stage-3) or des (DES Y3)")
+    ap.add_argument("--min_z", type=float, default=0.01, help="minimum source redshift for Born integration")
+    ap.add_argument("--max_z", type=float, default=1.5, help="maximum source redshift for Born integration")
+    ap.add_argument("--n-integrate", type=int, default=32, help="Born integration steps per shell")
+    ap.add_argument(
+        "--normalization", choices=["global", "per_plane"], default="global", help="Born normalization scheme"
+    )
     ap.add_argument("--nside", type=int, default=None, help="downsample density to this nside (default: native)")
     ap.add_argument("--nbins", type=int, default=4, help="number of source bins (also the mesh 'y' size)")
     ap.add_argument(
@@ -167,7 +188,6 @@ def main() -> None:
         "non-uniform interconnects. Default: None (falls back to $SLURM_GPUS_ON_NODE).",
     )
     ap.add_argument("--out", default=None, help="output parquet path (default: kappa_born.parquet next to this script)")
-    ap.add_argument("--multihost", action="store_true", help="(informational) distributed init is auto-detected")
     ap.add_argument("--smoke-test", action="store_true", help="round-trip a tiny sharded density, then Born it")
     args = ap.parse_args()
 
@@ -181,6 +201,11 @@ def main() -> None:
         import tempfile
 
         cosmo, dens = _synthetic_density()
+        # _synthetic_density builds a REPLICATED, process-local array. Under multi-host, to_parquet's
+        # process_allgather(tiled=True) would CONCATENATE the per-rank copies (→ "z_sources length N !=
+        # batch_size N*nprocs"). Shard it onto the mesh first so it is a proper GLOBAL array the
+        # all_gather reconstructs (no-op single-process).
+        dens = dens.replace(field_sharding=sharding).apply_sharding()
         # All ranks must call to_parquet (catalog_to_row does a collective all_gather), but only rank 0
         # writes — so use a SHARED path (one node) all ranks can read. A per-rank TemporaryDirectory
         # would give rank 0 a path the others can't see (FileNotFoundError under multi-process).
@@ -191,24 +216,51 @@ def main() -> None:
         catalog = Catalog.from_parquet(p, sharding=sharding)  # the sharded LOAD path under test
         field, cosmo = catalog.field[0], catalog.cosmology[0]
     else:
-        # The density is published as per-redshift set configs DENSITY_CONFIG-NN (one config would
-        # overflow arrow's INT32 offset on load). Load each sharded and concatenate along the shell
-        # axis — each set keeps its P("x","y") npix sharding, so the concat stays sharded.
-        from datasets import get_dataset_config_names, load_dataset
+        # The density is ONE config 00-cosmogrid-density with a (npix,) row per shell. STREAM it (a
+        # plain load_dataset would combine the 56 shell rows into one Arrow column and overflow its
+        # int32 list-offset). Two load strategies, decided from the first shell's native nside:
+        #   * downsample (--nside < native): load each shell REPLICATED, ud_sample, then shard the
+        #     small stacked field ONCE below (ud_grade on a P("x")-sharded nside-2048 shell is unsafe —
+        #     RING superpixels are not contiguous per shard);
+        #   * native: shard each full shell on load (each rank keeps ~npix/n_dev) — never materialize
+        #     the whole 56-shell lightcone replicated, which would OOM every rank.
+        from datasets import load_dataset
+        from huggingface_hub import snapshot_download
 
-        cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_CONFIG) + r"-\d+", n))
-        fields, cosmo = [], None
-        for n in cfgs:
-            cat = Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy"), sharding=sharding)
-            fld = cat.field[0]
-            # Downgrade EACH chunk right after loading (before concatenating). ud_sample gathers the
-            # (smaller) chunk to replicated P(); doing it per-chunk avoids gathering the full 13 GB
-            # lightcone to replicated. Born re-shards its output to P("y","x").
-            if args.nside is not None and int(args.nside) != int(fld.nside):
-                fld = fld.ud_sample(int(args.nside))
+        # Cache the per-shell parquets + README ONCE (idempotent; offline-capable under HF_HUB_OFFLINE=1)
+        # and STREAM from the local dir. Under multi-host only the lead rank fetches; a barrier then lets
+        # every rank read the populated cache — otherwise N ranks each pull the full ~11 GB lightcone.
+        if lead:
+            snapshot_download(REPO, repo_type="dataset", allow_patterns=[DENSITY_GLOB, "README.md"])
+        if _is_multiprocess():
+            sync_global_devices("density cached")
+        local = snapshot_download(REPO, repo_type="dataset", allow_patterns=[DENSITY_GLOB, "README.md"])
+
+        fields, cosmo, downsample = [], None, None
+        for row in load_dataset(local, DENSITY_CONFIG, split="train", streaming=True):
+            if downsample is None:
+                cat = Catalog.from_dataset(row)  # replicated peek to read the native nside
+                fld = cat.field[0]
+                downsample = args.nside is not None and int(args.nside) < int(fld.nside)
+                # native: shard this first (peeked) shell now; downsample: shrink it
+                fld = (
+                    fld.ud_sample(int(args.nside))
+                    if downsample
+                    else fld.replace(field_sharding=sharding).apply_sharding()
+                )
+            elif downsample:
+                cat = Catalog.from_dataset(row)
+                fld = cat.field[0].ud_sample(int(args.nside))
+            else:
+                cat = Catalog.from_dataset(row, sharding=sharding)
+                fld = cat.field[0]
             fields.append(fld)
             cosmo = cat.cosmology[0]
-        field = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields) if len(fields) > 1 else fields[0]
+        # Each row is one (npix,) shell; stack adds the leading shell axis → (n_shells, npix).
+        field = jfli.SphericalDensity.stack(fields)
+        if downsample:
+            # Shard the small downsampled lightcone once → a proper GLOBAL array for Born + to_parquet.
+            field = field.replace(field_sharding=sharding).apply_sharding()
 
     if lead:
         print(
@@ -217,7 +269,15 @@ def main() -> None:
             flush=True,
         )
 
-    kappa = jfli.born(cosmo, field, nz_shear=nz_shear)
+    kappa = jfli.born(
+        cosmo,
+        field,
+        nz_shear=nz_shear,
+        min_z=args.min_z,
+        max_z=args.max_z,
+        n_integrate=args.n_integrate,
+        normalization=args.normalization,
+    )
 
     if lead:
         print(
@@ -225,15 +285,18 @@ def main() -> None:
             f"sharding={kappa.array.sharding}",
             flush=True,
         )
-        if args.smoke_test:
-            assert kappa.array.shape[-1] == 12 * field.nside * field.nside
-            print(
-                f"[smoke-test] PASS — sharded load + distributed Born across {jax.device_count()} devices.",
-                flush=True,
-            )
-        else:
-            out = Path(args.out) if args.out else HERE / "kappa_born.parquet"
-            Catalog(field=kappa, cosmology=cosmo).to_parquet(str(out))
+    if args.smoke_test:
+        assert kappa.array.shape[-1] == 12 * field.nside * field.nside
+        print(
+            f"[smoke-test] PASS — sharded load + distributed Born across {jax.device_count()} devices.",
+            flush=True,
+        )
+    else:
+        out = Path(args.out) if args.out else HERE / "kappa_born.parquet"
+        # to_parquet is collective (process_allgather); only rank 0 actually writes the file. Guard the
+        # stat/print so non-lead ranks don't stat a file they never wrote (FileNotFoundError).
+        Catalog(field=kappa, cosmology=cosmo).to_parquet(str(out))
+        if lead:
             print(
                 f"   wrote {out}  ({out.stat().st_size / 1e9:.2f} GB). Publish with: python publish_local.py",
                 flush=True,

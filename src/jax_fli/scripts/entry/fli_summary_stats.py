@@ -34,7 +34,10 @@ _SPHERICAL_TYPES = {"SphericalDensity", "SphericalKappaField"}
 _SUPPORTED_TYPES = _DENSITY_TYPES | _KAPPA_TYPES | _DENSITY3D_TYPE
 
 # Output files are written next to the input with this prefix; re-runs skip their own outputs.
-_OUTPUT_PREFIX = "summary_stats_"
+_OUTPUT_PREFIX = "spectra_"
+# With --pixel-window-deconvolution the pixwin-deconvolved spectra use this prefix instead. It is
+# still under the "spectra_" stem, so _find_parquet_files keeps skipping the tool's own outputs.
+_DECONV_PREFIX = "spectra_deconv_"
 
 
 def parser() -> ArgumentParser:
@@ -71,7 +74,9 @@ def parser() -> ArgumentParser:
     return p
 
 
-def _find_parquet_files(folder: str, regex: str, recursive: bool, force_regen: bool) -> list[Path]:
+def _find_parquet_files(
+    folder: str, regex: str, recursive: bool, force_regen: bool, out_prefix: str = _OUTPUT_PREFIX
+) -> list[Path]:
     """Scan *folder* for parquet files whose **name** matches *regex*.
 
     Files already starting with ``summary_stats_`` are silently skipped so that re-running the
@@ -86,7 +91,7 @@ def _find_parquet_files(folder: str, regex: str, recursive: bool, force_regen: b
     for p in sorted(glob_fn("*")):
         if p.is_file() and pattern.match(p.name) and not p.name.startswith(_OUTPUT_PREFIX):
             # if the same file name exists with the output prefix, skip to avoid re-processing
-            if (p.parent / f"{_OUTPUT_PREFIX}{p.name}").exists() and not force_regen:
+            if (p.parent / f"{out_prefix}{p.name}").exists() and not force_regen:
                 print(f"  SKIP (output exists): {p.name}")
             else:
                 files.append(p)
@@ -122,6 +127,24 @@ def _resolve_mask_for_field(field, field_type: str, args):
     return _resolve_summary_stats_mask(args.mask, field.nside, observer_position, args.apodization_scale_deg)
 
 
+def _deconvolve_pixel_window(ps, nside: int):
+    """Divide a spherical angular C_ell by the HEALPix pixel window squared.
+
+    Painting + ``anafast`` convolve the map with the HEALPix pixel window ``W_l = pixwin(nside)``,
+    which suppresses power toward the band limit; an auto-spectrum carries ``W_l**2``. Dividing it
+    out recovers the deconvolved C_ell. Because ``1/W_l**2`` blows up as ``W_l -> 0`` near the
+    rolloff, ``W_l**2`` is floored at 1e-2 (so the deconvolved C_ell above ~2.5*nside is capped and
+    not trustworthy).
+    """
+    import healpy as hp
+    import numpy as np
+
+    ell = np.asarray(ps.wavenumber).astype(int)
+    pw = np.asarray(hp.pixwin(nside, lmax=int(ell.max())))
+    w2 = np.clip(pw[ell] ** 2, 1e-2, None)  # broadcasts over the leading (shell) axis
+    return ps.replace(array=ps.array / w2)
+
+
 def _compute_summary_stats(field, field_type: str, args, mask=None):
     """Route to the appropriate summary-statistic method based on field type."""
     import jax.numpy as jnp
@@ -142,12 +165,15 @@ def _compute_summary_stats(field, field_type: str, args, mask=None):
         # jax_fli.summary_statistics module lands on this branch (it currently lives, uncommitted,
         # in the summary-stat worktree). For now only the angular C_ell — optionally restricted to
         # the apodized footprint mask and MCM-decoupled — is computed.
-        return field.angular_cl(
+        ps = field.angular_cl(
             lmax=args.lmax,
             method=args.method,
             batch_size=args.batch_size,
             mask=mask,
         )
+        if getattr(args, "pixel_window_deconvolution", False):
+            ps = _deconvolve_pixel_window(ps, int(field.nside))
+        return ps
     elif field_type == "DensityField":
         if args.kedges is not None and args.dk is not None:
             raise ValueError("Cannot specify both kedges and dk. Please choose one.")
@@ -185,7 +211,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Discover files
     # ------------------------------------------------------------------
-    files = _find_parquet_files(args.folder, args.regex, args.recursive, args.force_regen)
+    out_prefix = _DECONV_PREFIX if args.pixel_window_deconvolution else _OUTPUT_PREFIX
+    files = _find_parquet_files(args.folder, args.regex, args.recursive, args.force_regen, out_prefix)
     if not files:
         print("No matching parquet files found.")
         return
@@ -248,7 +275,7 @@ def main() -> None:
         print(f"  Result: {type(ps).__name__}  shape={ps.array.shape}  unit={ps.unit}")
 
         # Save
-        out_path = path.parent / f"{_OUTPUT_PREFIX}{path.name}"
+        out_path = path.parent / f"{out_prefix}{path.name}"
         try:
             Catalog(ps, cosmo).to_parquet(str(out_path))
             print(f"  Saved: {out_path}")
