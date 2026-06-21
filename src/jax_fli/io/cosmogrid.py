@@ -53,7 +53,8 @@ def load_cosmogrid_lc(
     max_comoving_distance: float | None = None,
     ud_nside: int | None = None,
     sharding=None,
-) -> Catalog:
+    output: PathLike | None = None,
+) -> Catalog | None:
     """Load raw CosmoGrid lightcone shells.
 
     Parameters
@@ -70,11 +71,18 @@ def load_cosmogrid_lc(
         Maximum comoving distance to load shells up to.
     ud_nside : int, optional
         Target NSIDE for up/down-sampling. If None, keeps original NSIDE.
+    output : str or Path, optional
+        If None (default), the full lightcone is stacked in memory and returned as one Catalog.
+        If a folder, it is created and **one parquet per shell** is written there
+        (``shell_000.parquet``, ``shell_001.parquet``, …), each a single-shell ``Catalog`` — the
+        whole lightcone is never held at once (avoids the OOM of stacking a large nside-2048 run).
+        In this mode the function returns None; reload by streaming the folder's parquets.
 
     Returns
     -------
-    Catalog
-        Contains SphericalDensity field and jc.Cosmology.
+    Catalog or None
+        A Catalog (SphericalDensity field + jc.Cosmology) when ``output`` is None; None when
+        ``output`` is a folder (the shells are streamed to disk instead).
     """
     archive_name = "baryonified_shells.npz" if baryonified else "compressed_shells.npz"
 
@@ -187,6 +195,25 @@ def load_cosmogrid_lc(
 
     box_tuple = (box_size, box_size, box_size)
 
+    # Build jax_cosmo Cosmology (needed up-front so per-shell Catalogs can be written in the loop).
+    cosmo = jc.Cosmology(
+        Omega_c=float(params["O_cdm"]),
+        Omega_b=float(params["Ob"]),
+        h=float(params["H0"]) / 100.0,
+        n_s=float(params["ns"]),
+        sigma8=float(params["s8"]),
+        w0=float(params["w0"]),
+        wa=float(params["wa"]),
+        Omega_k=0.0,
+        Omega_nu=float(params["O_nu"]),
+    )
+
+    # If `output` is given, stream one parquet per shell to that folder instead of stacking the whole
+    # lightcone in memory; otherwise collect the shells and stack + return one Catalog.
+    out_dir = Path(output).resolve() if output is not None else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     sph_maps = []
     for i in range(len(shells)):
         _arr = jnp.asarray(shells[i], dtype=jnp.float32)
@@ -206,26 +233,16 @@ def load_cosmogrid_lc(
             density_width=jnp.asarray(shell_widths[i]),
             status=FieldStatus.LIGHTCONE,
             unit=DensityUnit.COUNTS,
-        )
-        sph_maps.append(sph_map.ud_sample(new_nside=ud_nside))
+        ).ud_sample(new_nside=ud_nside)
+        if out_dir is not None:
+            Catalog(field=sph_map, cosmology=cosmo).to_parquet(str(out_dir / f"shell_{i:03d}.parquet"))
+        else:
+            sph_maps.append(sph_map)
+
+    if out_dir is not None:
+        return None
 
     all_spherical_maps = SphericalDensity.stack(sph_maps)
-
-    # Build jax_cosmo Cosmology
-    h_param = float(params["H0"]) / 100.0
-
-    cosmo = jc.Cosmology(
-        Omega_c=float(params["O_cdm"]),
-        Omega_b=float(params["Ob"]),
-        h=h_param,
-        n_s=float(params["ns"]),
-        sigma8=float(params["s8"]),
-        w0=float(params["w0"]),
-        wa=float(params["wa"]),
-        Omega_k=0.0,
-        Omega_nu=float(params["O_nu"]),
-    )
-
     return Catalog(field=all_spherical_maps, cosmology=cosmo)
 
 

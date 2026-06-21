@@ -21,7 +21,7 @@ left to inspection.
 Run on CPU (pure I/O + serialization; no GPU needed):
 
     python publish_kappa_512.py --self-test     # fast: validate the κ round-trip, then exit
-    python publish_kappa_512.py --check          # inspect the PUBLISHED 00-cosmogrid-kappa config on HF + its attrs
+    python publish_kappa_512.py --check          # report whether the local parquet exists + its attrs
     python publish_kappa_512.py                  # build + save locally (no upload)
     python publish_kappa_512.py --publish        # build + OVERWRITE 00-cosmogrid-kappa on HF
 
