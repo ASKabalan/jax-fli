@@ -18,7 +18,7 @@ from huggingface_hub import snapshot_download
 
 REPO = "ASKabalan/jax-fli-experiments"
 DENSITY_CONFIG = "00-cosmogrid-density"
-DENSITY_GLOB = "00-cosmogrid/catalogs/cosmogrid_density_nside2048_shell*.parquet"
+DENSITY_GLOB = "00-cosmogrid/density/cosmogrid_density_nside2048_shell*.parquet"
 KAPPA_CONFIG = "00-cosmogrid-kappa"
 
 # Density: snapshot the per-shell parquet files (one (npix,) row each) + the README (the streaming

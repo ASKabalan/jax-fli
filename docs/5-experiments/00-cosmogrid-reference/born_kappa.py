@@ -95,7 +95,7 @@ from jax_fli.io import Catalog
 
 REPO = "ASKabalan/jax-fli-experiments"
 DENSITY_CONFIG = "00-cosmogrid-density"
-DENSITY_GLOB = "00-cosmogrid/catalogs/cosmogrid_density_nside2048_shell*.parquet"
+DENSITY_GLOB = "00-cosmogrid/density/cosmogrid_density_nside2048_shell*.parquet"
 HERE = Path(__file__).resolve().parent
 NZ_CHOICES = {"s3": get_stage3_nz_shear, "des": get_des_y3_nz_shear}
 

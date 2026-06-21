@@ -46,7 +46,7 @@ from jax_fli.io import Catalog
 
 REPO = "ASKabalan/jax-fli-experiments"
 DENSITY_CONFIG = "00-cosmogrid-density"
-DENSITY_GLOB = "00-cosmogrid/catalogs/cosmogrid_density_nside2048_shell*.parquet"
+DENSITY_GLOB = "00-cosmogrid/density/cosmogrid_density_nside2048_shell*.parquet"
 HERE = Path(__file__).resolve().parent
 
 # n(z) selector: --nz s3 -> Stage-3 forecast (4 bins, matches the current κ consumers like

@@ -310,12 +310,12 @@ def main() -> None:
 
     api = HfApi()
     meta, body = _load_card(api)
-    catalogs_dir = "00-cosmogrid/catalogs"
+    density_dir = "00-cosmogrid/density"
     prefix = "cosmogrid_density_nside2048"
-    glob = f"{catalogs_dir}/{prefix}_shell*.parquet"
+    glob = f"{density_dir}/{prefix}_shell*.parquet"
     print(f"\nUploading {len(shell_paths)} shell parquet(s) to {REPO} under ONE config {DENSITY_CONFIG} …")
     for i, p in enumerate(shell_paths):
-        repo_path = f"{catalogs_dir}/{prefix}_{p.name}"  # cosmogrid_density_nside2048_shell_NNN.parquet
+        repo_path = f"{density_dir}/{prefix}_{p.name}"  # cosmogrid_density_nside2048_shell_NNN.parquet
         print(f"   [{i + 1}/{len(shell_paths)}] → {repo_path}")
         api.upload_file(path_or_fileobj=str(p), path_in_repo=repo_path, repo_id=REPO, repo_type="dataset")
     # ONE config pointing at all shell files via a glob; drop any stale per-set -NN configs.

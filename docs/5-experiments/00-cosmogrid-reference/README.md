@@ -1,9 +1,10 @@
 # Experiment 00 — CosmoGrid reference
 
 **Goal.** Provide the full-resolution ground truth that the accuracy experiments (01–07) validate
-against: the native CosmoGrid density lightcone, CosmoGrid's **own** Stage-3 forecast κ, and two
-convergence (κ) references computed from the density — a dorian **ray-traced** κ (post-Born exact) and
-a **Born** κ — all published to the HuggingFace dataset `ASKabalan/jax-fli-experiments`.
+against: the native CosmoGrid density lightcone, CosmoGrid's **own** Stage-3 forecast κ, and **Born**
+convergence (κ) references computed from the density for two source distributions (DES Y3 and Stage-3)
+— plus a dorian **ray-traced** κ script (post-Born exact) — published to the HuggingFace dataset
+`ASKabalan/jax-fli-experiments`.
 
 ## Data
 
@@ -14,8 +15,9 @@ Built from `cosmo_000001` (density from `raw/cosmo_000001/run_0`; the forecast �
 |--------|-------|------:|-------|----------|
 | `00-cosmogrid-density`        | `SphericalDensity`    | 2048 | float32 | particle **counts**, ~56 shells out to **z ≤ 1.6** (DES Y3 depth) — **one config, one row per shell** (load by streaming) |
 | `00-cosmogrid-kappa`          | `SphericalKappaField` |  512 | float32 | 4 bins, CosmoGrid's own **Stage-3 forecast** κ (the simulation's published convergence maps) |
-| `00-cosmogrid-kappa-raytrace` | `SphericalKappaField` | 2048 | float32 | 4 bins, **ray-traced** (dorian, full distortion matrix) from the density |
-| `00-cosmogrid-kappa-born`     | `SphericalKappaField` | 2048 | float32 | 4 bins, **Born** approximation from the same density |
+| `00-cosmogrid-born-des`       | `SphericalKappaField` | 2048 | float32 | 4 bins, **Born** approximation from the density, **DES Y3** source n(z) |
+| `00-cosmogrid-born-s3`        | `SphericalKappaField` | 2048 | float32 | 4 bins, **Born** approximation from the density, **Stage-3** source n(z) |
+| `00-cosmogrid-kappa-raytrace` | `SphericalKappaField` | 2048 | float32 | 4 bins, **ray-traced** (dorian, full distortion matrix); script in step 3, *not yet published* |
 
 The density is loaded with `jfli.io.load_cosmogrid_lc(max_redshift=1.6)` and kept out to **z ≤ 1.6**:
 that is the **DES Y3** source depth (its deepest bin ends z≈1.45, see [experiment 06](../06-cosmogrid-shells/)),
@@ -37,7 +39,7 @@ from jax_fli import SphericalDensity
 from jax_fli.io import Catalog
 
 REPO = "ASKabalan/jax-fli-experiments"
-GLOB = "00-cosmogrid/catalogs/cosmogrid_density_nside2048_shell*.parquet"
+GLOB = "00-cosmogrid/density/cosmogrid_density_nside2048_shell*.parquet"
 # one config, one (npix,) row per shell. Snapshot the files once (idempotent; offline-capable), then
 # STREAM from the LOCAL dir (a non-streaming load overflows arrow's int32 list-offset; and offline,
 # load_dataset(REPO, ...) cannot resolve the config — point it at the snapshot dir instead).
@@ -103,15 +105,16 @@ Loads the density **sharded** across the device mesh (`P("x","y")`, npix per dev
 fully-JAX Born approximation — one process per GPU, `jax.distributed` coordinates them:
 
 ```bash
-srun -n $SLURM_NTASKS python born_kappa.py --nz s3 --out kappa_born.parquet
+srun -n $SLURM_NTASKS python born_kappa.py --nz s3 --out kappa_born_s3.parquet   # then --nz des --out kappa_born_des.parquet
 uv run mpirun -n 8 -x JAX_PLATFORMS=cpu python born_kappa.py --nside 32   # local CPU run (1 GPU ≠ 8 procs)
 XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
     python born_kappa.py --smoke-test --nbins 2     # sharded-load + Born test on fake devices
 ```
 
-**5 · Publish computed κ — `publish_local.py`** (local, `HF_TOKEN`). Uploads both computed-κ parquets
-and registers their configs in the dataset card (ray-traced → `00-cosmogrid-kappa-raytrace`, Born →
-`00-cosmogrid-kappa-born`), leaving CosmoGrid's forecast κ at `00-cosmogrid-kappa` untouched:
+**5 · Publish computed κ — `publish_local.py`** (local, `HF_TOKEN`). Uploads the computed-κ parquets
+and registers their configs in the dataset card (ray-traced → `00-cosmogrid-kappa-raytrace`; Born →
+`00-cosmogrid-born-des` / `00-cosmogrid-born-s3` for the DES Y3 / Stage-3 source n(z)), leaving
+CosmoGrid's forecast κ at `00-cosmogrid-kappa` untouched:
 
 ```bash
 python publish_local.py          # dry run: print exactly what would be uploaded
