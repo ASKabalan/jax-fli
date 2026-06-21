@@ -1,23 +1,18 @@
 #!/usr/bin/env python
 # ruff: noqa: E402
-"""Experiment 00 — ray-trace a convergence (κ) reference from the CosmoGrid density (dorian + MPI).
+"""Experiment 00 — ray-trace a convergence (κ) reference from the CosmoGrid density (dorian).
 
-Loads the ``00-cosmogrid-density`` lightcone from HuggingFace, ray-traces it through **dorian under
-MPI** (``jax_fli.raytrace`` takes an ``mpi4py`` ``comm``), and **saves a parquet** holding the
-resulting ``SphericalKappaField``. It does NOT publish — run it on the cluster, then publish the
-parquet locally with ``publish_local.py``.
+Loads the ``00-cosmogrid-density`` lightcone from HuggingFace, ray-traces it through **dorian**
+(``jax_fli.raytrace``), and **saves a parquet** holding the resulting ``SphericalKappaField``. It
+does NOT publish — run it on the cluster, then publish the parquet locally with ``publish_local.py``.
 
-dorian is replicated numpy+MPI: every rank holds the full lightcone in host RAM (~14 GB at float32,
-69 shells @ nside 2048), and MPI splits the ray-tracing work — only rank 0 returns / writes. Run it:
+This is a single-process, host-side (numpy) computation: one process holds the full lightcone in RAM
+and dorian ray-traces every source plane sequentially. Run it:
 
-    # cluster (one MPI task per core/GPU; recommended at nside 2048):
-    srun -n <ranks> python raytrace_kappa.py --nz s3 --out kappa_raytrace.parquet
-    # or with mpirun:
-    mpirun -np <ranks> python raytrace_kappa.py --nz s3
+    python raytrace_kappa.py --nz s3 --out kappa_raytrace.parquet
 
-    # MPI smoke test on a tiny synthetic lightcone (no HuggingFace, no GPU) — just proves the
-    # comm plumbing works; oversubscribe freely:
-    mpirun --oversubscribe -np 64 python raytrace_kappa.py --smoke-test
+    # tiny synthetic lightcone (no HuggingFace) — proves the plumbing works:
+    python raytrace_kappa.py --smoke-test
 
 Offline cluster (Jean Zay): pre-cache the density on a login node, then export
 ``HF_HOME=$WORK/hf_cache HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1`` on compute nodes (see README.md).
@@ -27,8 +22,8 @@ from __future__ import annotations
 
 import os
 
-# dorian ray-tracing runs on the host (numpy/MPI). Pin JAX to CPU so loading the lightcone does not
-# stage ~14 GB onto a GPU. Set before jax / jax_fli import.
+# dorian ray-tracing runs on the host (numpy). Pin JAX to CPU so loading the lightcone does not
+# stage the maps onto a GPU. Set before jax / jax_fli import.
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 # Run fully offline from the warm HuggingFace cache (pre-populated by download.py): the per-shell
@@ -37,19 +32,6 @@ os.environ.setdefault("JAX_PLATFORMS", "cpu")
 # HF_HUB_OFFLINE=0 can still re-warm the cache if ever needed.
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-
-# MPI is optional; dorian uses it to parallelise. comm=None runs single process.
-comm = None
-rank, size = 0, 1
-try:
-    from mpi4py import MPI
-
-    comm = MPI.COMM_WORLD
-    rank, size = comm.Get_rank(), comm.Get_size()
-    print(f"[MPI] rank={rank} size={size}")
-except Exception:
-    pass
-
 
 import argparse
 from pathlib import Path
@@ -73,7 +55,7 @@ NZ_CHOICES = {"s3": get_stage3_nz_shear, "des": get_des_y3_nz_shear}
 
 
 def _synthetic_lightcone(nside: int = 32, n_shells: int = 4):
-    """A tiny, physically-plausible HEALPix lightcone for the MPI smoke test (replicated per rank)."""
+    """A tiny, physically-plausible HEALPix lightcone for the smoke test."""
     npix = 12 * nside * nside
     z = np.linspace(0.2, 1.0, n_shells).astype(np.float32)
     a = 1.0 / (1.0 + z)
@@ -108,54 +90,44 @@ def main() -> None:
     ap.add_argument("--n-integrate", type=int, default=32)
     ap.add_argument("--interp", choices=["bilinear", "ngp", "nufft"], default="bilinear")
     ap.add_argument("--no-parallel-transport", action="store_true")
-    ap.add_argument("--smoke-test", action="store_true", help="MPI smoke test on a tiny synthetic lightcone (no HF)")
+    ap.add_argument("--smoke-test", action="store_true", help="smoke test on a tiny synthetic lightcone (no HF)")
     args = ap.parse_args()
 
     if args.smoke_test:
         cosmo, field = _synthetic_lightcone()
-        nz_shear = [0.5, 1.0]  # two scalar sources — exercises the multi-source gather cheaply
-        if rank == 0:
-            print(f"[smoke-test] MPI ranks={size}; synthetic lightcone {tuple(field.array.shape)} nside={field.nside}")
+        nz_shear = [0.5, 1.0]  # two scalar sources — exercises the multi-source path cheaply
+        print(f"[smoke-test] synthetic lightcone {tuple(field.array.shape)} nside={field.nside}")
     else:
         nz_shear = NZ_CHOICES[args.nz]()
-        # Catalog/datasets I/O is JAX-process-aware, NOT mpi4py-aware: if every MPI rank loads
-        # independently we pay N× the multi-GB datasets/arrow transient and OOM. So STREAM + per-shell
-        # downgrade on rank 0 only, then MPI-broadcast the (downgraded) replicated lightcone to every
-        # rank for dorian. The density is ONE config 00-cosmogrid-density with a (npix,) row per shell;
-        # it MUST be streamed (a plain load_dataset would combine rows past arrow's INT32 offset).
-        field, cosmo = None, None
-        if rank == 0:
-            from datasets import load_dataset
-            from huggingface_hub import snapshot_download
+        # Stream the per-shell density and downgrade each shell on load. The density is ONE config
+        # 00-cosmogrid-density with a (npix,) row per shell; it MUST be streamed (a plain load_dataset
+        # would combine rows past arrow's INT32 list-offset across the 56 shells).
+        from datasets import load_dataset
+        from huggingface_hub import snapshot_download
 
-            # Cache the per-shell parquets + README once (idempotent; offline-capable under
-            # HF_HUB_OFFLINE=1), then STREAM from the local dir — a non-streaming load would overflow
-            # arrow's int32 list-offset across the 56 shells. Only rank 0 loads (then MPI-broadcasts).
-            local = snapshot_download(REPO, repo_type="dataset", allow_patterns=[DENSITY_GLOB, "README.md"])
-            print(f"MPI ranks={size}. Streaming {DENSITY_CONFIG} per-shell rows on rank 0 from {local} …")
-            fields = []
-            for row in load_dataset(local, DENSITY_CONFIG, split="train", streaming=True):
-                cat = Catalog.from_dataset(row)
-                fld = cat.field[0]
-                # downgrade each shell right after loading → small broadcast, bounded RAM on rank 0
-                if args.nside is not None and int(args.nside) != int(fld.nside):
-                    fld = fld.ud_sample(int(args.nside))
-                fields.append(fld)
-                cosmo = cat.cosmology[0]
-            # Each row is one (npix,) shell; stack adds the leading shell axis → (n_shells, npix).
-            field = jfli.SphericalDensity.stack(fields)
-            print(
-                f"   density: {type(field).__name__} shape={tuple(field.array.shape)} "
-                f"nside={field.nside} dtype={field.array.dtype} | n(z)={args.nz}, interp={args.interp}"
-            )
-        # dorian needs the full (downgraded) lightcone on every rank — broadcast it from rank 0.
-        if comm is not None:
-            field = comm.bcast(field, root=0)
-            cosmo = comm.bcast(cosmo, root=0)
+        # Cache the per-shell parquets + README once (idempotent; offline-capable under
+        # HF_HUB_OFFLINE=1), then STREAM from the local dir.
+        local = snapshot_download(REPO, repo_type="dataset", allow_patterns=[DENSITY_GLOB, "README.md"])
+        print(f"Streaming {DENSITY_CONFIG} per-shell rows from {local} …")
+        fields = []
+        cosmo = None
+        for row in load_dataset(local, DENSITY_CONFIG, split="train", streaming=True):
+            cat = Catalog.from_dataset(row)
+            fld = cat.field[0]
+            if args.nside is not None and int(args.nside) != int(fld.nside):
+                fld = fld.ud_sample(int(args.nside))
+            fields.append(fld)
+            cosmo = cat.cosmology[0]
+        # Each row is one (npix,) shell; stack adds the leading shell axis → (n_shells, npix).
+        field = jfli.SphericalDensity.stack(fields)
+        print(
+            f"   density: {type(field).__name__} shape={tuple(field.array.shape)} "
+            f"nside={field.nside} dtype={field.array.dtype} | n(z)={args.nz}, interp={args.interp}"
+        )
 
     # The synthetic smoke-test geometry produces degenerate parallel-transport angles (dorian raises
-    # "THETA out of range"); PT is orthogonal to the MPI path we want to exercise, so force it off
-    # for the smoke test. Real CosmoGrid geometry keeps PT on by default.
+    # "THETA out of range"); PT is orthogonal to what the smoke test exercises, so force it off there.
+    # Real CosmoGrid geometry keeps PT on by default.
     parallel_transport = (not args.no_parallel_transport) and (not args.smoke_test)
 
     kappa_rt, kappa_born = jfli.raytrace(
@@ -169,11 +141,7 @@ def main() -> None:
         parallel_transport=parallel_transport,
         born=True,
         raytrace=True,
-        comm=comm,
     )
-
-    if rank != 0:  # only rank 0 holds the gathered result
-        return
 
     print(
         f"   kappa: {type(kappa_rt).__name__} shape={tuple(kappa_rt.array.shape)} "
@@ -185,17 +153,20 @@ def main() -> None:
     )
     if args.smoke_test:
         assert kappa_rt.array.shape[-1] == 12 * field.nside * field.nside
-        print(f"[smoke-test] PASS — dorian ray-tracing ran under {size} MPI ranks and returned a κ map.")
+        print("[smoke-test] PASS — dorian ray-tracing ran and returned a κ map.")
         return
 
-    if rank == 0:
-        print(f"[MPI] rank={rank} size={size} comm={comm} — ray-tracing complete, writing parquet …")
-        out = Path(args.out) if args.out else HERE / "kappa_raytrace.parquet"
-        Catalog(field=kappa_rt, cosmology=cosmo).to_parquet(str(out))
-        print(f"   wrote {out}  ({out.stat().st_size / 1e9:.2f} GB). Publish with: python publish_local.py")
-        out = Path(args.out) if args.out else HERE / "kappa_born.parquet"
-        Catalog(field=kappa_born, cosmology=cosmo).to_parquet(str(out))
-        print(f"   wrote {out}  ({out.stat().st_size / 1e9:.2f} GB). Publish with: python publish_local.py")
+    print("ray-tracing complete, writing parquet …")
+    # ray-traced κ → --out (default kappa_raytrace.parquet). The Born byproduct from the SAME dorian
+    # shells goes to a SEPARATE path so it never overwrites the ray-traced map: with --out set, insert
+    # "_born" before the suffix (else the default kappa_born.parquet). publish_local.py reads
+    # kappa_raytrace.parquet (this rt) and kappa_born.parquet (from born_kappa.py) — unaffected.
+    out_rt = Path(args.out) if args.out else HERE / "kappa_raytrace.parquet"
+    Catalog(field=kappa_rt, cosmology=cosmo).to_parquet(str(out_rt))
+    print(f"   wrote {out_rt}  ({out_rt.stat().st_size / 1e9:.2f} GB)  [ray-traced]. Publish: python publish_local.py")
+    out_born = out_rt.with_name(f"{out_rt.stem}_born{out_rt.suffix}") if args.out else HERE / "kappa_born.parquet"
+    Catalog(field=kappa_born, cosmology=cosmo).to_parquet(str(out_born))
+    print(f"   wrote {out_born}  ({out_born.stat().st_size / 1e9:.2f} GB)  [Born byproduct]")
 
 
 if __name__ == "__main__":
