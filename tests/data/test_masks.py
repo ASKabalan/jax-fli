@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 import jax_fli.data as jfli_data
 
@@ -56,8 +55,16 @@ def test_apodize_taper_widens_with_radius():
     assert sum_large < sum_small < binary_sum
 
 
-def test_apodize_invalid_apotype_raises():
-    """Only the C2 window is implemented; other apodization types are rejected."""
+def test_apodize_c1_window():
+    """C1 apodization: a valid taper (in [0, 1], 0 outside, saturating inside) distinct from C2."""
     mask = jfli_data.get_desy3_mask(nside=128)
-    with pytest.raises(NotImplementedError, match="C2"):
-        jfli_data.apodize(mask, aposize_deg=0.5, apotype="C1")
+    inside = mask > 0
+    c1 = np.asarray(jfli_data.apodize(mask, aposize_deg=0.5, apotype="C1"))
+    c2 = np.asarray(jfli_data.apodize(mask, aposize_deg=0.5, apotype="C2"))
+
+    assert np.all(c1 >= 0) and np.all(c1 <= 1), "C1 values should be in [0, 1]"
+    assert np.all(c1[~inside] == 0.0), "C1 must be exactly 0 outside the footprint"
+    assert np.all(c1[inside] > 0.0), "C1 must be positive everywhere inside the footprint"
+    assert np.isclose(c1.max(), 1.0), "Interior pixels should saturate to 1"
+    assert np.any((c1 > 0) & (c1 < 1)), "C1 should produce a fractional taper band"
+    assert np.any(c1 != c2), "C1 and C2 share the support but differ in the taper profile"
