@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 import numbers
+import warnings
 from collections.abc import Callable, Iterable
-from typing import Union
+from typing import Literal, Union
 
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 from jax.tree_util import register_pytree_node_class
 from jax_cosmo.redshift import redshift_distribution
+from jax_cosmo.scipy.integrate import simps
 from jaxtyping import Array
 
 from jax_fli.data.metadata import _max_z_source
 
 from .power_spec import PowerSpectrum
 
-__all__ = ["compute_theory_cl", "compute_theory_cl_for_density", "tophat_z"]
+__all__ = ["comoving_tophat", "compute_theory_cl", "compute_theory_cl_for_density", "tophat_z"]
 
 # Type alias for z_source parameter
 ZSourceType = Union[
@@ -46,6 +48,52 @@ class tophat_z(redshift_distribution):
     def pz_fn(self, z):
         zmin, zmax = self.params
         return jnp.where((z >= zmin) & (z <= zmax), 1.0, 0.0)
+
+
+@register_pytree_node_class
+class comoving_tophat(redshift_distribution):
+    """Source selection uniform in comoving VOLUME between two comoving distances.
+
+    A painted density shell (HEALPix or flat-sky) is a comoving-volume projection of the 3D
+    overdensity: its per-pixel value weights ``delta_3D`` by ``q(chi) ∝ chi**2`` over the shell
+    ``[chi_near, chi_far]`` (the comoving volume element ``chi**2 dchi``).  The Limber prediction
+    that reproduces this projection is a number-counts spectrum whose source distribution is
+    uniform in comoving volume.
+
+    jax_cosmo's number-counts radial kernel is ``n(z) * b(z) * H(z)`` (``jax_cosmo/probes.py``),
+    so choosing ``n(z) ∝ chi(z)**2 / H(z)`` makes the kernel ``∝ chi**2`` — exactly the painted
+    selection.  With jax_cosmo's ``∫ n(z) dz = 1`` normalisation this yields the effective radial
+    weight ``chi**2 / ∫ chi**2 dchi``, i.e. the measured comoving-volume tophat.
+
+    Unlike :class:`tophat_z`, the normalisation is taken over the shell's **own** redshift support
+    ``[z_near, z_far]`` (fixed 256-point Simpson), so it is independent of the (deprecated) global
+    ``nz_zmax`` and stays accurate for narrow, low-redshift shells.
+
+    Parameters
+    ----------
+    cosmo : jc.Cosmology
+        Carried as a pytree param so the distribution stays jit-able and differentiable.
+    chi_near, chi_far : float
+        Comoving-distance edges of the shell (Mpc/h), ``chi_near < chi_far``.
+
+    Examples
+    --------
+    >>> nz = comoving_tophat(cosmo, 850.0, 950.0)
+    """
+
+    def pz_fn(self, z):
+        cosmo, chi_near, chi_far = self.params
+        a = jc.utils.z2a(z)
+        chi = jc.background.radial_comoving_distance(cosmo, a)
+        h_z = jc.background.H(cosmo, a)
+        return jnp.where((chi >= chi_near) & (chi <= chi_far), chi**2 / h_z, 0.0)
+
+    def __call__(self, z):
+        cosmo, chi_near, chi_far = self.params
+        z_near = jc.utils.a2z(jc.background.a_of_chi(cosmo, jnp.atleast_1d(chi_near)))[0]
+        z_far = jc.utils.a2z(jc.background.a_of_chi(cosmo, jnp.atleast_1d(chi_far)))[0]
+        norm = simps(lambda t: self.pz_fn(t), z_near, z_far, 256)
+        return self.pz_fn(z) / norm
 
 
 def _normalize_z_source(
@@ -237,7 +285,39 @@ def compute_theory_cl(
     )
 
 
-@jax.jit(static_argnames=["nonlinear_fn", "cross", "nz_zmax"])
+def _limber_density_pair_cl(cosmo, chi_near_i, chi_far_i, chi_near_j, chi_far_j, ells, nl_fn, n_chi):
+    """Edge-exact Limber C_ell for a comoving-volume shell pair (auto if i == j).
+
+    A painted shell selects ``delta_3D`` with the comoving-volume weight ``q(chi) ∝ chi**2`` over
+    ``[chi_near, chi_far]``.  The Limber cross-spectrum of shells i and j is therefore
+
+        C_ell^{ij} = (1 / (I_i I_j)) * ∫_overlap chi**2 P((ell+0.5)/chi, a(chi)) dchi ,
+        I = (chi_far**3 - chi_near**3) / 3 ,  overlap = [max(near), min(far)] .
+
+    This is algebraically identical to a jax_cosmo number-counts spectrum with
+    :class:`comoving_tophat` sources (the ``c**2`` and ``H`` factors cancel), but integrates over
+    each shell's own support with a fixed ``n_chi`` grid (edges aligned), so thin / low-z / high-z
+    shells are not under-sampled the way jax_cosmo's fixed 512-point ``[0, zmax]`` Simpson is.
+    Disjoint shells give ``overlap`` width 0 -> ``C_ell = 0``.
+    """
+    lo = jnp.maximum(chi_near_i, chi_near_j)
+    hi = jnp.minimum(chi_far_i, chi_far_j)
+    width = jnp.maximum(hi - lo, 0.0)
+    chi = lo + width * jnp.linspace(0.0, 1.0, n_chi)
+    a = jc.background.a_of_chi(cosmo, chi)
+    inv_norm = 9.0 / ((chi_far_i**3 - chi_near_i**3) * (chi_far_j**3 - chi_near_j**3))
+
+    def pk_at(single_ell):
+        k = (single_ell + 0.5) / jnp.clip(chi, 1.0)
+        return jc.power.nonlinear_matter_power(cosmo, k, a, nonlinear_fn=nl_fn)
+
+    pk = jax.vmap(pk_at)(ells)  # (n_ell, n_chi)
+    integrand = chi[None, :] ** 2 * pk
+    dx = width / (n_chi - 1)
+    return dx * (integrand.sum(-1) - 0.5 * (integrand[..., 0] + integrand[..., -1])) * inv_norm
+
+
+@jax.jit(static_argnames=["nonlinear_fn", "cross", "nz_zmax", "radial_weight", "n_chi"])
 def compute_theory_cl_for_density(
     cosmo: jc.Cosmology,
     lightcone,
@@ -245,18 +325,30 @@ def compute_theory_cl_for_density(
     nonlinear_fn: str | Callable = jc.power.halofit,
     cross: bool = False,
     nz_zmax: float = 2.0,
+    radial_weight: Literal["comoving_volume", "tophat_z"] = "comoving_volume",
+    n_chi: int = 128,
 ) -> PowerSpectrum:
     """Compute theory number-counts Cls directly from a lightcone density field.
 
-    Converts shell geometry (comoving_centers, density_width) into tophat_z
-    redshift distributions and delegates to compute_theory_cl with
-    probe_type="number_counts".
+    A painted density shell is a comoving-VOLUME projection of the 3D overdensity: its per-pixel
+    value weights ``delta_3D`` by ``q(chi) ∝ chi**2`` over the shell ``[chi_near, chi_far]``.  The
+    matching Limber prediction (``radial_weight="comoving_volume"``, default) is therefore
+
+        C_ell^{ij} = (1 / (I_i I_j)) ∫_overlap chi**2 P((ell+0.5)/chi, a(chi)) dchi ,
+        I = (chi_far**3 - chi_near**3) / 3 ,
+
+    evaluated **edge-exactly** over each shell's own support with an ``n_chi``-point grid (see
+    :func:`_limber_density_pair_cl`).  This is the same model as :class:`comoving_tophat`
+    (``n(z) ∝ chi(z)**2 / H(z)``) but integrated directly, avoiding jax_cosmo's fixed 512-point
+    ``[0, zmax]`` Limber sampling — which under-resolves thin / low-z / high-z shells and makes the
+    result spuriously ``nz_zmax``-dependent.  Shell geometry (``comoving_centers``, ``density_width``)
+    supplies the comoving edges; the result is independent of ``nz_zmax``.
 
     Parameters
     ----------
     cosmo : jc.Cosmology
     lightcone : FlatDensity, SphericalDensity, or PowerSpectrum
-        Must have .comoving_centers and .density_width of shape (n_shells,).
+        Must carry .comoving_centers and .density_width of shape (n_shells,).
         A PowerSpectrum with status=FieldStatus.SPECTRA is also accepted — its
         stored AbstractField metadata is used for the theory computation.
     ells : jnp.ndarray
@@ -265,29 +357,77 @@ def compute_theory_cl_for_density(
         Nonlinear power spectrum function (default jc.power.halofit).
     cross : bool, optional
         If True, return all auto + cross spectra. Default False (auto only).
+    radial_weight : {"comoving_volume", "tophat_z"}, optional
+        ``"comoving_volume"`` (default): correct comoving-shell selection ``n(z) ∝ chi**2 / H(z)``,
+        normalised over each shell's redshift support (``nz_zmax``-independent).
+        ``"tophat_z"``: legacy behaviour — uniform in redshift with jax_cosmo's ``[0, nz_zmax]``
+        normalisation; kept only for comparison/reproducibility (emits a ``DeprecationWarning``).
     nz_zmax : float, optional
-        Integration upper bound for the tophat_z normalization (default 2.0).
-        jax_cosmo normalises n(z) with 256 Simpson points over [0, nz_zmax];
-        spacing = nz_zmax/255.  Must satisfy two conditions:
-        (1) nz_zmax > max shell redshift (otherwise normalization is wrong),
-        (2) nz_zmax/255 < min shell width in z (otherwise some shells get
-            no integration point → _norm=0 → NaN).
-        Reduce this value if you have very narrow shells at low redshift.
+        Only used by the legacy ``radial_weight="tophat_z"`` path (default 2.0).  Ignored by the
+        default comoving-volume path, whose normalisation is over each shell's own support.
+    n_chi : int, optional
+        Number of radial integration points per shell for the comoving-volume path (default 128;
+        the integrand is smooth so this converges to <0.1%).  Cost scales as
+        ``n_shells * n_ell * n_chi`` power-spectrum evaluations.
 
     Returns
     -------
     PowerSpectrum
         shape (n_shells, n_ell) for auto-spectra, or (n_cls, n_ell) with cross.
+
+    Notes
+    -----
+    This is a flat-sky **Limber** prediction (jax_cosmo).  For the nearest, lowest-redshift shells
+    at large scales the Limber approximation itself deviates from the exact spherical ``C_ell``;
+    that residual is expected and is not a bug.  To compare against a painted map, take the spectrum
+    of the OVERDENSITY (``field.to(OVERDENSITY).angular_cl(...)``) and, at high ``ell``, account for
+    the HEALPix pixel window (``pixwin(nside)**2``).
     """
     r_centers = lightcone.comoving_centers
     r_widths = lightcone.density_width
 
-    r_near = r_centers - r_widths / 2
-    r_far = r_centers + r_widths / 2
+    r_near = jnp.atleast_1d(r_centers - r_widths / 2)
+    r_far = jnp.atleast_1d(r_centers + r_widths / 2)
 
+    if radial_weight == "comoving_volume":
+        ells = jnp.asarray(ells)
+        nl_fn = _resolve_nonlinear_fn(nonlinear_fn)
+        n_shells = r_near.shape[0]
+        if cross:
+            rows, cols = jnp.triu_indices(n_shells)
+            cl_array = jax.vmap(
+                lambda i, j: _limber_density_pair_cl(
+                    cosmo, r_near[i], r_far[i], r_near[j], r_far[j], ells, nl_fn, n_chi
+                )
+            )(rows, cols)
+        else:
+            cl_array = jax.vmap(lambda cn, cf: _limber_density_pair_cl(cosmo, cn, cf, cn, cf, ells, nl_fn, n_chi))(
+                r_near, r_far
+            )
+        if cl_array.shape[0] == 1:  # single shell -> match the squeezed (n_ell,) convention
+            cl_array = cl_array[0]
+        return PowerSpectrum(
+            array=cl_array,
+            wavenumber=ells,
+            name="Cl",
+            scale_factors=lightcone.scale_factors,
+            comoving_centers=lightcone.comoving_centers,
+            density_width=lightcone.density_width,
+            z_sources=lightcone.z_sources,
+        )
+
+    if radial_weight != "tophat_z":
+        raise ValueError(f"radial_weight must be 'comoving_volume' or 'tophat_z', got {radial_weight!r}")
+
+    warnings.warn(
+        "radial_weight='tophat_z' is the legacy density-shell model (uniform in redshift with "
+        "nz_zmax-sensitive normalisation); it is kept only for comparison and reproducibility. "
+        "Use the default 'comoving_volume' for a correct comoving-shell prediction.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     z_near = jc.utils.a2z(jc.background.a_of_chi(cosmo, r_near))
     z_far = jc.utils.a2z(jc.background.a_of_chi(cosmo, r_far))
-
     nz_list = [tophat_z(zn, zf, gals_per_arcmin2=1.0, zmax=nz_zmax) for zn, zf in zip(z_near, z_far)]
 
     theory_cl = compute_theory_cl(
@@ -298,11 +438,9 @@ def compute_theory_cl_for_density(
         nonlinear_fn=nonlinear_fn,
         cross=cross,
     )
-
-    theory_cl = theory_cl.replace(
+    return theory_cl.replace(
         scale_factors=lightcone.scale_factors,
         comoving_centers=lightcone.comoving_centers,
         density_width=lightcone.density_width,
         z_sources=lightcone.z_sources,
     )
-    return theory_cl
