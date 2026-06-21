@@ -16,7 +16,9 @@ MODE="${MODE:-sbatch}"
 ACCOUNT="${ACCOUNT:-tkc@h100}"
 CONSTRAINT="${CONSTRAINT:-h100}"
 QOS="${QOS:-qos_gpu_h100-t3}"
-CPUS="${CPUS:-16}"
+# 96 cpus/node = 24 cpus/task on a 4-GPU H100 node (the IDRIS gpu_p6 default). Host RAM scales with
+# cores on Jean Zay, so this is what gives rank 0 enough RAM to gather/save the nside-2048 lightcone.
+CPUS="${CPUS:-96}"
 SLURM_SCRIPT="${SLURM_SCRIPT:-slurm_script.sh}"
 OUTPUT_LOGS="${OUTPUT_LOGS:-SLURM_LOGS}"
 RESULTS="${RESULTS:-results}"
@@ -55,9 +57,18 @@ launch() {
     case "$prev" in --output|-o) out="$a"; break ;; esac
     prev="$a"
   done
-  if [ -n "$out" ] && [ -s "$out" ]; then
-    echo "### SKIP (output exists): $out"
-    return 0
+  # A run is "done" if its --output is a non-empty file, OR (batched per-shell save) a directory
+  # holding at least one parquet. `-s` is unreliable on directories, so branch on `-d` explicitly.
+  if [ -n "$out" ]; then
+    if [ -d "$out" ]; then
+      if ls "$out"/*.parquet >/dev/null 2>&1; then
+        echo "### SKIP (output dir has parquets): $out"
+        return 0
+      fi
+    elif [ -s "$out" ]; then
+      echo "### SKIP (output exists): $out"
+      return 0
+    fi
   fi
   fli-launcher --mode "$MODE" --account "$ACCOUNT" --constraint "$CONSTRAINT" \
     --nodes "$nodes" --gpus-per-node "$gpn" --cpus-per-node "$CPUS" --qos "$QOS" \

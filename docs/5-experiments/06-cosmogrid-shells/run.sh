@@ -15,53 +15,66 @@ source "$(dirname "$0")/geometry.sh"
 
 echo "### Exp 06 — CosmoGrid-matched density shells  (MODE=$MODE)"
 
-# Shared physics: BullFrog (bf) 50-step PM; TSC paint + force-window deconvolution; nearest-grid-point
+# Shared physics: BullFrog (bf) 50-step PM; CIC paint, NO force-window deconvolution; nearest-grid-point
 # (ngp) spherical painting at nside 2048 (== CosmoGrid); CosmoGrid run000 cosmology; float64.
-# Each mesh is sized to run as a 1-D slab (pdim "128 1") AND a 2-D pencil (pdim "32 4"); both keep an even
-# halo, and the nside-2048 lightcone output adds negligibly to the ~2560^3 float64 mesh.
-COMMON="--sim-mode pm --solver bf --nb-steps 50 --paint-order tsc --deconvolution \
-  --nside 2048 --scheme ngp --enable-x64 --seed $SEED $COSMOGRID_COSMO"
+# Each mesh runs as a 1-D slab (pdim "128 1") AND a 2-D pencil (pdim "32 4"): full-sky 2048^3, quadrant
+# 1792x2944x1792 (all axes multiples of 128). Halos may be ODD (the quad slab is 7/11) — fine since jaxpm
+# "allow odd halo extent" (>= b56d7e9); the nside-2048 lightcone output adds negligibly to the mesh.
+#
+# --shells-per-file 1: stream the lightcone as one parquet per shell into the --output *directory*
+# (shell_0000.parquet, shell_0001.parquet, ...). At nside 2048 / float64 a shell is ~402 MB, so gathering
+# the whole 40-46 shell lightcone onto rank 0 (~16-18 GB, doubled by the >2 GB pyarrow split) OOMs host RAM;
+# per-shell keeps the peak at ~one shell. One file per shell is also the natural unit for the per-shell
+# density-Cl comparison. (Raise to a larger N to batch shells; N<=4 stays under the 2 GB split.)
+COMMON="--sim-mode pm --solver bf --nb-steps 50 --paint-order cic \
+  --nside 2048 --scheme ngp --enable-x64 --seed $SEED $COSMOGRID_COSMO \
+  --shells-per-file 1 --perf --iterations 3"
+
+# --perf (in COMMON) runs a warmup + --iterations timed forward passes, writes perf_<sim>.csv next to the
+# output dir, AND saves the result — so every run yields both the per-shell parquets and a perf row.
+# It costs ~(1 + iterations)x the forward compute per run, so size the wall-times accordingly (or drop
+# --perf / lower --iterations for pure data runs).
 
 # --- 2-bin set (DES Y3 bins 1+2, z <= 0.82) -----------------------------------------------------
 launch $NODES 4 $PDIM_SLAB   00:20:00 -- $COMMON \
   --mesh-size $MESH_FULL --box-size $BOX_2BIN_FULL --observer-position $OBS_FULL \
   --ts-near $TS_NEAR_2BIN --ts-far $TS_FAR_2BIN \
-  --output "$RESULTS/exp6/cosmogrid_2bin_fullsky_slab.parquet" --name "exp6_2bin_fullsky_slab_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_2bin_fullsky_slab" --name "exp6_2bin_fullsky_slab_s%seed%"
 
 launch $NODES 4 $PDIM_PENCIL 00:20:00 -- $COMMON \
   --mesh-size $MESH_FULL --box-size $BOX_2BIN_FULL --observer-position $OBS_FULL \
   --ts-near $TS_NEAR_2BIN --ts-far $TS_FAR_2BIN \
-  --output "$RESULTS/exp6/cosmogrid_2bin_fullsky_pencil.parquet" --name "exp6_2bin_fullsky_pencil_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_2bin_fullsky_pencil" --name "exp6_2bin_fullsky_pencil_s%seed%"
 
 # quadrant slab shards the SHORT (first) axis, so its halo is small at the default 0.5 multiplier
 # (8 cells ~ 9 Mpc/h); bump to 0.85 -> 14 cells ~ 16 Mpc/h (still even), matching the other runs.
 launch $NODES 4 $PDIM_SLAB   00:20:00 -- $COMMON --halo-multiplier 0.85 \
   --mesh-size $MESH_QUAD --box-size $BOX_2BIN_QUAD --observer-position $OBS_QUAD \
   --ts-near $TS_NEAR_2BIN --ts-far $TS_FAR_2BIN \
-  --output "$RESULTS/exp6/cosmogrid_2bin_quadrant_slab.parquet" --name "exp6_2bin_quadrant_slab_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_2bin_quadrant_slab" --name "exp6_2bin_quadrant_slab_s%seed%"
 
 launch $NODES 4 $PDIM_PENCIL 00:20:00 -- $COMMON \
   --mesh-size $MESH_QUAD --box-size $BOX_2BIN_QUAD --observer-position $OBS_QUAD \
   --ts-near $TS_NEAR_2BIN --ts-far $TS_FAR_2BIN \
-  --output "$RESULTS/exp6/cosmogrid_2bin_quadrant_pencil.parquet" --name "exp6_2bin_quadrant_pencil_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_2bin_quadrant_pencil" --name "exp6_2bin_quadrant_pencil_s%seed%"
 
 # --- 3-bin set (DES Y3 bins 1+2+3, z <= 1.06) ---------------------------------------------------
 launch $NODES 4 $PDIM_SLAB   00:25:00 -- $COMMON \
   --mesh-size $MESH_FULL --box-size $BOX_3BIN_FULL --observer-position $OBS_FULL \
   --ts-near $TS_NEAR_3BIN --ts-far $TS_FAR_3BIN \
-  --output "$RESULTS/exp6/cosmogrid_3bin_fullsky_slab.parquet" --name "exp6_3bin_fullsky_slab_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_3bin_fullsky_slab" --name "exp6_3bin_fullsky_slab_s%seed%"
 
 launch $NODES 4 $PDIM_PENCIL 00:25:00 -- $COMMON \
   --mesh-size $MESH_FULL --box-size $BOX_3BIN_FULL --observer-position $OBS_FULL \
   --ts-near $TS_NEAR_3BIN --ts-far $TS_FAR_3BIN \
-  --output "$RESULTS/exp6/cosmogrid_3bin_fullsky_pencil.parquet" --name "exp6_3bin_fullsky_pencil_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_3bin_fullsky_pencil" --name "exp6_3bin_fullsky_pencil_s%seed%"
 
 launch $NODES 4 $PDIM_SLAB   00:25:00 -- $COMMON --halo-multiplier 0.85 \
   --mesh-size $MESH_QUAD --box-size $BOX_3BIN_QUAD --observer-position $OBS_QUAD \
   --ts-near $TS_NEAR_3BIN --ts-far $TS_FAR_3BIN \
-  --output "$RESULTS/exp6/cosmogrid_3bin_quadrant_slab.parquet" --name "exp6_3bin_quadrant_slab_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_3bin_quadrant_slab" --name "exp6_3bin_quadrant_slab_s%seed%"
 
 launch $NODES 4 $PDIM_PENCIL 00:25:00 -- $COMMON \
   --mesh-size $MESH_QUAD --box-size $BOX_3BIN_QUAD --observer-position $OBS_QUAD \
   --ts-near $TS_NEAR_3BIN --ts-far $TS_FAR_3BIN \
-  --output "$RESULTS/exp6/cosmogrid_3bin_quadrant_pencil.parquet" --name "exp6_3bin_quadrant_pencil_s%seed%"
+  --output "$RESULTS/exp6/cosmogrid_3bin_quadrant_pencil" --name "exp6_3bin_quadrant_pencil_s%seed%"

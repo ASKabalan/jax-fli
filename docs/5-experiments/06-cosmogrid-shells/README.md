@@ -63,15 +63,19 @@ nests the 2-bin one (40 shells); both run from `z = 0`.
 `dx = L/2560` is `1.64` (2-bin) / `1.95` (3-bin). The quadrant packs the **same ~2560³ cell budget**
 (≈1.3×10⁸ cells/GPU, the float64 ceiling) into its smaller `(1.2r, 2.0r, 1.2r)` volume at **isotropic**
 `dx`. With the corrected observer the long (centred) axis is now **second**, so the short, sharded axis
-is first; the `0.6 : 1 : 0.6` ratio at that budget gives **2176 × 3600 × 2160** — a **finer** `dx ≈ 1.16`
+is first; the `0.6 : 1 : 0.6` ratio at that budget gives **2176 × 3584 × 2176** — a **finer** `dx ≈ 1.16`
 (2-bin) / `1.38` (3-bin), closer to CosmoGrid's own.
 
-The mesh is sized so the **same** array runs under both decompositions. The halo width is
-`int((axis ÷ p) · 0.5)` and must be **even** (an odd halo crashes jaxpm's `slice_unpad`); because that
-`int` **truncates**, an axis is valid whenever `axis ÷ p` is an integer that is `0` or `1` mod 4 — e.g.
-`2176 ÷ 128 = 17 → halo 8`. So both `2176 × 3600 × 2160` and the cubic `2560³` are valid under the
-**slab** `--pdim 128 1` (shard axis 0) and the **pencil** `--pdim 32 4` (shard axes 0 and 1); the
-pencil also satisfies `pdim₀ = 32` being a multiple of the 4 GPUs/node.
+The mesh is sized so the **same** array runs under both decompositions, under two constraints. (i) The
+halo `int((axis ÷ p) · 0.5)` must be **even** (an odd halo crashes jaxpm's `slice_unpad`). (ii) Under the
+**pencil**, the distributed-FFT all-to-all transposes *every* axis across **both** process-grid dimensions,
+so each axis must be divisible by **both** `pdim` factors — not just its initial owner. (An earlier mesh used
+`3600`, divisible by `pdim_y = 4` but **not** `pdim_x = 32`, and jaxpm aborted: `all_to_all split_axis (3600)
+has to be divisible by … x (32)`.) With `pdims {(128,1),(32,4)}` the safe step is `lcm = 128`, so every axis
+is a multiple of 128: `2176 = 128·17`, `3584 = 128·28`, `2176 = 128·17` (halos 8 / 14 / 8 — all even). So both
+`2176 × 3584 × 2176` and the cubic `2560³` are valid under the **slab** `--pdim 128 1` (shard axis 0) and the
+**pencil** `--pdim 32 4` (shard axes 0 and 1, transposing across both); `pdim₀ = 32` is also a multiple of the
+4 GPUs/node.
 
 One subtlety of sharding the **short** axis first: the quadrant **slab** halo is only 8 cells
 (≈ 9–11 `h⁻¹`Mpc) at the default `0.5` multiplier — tighter than the ≥ 16 `h⁻¹`Mpc elsewhere — so those
@@ -109,9 +113,9 @@ in total, all on **128 GPUs** (32 nodes × 4):
 | Run | depth | observer | box [`h⁻¹`Mpc] | mesh | `dx` [`h⁻¹`Mpc] | shells |
 |:--|:--:|:--:|:--:|:--:|:--:|:--:|
 | 2-bin · full sky | `z ≤ 0.82` | (0.5, 0.5, 0.5) | 4200³ | 2560³ | 1.64 | 40 |
-| 2-bin · quadrant | `z ≤ 0.82` | (0.1, 0.5, 0.9) | 2520 × 4200 × 2520 | 2176 × 3600 × 2160 | 1.16 | 40 |
+| 2-bin · quadrant | `z ≤ 0.82` | (0.1, 0.5, 0.9) | 2520 × 4200 × 2520 | 2176 × 3584 × 2176 | 1.16 | 40 |
 | 3-bin · full sky | `z ≤ 1.06` | (0.5, 0.5, 0.5) | 5000³ | 2560³ | 1.95 | 46 |
-| 3-bin · quadrant | `z ≤ 1.06` | (0.1, 0.5, 0.9) | 3000 × 5000 × 3000 | 2176 × 3600 × 2160 | 1.38 | 46 |
+| 3-bin · quadrant | `z ≤ 1.06` | (0.1, 0.5, 0.9) | 3000 × 5000 × 3000 | 2176 × 3584 × 2176 | 1.38 | 46 |
 
 **Resolution caveat — where the comparison is geometry-limited.** This experiment isolates geometry, so
 the resolution budget matters. A force-mesh cell `dx` at comoving distance `d` subtends a Nyquist
@@ -134,7 +138,8 @@ python prep_geometry.py
 # 2. Inspect the eight resolved fli-launcher commands without submitting
 MODE=dryrun bash run.sh
 
-# 3. Submit to SLURM (writes results/exp6/cosmogrid_{2bin,3bin}_{fullsky,quadrant}_{slab,pencil}.parquet)
+# 3. Submit to SLURM. Each run writes a *directory* results/exp6/cosmogrid_{2bin,3bin}_{fullsky,quadrant}_{slab,pencil}/
+#    holding one parquet per shell (shell_0000.parquet, …) — see --shells-per-file below.
 bash run.sh
 ```
 
@@ -144,7 +149,7 @@ then published to HuggingFace and studied locally against the CosmoGrid referenc
 
 > **Gate before cluster hours.** `MODE=dryrun` only *resolves* the eight commands — it does not run the
 > simulator. The `m2560` template validated a *cubic* mesh, nside 512, centred observer, slab
-> decomposition; these runs add several untested axes — a **non-cubic** `2176×3600×2160` mesh,
+> decomposition; these runs add several untested axes — a **non-cubic** `2176×3584×2176` mesh,
 > **nside-2048** spherical painting, an **off-centre** observer, and a **2-D pencil** `--pdim 32 4`
 > decomposition. Smoke-test the plumbing locally first (a small *cubic* run, then a small *non-cubic*
 > run, both as a slab and a pencil, at tiny mesh/nside with a handful of `ts` edges) before committing

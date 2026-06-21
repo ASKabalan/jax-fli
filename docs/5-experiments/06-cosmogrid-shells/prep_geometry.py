@@ -163,18 +163,20 @@ def r_of_z(cosmo, z):
 
 
 def _axis_ok(n, p, *, hm=0.5, detail=False):
-    """A mesh axis of size ``n`` sharded over ``p`` processes is valid iff ``n/p`` is an integer and the
-    halo ``int((n/p)*hm)`` is even (jaxpm ``slice_unpad`` crashes on an odd halo). The truncating ``int``
-    is why e.g. local=17 -> halo 8 is fine. Returns the bool, or ``(bool, halo)`` if ``detail``."""
+    """A mesh axis of size ``n`` sharded over ``p`` processes is valid iff ``n/p`` is an integer.
+
+    Odd halos (``int((n/p)*hm)``) are now fine: jaxpm "allow odd halo extent" (higher-order-paint
+    >= b56d7e9) fixed the ``slice_unpad_impl`` off-by-one (``x[-halo//2:]`` was parsed as
+    ``x[(-halo)//2:]``). BEFORE that commit the halo also had to be EVEN — re-add ``ok and halo % 2
+    == 0`` below if pinned to an older jaxpm. Returns the bool, or ``(bool, halo)`` if ``detail``."""
     ok = n % p == 0
     halo = int((n // p) * hm) if ok else -1
-    ok = ok and halo % 2 == 0
     return (ok, halo) if detail else ok
 
 
 def _round_valid(target, procs):
-    """Nearest mesh-axis size to ``target`` that is valid (integer local + even halo) under every process
-    count in ``procs`` — searched over multiples of ``lcm(procs)`` so divisibility is guaranteed."""
+    """Nearest mesh-axis size to ``target`` that is valid (integer local under every process count in
+    ``procs``) — searched over multiples of ``lcm(procs)`` so divisibility is guaranteed."""
     procs = sorted({int(p) for p in procs})
     step = lcm(*procs) if len(procs) > 1 else procs[0]
     base = max(step, int(round(target / step)) * step)
@@ -189,15 +191,19 @@ def quadrant_mesh(box_quad, budget_side, pdims):
     """Mesh ∝ box_quad with isotropic dx and ~``budget_side**3`` cells, valid under EVERY process grid in
     ``pdims`` so the SAME mesh runs as both a 1-D slab and a 2-D pencil. ``box_quad`` has its longest
     (centred, factor-2.0) axis SECOND (observer (0.1,0.5,0.9)): axis 0 is sharded over pdim_x, axis 1 over
-    pdim_y, axis 2 is replicated. Axes 0/1 round to the nearest size with an even halo under both grids;
-    the replicated axis 2 only needs to be even."""
+    pdim_y, axis 2 is nominally replicated. But the 2-D pencil FFT all-to-all transposes EVERY axis across
+    both process-grid dimensions, so ALL THREE axes are rounded valid under EVERY pdim factor (not just
+    their initial owner) — each must be divisible by both pdim_x and pdim_y, else jaxpm raises
+    'all_to_all split_axis (n) has to be divisible by the size of the named axis x'. With pdims
+    {(128,1),(32,4)} that lcm is 128, so all three become multiples of 128 (e.g. n1 3600 -> 3584)."""
     box = np.asarray(box_quad, dtype=float)
     assert box[1] == box.max(), "box_quad must have its longest (centred) axis second"
     f = box / box.max()  # (s, 1.0, s), s = 0.6
     long = (budget_side**3 / float(np.prod(f))) ** (1.0 / 3.0)  # cells along the long (2nd) axis
-    n1 = _round_valid(long, [pd[1] for pd in pdims])  # long axis, sharded over pdim_y
-    n0 = _round_valid(long * f[0], [pd[0] for pd in pdims])  # short axis 0, sharded over pdim_x
-    n2 = int(round(long * f[2] / 2.0) * 2)  # short axis 2, replicated -> just even
+    all_p = [p for pd in pdims for p in pd]  # every process count an axis is (re)sharded over across transposes
+    n0 = _round_valid(long * f[0], all_p)  # short axis 0
+    n1 = _round_valid(long, all_p)  # long axis (2nd)
+    n2 = _round_valid(long * f[2], all_p)  # short axis 2 (also transposed across the pencil FFT)
     return (n0, n1, n2)
 
 
@@ -301,6 +307,7 @@ def make_mask_figure():
         fig=fig,
         cmap="viridis",
         cbar=False,
+        bgcolor=(0.0,) * 4,
         title=f"Big-quadrant visibility footprint — orientation only (illustrative R_min)\n"
         f"observer {OBS_QUAD} — the Exp 08 corner geometry (a centred cap, not X/Y-reflected)",
     )

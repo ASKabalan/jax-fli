@@ -2,8 +2,8 @@
 # 2-bin set = DES Y3 bins 1+2 ; 3-bin set = bins 1+2+3. CosmoGrid shell a-edges (a_near > a_far).
 # 128 GPUs (32 nodes x 4); each mesh runs as a slab AND a pencil.
 
-MESH_FULL="2560 2560 2560"
-MESH_QUAD="2176 3600 2160"
+MESH_FULL="2048 2048 2048"
+MESH_QUAD="1792 2944 1792"
 OBS_FULL="0.5 0.5 0.5"
 OBS_QUAD="0.1 0.5 0.9"
 NODES=32
