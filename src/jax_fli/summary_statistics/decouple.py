@@ -192,7 +192,12 @@ def compute_mcm(mask, *, lmax: int | None = None, nlb: int = 16, pol: bool = Fal
     nside = jhp.npix2nside(mask.shape[0])
     if lmax is None:
         lmax = 3 * nside - 1
-    Wl = jhp.anafast(mask, lmax=lmax, pol=False, method=method)
+    if method == "healpy":
+        import healpy as hp
+
+        Wl = jnp.asarray(hp.anafast(np.asarray(mask), lmax=lmax))
+    else:
+        Wl = jhp.anafast(mask, lmax=lmax, pol=False, method=method)
     spin0 = _mcm_spin0(Wl, lmax)
     eeee, eebb = _mcm_spin2(Wl, lmax) if pol else (None, None)
     B, S, ell_eff = _linear_bins(nside, nlb, lmax)
@@ -237,14 +242,27 @@ def anafast_masked(
         if purify_e or purify_b:
             raise ValueError("purify_e/purify_b require a mask (purification needs the mask).")
         if not pol:
-            cl = jhp.anafast(map1, None if map2 is None else jnp.asarray(map2), lmax=lmax, pol=False, method=method)
+            if method == "healpy":
+                import healpy as hp
+
+                cl = hp.anafast(map1, None if map2 is None else np.asarray(map2), lmax=lmax, pol=False)
+            else:
+                cl = jhp.anafast(map1, None if map2 is None else jnp.asarray(map2), lmax=lmax, pol=False, method=method)
             return jnp.arange(cl.shape[-1]) * 1.0, jnp.asarray(cl)
         g1, g2 = map1[0], map1[1]
         _lmax = lmax if lmax is not None else 3 * jhp.npix2nside(g1.shape[-1]) - 1
-        E, Bb = jhp.map2alm_spin([g1, g2], spin=2, lmax=_lmax, healpy_ordering=True, method=method)
-        ee = jhp.alm2cl(E, healpy_ordering=True)
-        eb = jhp.alm2cl(E, Bb, healpy_ordering=True)
-        bb = jhp.alm2cl(Bb, healpy_ordering=True)
+        if method == "healpy":
+            import healpy as hp
+
+            E, Bb = hp.map2alm_spin([g1, g2], spin=2, lmax=_lmax, pol=True)
+            ee = hp.alm2cl(E)
+            eb = hp.alm2cl(E, Bb)
+            bb = hp.alm2cl(Bb)
+        else:
+            E, Bb = jhp.map2alm_spin([g1, g2], spin=2, lmax=_lmax, healpy_ordering=True, method=method)
+            ee = jhp.alm2cl(E, healpy_ordering=True)
+            eb = jhp.alm2cl(E, Bb, healpy_ordering=True)
+            bb = jhp.alm2cl(Bb, healpy_ordering=True)
         return jnp.arange(ee.shape[-1]) * 1.0, jnp.stack([ee, eb, bb], axis=0)
 
     mask = jnp.asarray(mask)
@@ -256,7 +274,18 @@ def anafast_masked(
     if not pol:
         masked1 = mask * map1
         masked2 = None if map2 is None else mask * jnp.asarray(map2)
-        ps = jhp.anafast(masked1, masked2, lmax=mcm.lmax, pol=False, method=method)
+        if method == "healpy":
+            import healpy as hp
+
+            ps = jnp.asarray(
+                hp.anafast(
+                    np.asarray(masked1),
+                    None if masked2 is None else np.asarray(masked2),
+                    lmax=mcm.lmax,
+                )
+            )
+        else:
+            ps = jhp.anafast(masked1, masked2, lmax=mcm.lmax, pol=False, method=method)
         dec = _decouple_spin0(ps, mcm.spin0, mcm.B, mcm.S)
         return mcm.ell_eff, jnp.asarray(dec)
 

@@ -864,18 +864,36 @@ class SphericalDensity(AbstractField):
         """
         if mask is not None:
             _lmax = lmax if lmax is not None else 3 * self.nside - 1
-            _method = method if method in ("jax", "jax_cuda") else "jax"
+            _method = method  # pass through; "healpy" runs real healpy on the masked decoupled path
             _mcm = mcm if mcm is not None else compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=False, method=_method)
             d1 = self.array
             d2 = mesh2.array if mesh2 is not None else None
             single = d1.ndim == 1
             flat1 = d1.reshape((-1, d1.shape[-1]))
-            if d2 is None:
+            flat2 = None if d2 is None else d2.reshape((-1, d2.shape[-1]))
+            if _method == "healpy":
+                # healpy needs concrete arrays -> loop in Python (cannot run under jax.vmap)
+                if flat2 is None:
+                    cls = jnp.stack(
+                        [
+                            anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
+                            for m in flat1
+                        ]
+                    )
+                else:
+                    cls = jnp.stack(
+                        [
+                            anafast_masked(m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[
+                                1
+                            ]
+                            for m1, m2 in zip(flat1, flat2)
+                        ]
+                    )
+            elif flat2 is None:
                 cls = jax.vmap(
                     lambda m: anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
                 )(flat1)
             else:
-                flat2 = d2.reshape((-1, d2.shape[-1]))
                 cls = jax.vmap(
                     lambda m1, m2: anafast_masked(
                         m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb
