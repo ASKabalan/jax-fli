@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
@@ -460,9 +461,8 @@ class CatalogExtract(eqx.Module):
 def extract_catalog(
     set_name: str,
     cosmo_keys: list[str] | tuple[str, ...],
-    path: str | None = None,
-    repo_id: str | None = None,
-    config: str | list[str] | None = None,
+    patterns: list[str] | tuple[str, ...] | None = None,
+    repo: str | None = None,
     truth: Catalog | None = None,
     field_statistic: bool = False,
     power_statistic: bool = False,
@@ -481,16 +481,17 @@ def extract_catalog(
         Cosmological parameter names to collect (e.g. ``["Omega_c", "sigma8"]``).
     set_name : str
         Name for the returned :class:`CatalogExtract`.
-    path : str, optional
-        Root directory.  Must contain either ``samples/`` (single chain) or
-        ``chain_N/samples/`` subdirectories (multi-chain).
-        Mutually exclusive with ``repo_id``.
-    repo_id : str, optional
-        HuggingFace Hub repository ID (e.g. ``"user/repo"``).
-        Mutually exclusive with ``path``.
-    config : str or list of str, optional
-        HF Hub dataset config name(s), one per chain.  A single string is
-        auto-wrapped into a one-element list.  Required when ``repo_id`` is set.
+    patterns : list of str
+        Per-chain parquet sources — **one pattern == one MCMC chain**, each streamed
+        and accumulated independently (a single pooled glob would mix chains and
+        compute a different, wrong statistic). A local pattern is a parquet glob or a
+        root directory holding ``samples/`` (single chain) or ``chain_N/samples/``
+        subdirectories (auto-expanded via :func:`_detect_chains`). With ``repo``, each
+        pattern is a glob of parquet files inside the HF dataset repo.
+    repo : str, optional
+        HuggingFace Hub dataset repository ID (e.g. ``"user/repo"``). When set, each
+        entry of ``patterns`` is resolved as ``data_files`` inside this repo; when
+        ``None`` (default) the patterns are local globs/directories.
     truth : Catalog, optional
         Truth Catalog. ``truth.field[0]`` is used as the reference IC for
         transfer/coherence spectra; ``truth.cosmology[0]`` is stored in
@@ -511,8 +512,8 @@ def extract_catalog(
         Typed container with attributes ``cosmo``, ``truth_cosmo``, ``true_ic``,
         ``mean_field``, ``std_field``, and ``power_spectra``.
     """
-    if (path is None) == (repo_id is None):
-        raise ValueError("Exactly one of 'path' or 'repo_id' must be provided.")
+    if not patterns:
+        raise ValueError("'patterns' must be a non-empty list of per-chain parquet sources.")
     if power_statistic and truth is None:
         raise ValueError("power_statistic=True requires 'truth' to be provided.")
 
@@ -526,24 +527,28 @@ def extract_catalog(
         _cosmo_param_keys = ["Omega_c", "Omega_b", "h", "n_s", "sigma8", "w0", "wa", "Omega_k", "Omega_nu"]
         truth_cosmo = {k: float(getattr(truth.cosmology[0], k)) for k in _cosmo_param_keys}
 
-    # --- Build per-chain streaming datasets ---
-    if repo_id is not None:
-        if config is None:
-            raise ValueError("'config' must be provided when 'repo_id' is set.")
-        configs: list[str] = [config] if isinstance(config, str) else list(config)
-        n_chains = len(configs)
+    # --- Build per-chain streaming datasets: ONE pattern == ONE chain ---
+    # Each chain is streamed and accumulated independently; patterns must never be pooled into a
+    # single load_dataset call (that would mix chains and corrupt the per-chain statistics).
+    if repo is not None:
+        chain_globs = list(patterns)
         chain_streams = [
-            hf_datasets.load_dataset(repo_id, name=cfg, streaming=True, split="train").with_format("numpy")
-            for cfg in configs
+            hf_datasets.load_dataset(repo, data_files=glob, split="train", streaming=True).with_format("numpy")
+            for glob in chain_globs
         ]
     else:
-        assert path is not None
-        chain_globs = _detect_chains(Path(path))
-        n_chains = len(chain_globs)
+        # Local: a pattern is a parquet glob, or a directory expanded to per-chain globs.
+        chain_globs = []
+        for pat in patterns:
+            if os.path.isdir(pat):
+                chain_globs.extend(_detect_chains(Path(pat)))
+            else:
+                chain_globs.append(pat)
         chain_streams = [
             hf_datasets.load_dataset("parquet", data_files=glob, split="train", streaming=True).with_format("numpy")
             for glob in chain_globs
         ]
+    n_chains = len(chain_streams)
 
     cosmo_lists: dict[str, list[list[float]]] = {key: [[] for _ in range(n_chains)] for key in cosmo_keys}
     chain_field_stats: list[_RunningStats | None] = [None] * n_chains

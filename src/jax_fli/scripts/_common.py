@@ -24,6 +24,9 @@ __all__ = [
     "_resolve_summary_stats_mask",
     "_build_sharding",
     "_save_args_log",
+    "_load_lightcone",
+    "_resolve_source",
+    "_resolve_chain_sources",
 ]
 
 # CLI --solver token -> Configurations.nbody_solver name (forward_model._SOLVERS keys).
@@ -281,3 +284,120 @@ def _build_sharding(args: Namespace):
         mesh = Mesh(create_hybrid_device_mesh(mesh_shape, dcn_shape), axis_names=("x", "y"))
     sharding = NamedSharding(mesh, P("x", "y"))
     return sharding
+
+
+# ---------------------------------------------------------------------------
+# Density lightcone loading (add_source_args: local glob or HuggingFace repo)
+# ---------------------------------------------------------------------------
+
+
+def _load_lightcone(args: Namespace, *, sharding=None):
+    """Load and stack the density shells named by ``add_source_args`` into one lightcone.
+
+    The source is EITHER a local parquet glob (``--input``) OR a HuggingFace repo (``--repo`` +
+    ``--data-files``), streamed row by row. On the cluster the HF cache is pre-warmed out of band, so
+    this just calls ``load_dataset(..., streaming=True)`` — no ``snapshot_download``. Each shell is
+    ud_grade-downsampled to ``--nside`` when that is smaller than native, the shells are ordered
+    nearest→farthest by comoving distance, and stacked into one ``(S, npix)`` ``SphericalDensity``. A
+    single row that is already a stacked ``(S, npix)`` lightcone is used as-is. ``sharding`` (Born
+    only) distributes the maps: native shells are sharded on load, a downsampled stack is sharded once
+    after stacking (ud_grade on a ``P("x")``-sharded shell is unsafe).
+
+    Returns ``(lightcone, cosmology)``.
+    """
+    from datasets import load_dataset
+
+    from jax_fli.io import Catalog
+
+    if args.input:
+        if args.repo or args.data_files:
+            raise ValueError("Pass EITHER --input (local glob) OR --repo/--data-files (HuggingFace), not both.")
+        ds = load_dataset("parquet", data_files=args.input, split="train", streaming=True)
+    elif args.repo and args.data_files:
+        ds = load_dataset(args.repo, data_files=args.data_files, split="train", streaming=True)
+    else:
+        raise ValueError("No source: pass --input (local glob) or --repo + --data-files (HuggingFace).")
+
+    nside = args.nside
+    fields, cosmo, downsample = [], None, None
+    for row in ds.with_format("numpy"):
+        if downsample is None:  # the first shell's native nside decides downsample-vs-native
+            cat = Catalog.from_dataset(row)
+            fld = cat.field[0]
+            downsample = nside is not None and int(nside) < int(fld.nside)
+            if downsample:
+                fld = fld.ud_sample(int(nside))
+            elif sharding is not None:
+                fld = fld.replace(field_sharding=sharding).apply_sharding()
+        elif downsample:
+            cat = Catalog.from_dataset(row)
+            fld = cat.field[0].ud_sample(int(nside))
+        else:
+            cat = Catalog.from_dataset(row, sharding=sharding)
+            fld = cat.field[0]
+        fields.append(fld)
+        cosmo = cat.cosmology[0]
+
+    if not fields:
+        raise ValueError("No density shells found in the source.")
+    if not isinstance(fields[0], jfli.SphericalDensity):
+        raise TypeError(f"Expected SphericalDensity shells, got {type(fields[0]).__name__}.")
+
+    if len(fields) == 1 and fields[0].array.ndim >= 2:
+        lightcone = fields[0]  # already a stacked (S, npix) lightcone in one row
+    else:
+        # nearest→farthest: order-invariant for Born, the required radial order for ray-tracing.
+        fields.sort(key=lambda f: float(f.comoving_centers))
+        lightcone = jfli.SphericalDensity.stack(fields)
+
+    if downsample and sharding is not None:
+        lightcone = lightcone.replace(field_sharding=sharding).apply_sharding()
+    return lightcone, cosmo
+
+
+def _resolve_source(args: Namespace, *, prefix: str = ""):
+    """Return ONE streamed ``datasets`` dataset from a single ``add_source_args`` source.
+
+    Reads the (optionally prefixed) ``input`` XOR ``repo`` + ``data_files`` attributes — the same
+    branching as :func:`_load_lightcone`, factored out for the single-row consumers (``fli-infer``
+    observable and initial condition). ``prefix="ic"`` reads ``ic_input`` / ``ic_repo`` /
+    ``ic_data_files``. Streams via ``load_dataset(..., streaming=True)`` (the cluster HF cache is
+    pre-warmed out of band, so no ``snapshot_download``).
+    """
+    from datasets import load_dataset
+
+    under = f"{prefix}_" if prefix else ""
+    label = f"--{prefix}-" if prefix else "--"
+    input_ = getattr(args, f"{under}input", None)
+    repo = getattr(args, f"{under}repo", None)
+    data_files = getattr(args, f"{under}data_files", None)
+
+    if input_:
+        if repo or data_files:
+            raise ValueError(f"Pass EITHER {label}input OR {label}repo/{label}data-files, not both.")
+        return load_dataset("parquet", data_files=input_, split="train", streaming=True)
+    if repo and data_files:
+        return load_dataset(repo, data_files=data_files, split="train", streaming=True)
+    raise ValueError(f"No source: pass {label}input (local glob) or {label}repo + {label}data-files (HuggingFace).")
+
+
+def _resolve_chain_sources(args: Namespace):
+    """Resolve a multi-pattern ``add_source_args(multi=True)`` source into ``(repo, patterns)``.
+
+    ``patterns`` is the list of per-chain parquet sources (``fli-extract`` opens one streamed
+    ``load_dataset`` per pattern). EITHER local ``--input`` (one or more globs/dirs; ``repo=None``) OR
+    HuggingFace ``--repo`` + ``--data-files`` (one or more globs inside the repo); the single-pattern
+    forms are just a one-element list. Directory expansion (a local root holding ``chain_N/``) happens
+    downstream in :func:`jax_fli.io.extract.extract_catalog`.
+    """
+    input_ = getattr(args, "input", None)
+    repo = getattr(args, "repo", None)
+    data_files = getattr(args, "data_files", None)
+
+    if input_:
+        if repo or data_files:
+            raise ValueError("Pass EITHER --input (local) OR --repo/--data-files (HuggingFace), not both.")
+        return None, list(input_)
+    if repo and data_files:
+        return repo, list(data_files)
+    raise ValueError("No source: pass --input (local glob[s]/dir) or --repo + --data-files (HuggingFace).")

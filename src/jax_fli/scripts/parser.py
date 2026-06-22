@@ -10,6 +10,9 @@ entry scripts compose only the groups they actually consume:
                           + ``add_output_target_args`` (nside / density / flat-sky + painting)
 * integration           — ``add_integration_settings_args`` (physics, shell timing)
 * lensing               — ``add_lensing_args``
+* source                — ``add_source_args`` (local glob or HuggingFace repo; ``prefix=`` for a 2nd
+                          source, ``multi=`` for one-pattern-per-chain; used by born/dorian/infer/extract)
+* lensing post-proc     — ``add_lensing_postproc_args`` (output/nside/normalization for fli-born-rt / fli-dorian-rt)
 * priors / inference    — ``add_prior_args`` / ``add_infer_args``
 * forward-model         — ``add_forward_model_args`` (likelihood mask / sigma / lightcone)
 * summary statistics    — ``add_summary_stats_*`` (used by fli-summary-stats)
@@ -343,6 +346,91 @@ def add_lensing_args(p):
     )
 
 
+def add_source_args(p, *, prefix="", multi=False):
+    """Generic catalog source: a local parquet glob OR a HuggingFace dataset repo.
+
+    Shared by the post-processing scripts (``fli-born-rt`` / ``fli-dorian-rt``) and the inference and
+    extraction entry points. The source is EITHER ``--input`` (a local file/glob) OR ``--repo`` +
+    ``--data-files`` (a glob of parquet files inside a HuggingFace dataset repo); ``--input`` and
+    ``--repo`` are mutually exclusive (enforced by argparse) and consumed by ``scripts._common``
+    (``_load_lightcone`` / ``_resolve_source`` / ``_resolve_chain_sources``).
+
+    ``prefix`` renames the flags so one parser can carry two independent sources: the default ``""``
+    yields ``--input`` / ``--repo`` / ``--data-files`` (dests ``input`` / ``repo`` / ``data_files``);
+    ``prefix="ic"`` yields ``--ic-input`` / ``--ic-repo`` / ``--ic-data-files`` (dests ``ic_input`` /
+    ``ic_repo`` / ``ic_data_files``), used by ``fli-infer`` for its optional initial-condition source
+    alongside the unprefixed observable source.
+
+    ``multi`` makes ``--input`` and ``--data-files`` accept several patterns (``nargs="+"``); each
+    pattern is a *separate* source — used by ``fli-extract`` where one pattern maps to one MCMC chain.
+    The single-source consumers (born / dorian / infer) keep ``multi=False``.
+
+    The Streamlit UI mirrors this builder in
+    ``jax-fli-result/app/components/source_form.py::render_source_form`` (same ``prefix`` / ``multi``).
+    """
+    dash = f"{prefix}-" if prefix else ""
+    under = f"{prefix}_" if prefix else ""
+    nargs = "+" if multi else None
+    repeat = " Repeatable — each pattern is one chain." if multi else ""
+
+    g = p.add_argument_group(f"{prefix} source".strip())
+    src = g.add_mutually_exclusive_group()
+    src.add_argument(
+        f"--{dash}input",
+        dest=f"{under}input",
+        default=None,
+        nargs=nargs,
+        metavar="FILE_OR_GLOB",
+        help=f"Local parquet file(s): a path or glob (e.g. 'results/*.parquet').{repeat} "
+        f"Mutually exclusive with --{dash}repo/--{dash}data-files.",
+    )
+    src.add_argument(
+        f"--{dash}repo",
+        dest=f"{under}repo",
+        default=None,
+        metavar="REPO_ID",
+        help=f"HuggingFace dataset repo id (e.g. ASKabalan/jax-fli-experiments). Use with --{dash}data-files.",
+    )
+    g.add_argument(
+        f"--{dash}data-files",
+        dest=f"{under}data_files",
+        default=None,
+        nargs=nargs,
+        metavar="GLOB",
+        help=f"Glob of parquet files within --{dash}repo (e.g. '01-resolution/density/*.parquet').{repeat}",
+    )
+
+
+def add_lensing_postproc_args(p):
+    """Output + density→κ knobs for the post-processing lensing scripts (fli-born-rt / fli-dorian-rt).
+
+    ``--nside`` ud_grade-downsamples the stacked density lightcone before lensing; ``--normalization``
+    selects the density→δ overdensity normalization passed to ``jfli.born`` / ``jfli.raytrace``. The
+    density source itself is the separate ``add_source_args`` group.
+    """
+    g = p.add_argument_group("lensing post-processing")
+    g.add_argument(
+        "--output",
+        "-o",
+        default=".",
+        metavar="DIR",
+        help="Output directory (default: .)",
+    )
+    g.add_argument(
+        "--nside",
+        type=int,
+        default=None,
+        help="Downsample the density lightcone to this HEALPix nside before lensing (default: native).",
+    )
+    g.add_argument(
+        "--normalization",
+        choices=["global", "per_plane"],
+        default="global",
+        help="Overdensity normalization for the density→δ conversion: 'global' divides by one mean "
+        "across all shells, 'per_plane' normalizes each shell independently (default: global).",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Priors / inference
 # ---------------------------------------------------------------------------
@@ -400,22 +488,28 @@ def add_prior_args(p):
     )
 
 
-def add_infer_args(p):
+def add_infer_args(p, *, with_initial_condition=True):
     """Sampling configuration shared between fli-infer and launcher/infer.
 
     Does NOT include path args (--observable, --path) — those differ between
     the entry script (full paths, required) and the launcher (constructed from
     --observable-dir / --output-dir / --chain-index).
+
+    ``with_initial_condition`` controls the single-path ``--initial-condition`` flag: it stays on for
+    ``fli-samples`` (the default), but ``fli-infer`` passes ``False`` and instead takes its optional IC
+    through a prefixed ``add_source_args(p, prefix="ic")`` source (local glob or HF repo), mirroring
+    its observable source.
     """
     g = p.add_argument_group("inference")
-    g.add_argument(
-        "--initial-condition",
-        type=str,
-        default=None,
-        metavar="PATH",
-        dest="initial_condition",
-        help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
-    )
+    if with_initial_condition:
+        g.add_argument(
+            "--initial-condition",
+            type=str,
+            default=None,
+            metavar="PATH",
+            dest="initial_condition",
+            help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
+        )
     g.add_argument(
         "--init-cosmo",
         action="store_true",
