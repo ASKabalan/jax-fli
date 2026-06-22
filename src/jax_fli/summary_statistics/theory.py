@@ -234,6 +234,13 @@ def compute_theory_cl(
     Linear power spectrum:
     >>> cl_linear = compute_theory_cl(cosmo, ell, z_source=1.0, nonlinear_fn="linear")
     """
+    if not jax.config.x64_enabled:
+        warnings.warn(
+            "compute_theory_cl is more accurate with jax_enable_x64=True; "
+            "results may be inaccurate for thin / low-z / high-z source distributions.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     ell = jnp.asarray(ell)
     nz_list = _normalize_z_source(z_source)
@@ -383,6 +390,14 @@ def compute_theory_cl_for_density(
     of the OVERDENSITY (``field.to(OVERDENSITY).angular_cl(...)``) and, at high ``ell``, account for
     the HEALPix pixel window (``pixwin(nside)**2``).
     """
+    if not jax.config.x64_enabled:
+        warnings.warn(
+            "compute_theory_cl_for_density is more accurate with jax_enable_x64=True; "
+            "results may be inaccurate for thin / low-z / high-z shells due to Limber sampling.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     r_centers = lightcone.comoving_centers
     r_widths = lightcone.density_width
 
