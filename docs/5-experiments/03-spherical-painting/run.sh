@@ -8,7 +8,7 @@ echo "### Exp 03 — spherical painting + pixel-window  (MODE=$MODE)"
 
 NB_SHELLS="${NB_SHELLS:-10}"   # lightcone shells (box/2 / N ≥ min_width 50 Mpc/h)
 COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --nb-steps 50 \
---paint-order tsc --deconvolution --nb-shells $NB_SHELLS --shell-spacing comoving --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
+--paint-order cic --nb-shells $NB_SHELLS --shell-spacing a --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
 emit3() { # $1=scheme  $2=kernel-width-pixels ("" if none)  $3=nside  $4=paint-flag  $5=tag
   local kw=""; [ -n "$2" ] && kw="--kernel-width-pixels $2"

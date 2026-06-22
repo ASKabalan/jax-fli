@@ -31,8 +31,8 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
   × force-deconvolution on/off, impact on the spherical `C_ℓ`.
 - **03 — [Spherical painting + pixel-window](03-spherical-painting/README.md)** ⚠️ — interpolation
   scheme (NGP / bilinear / RBF) and HEALPix pixel-window impact.
-- **04 — [Solver comparison](04-solver-comparison/README.md)** ⚠️ — kdk / dkd / BullFrog speed &
-  convergence vs step count.
+- **04 — [Step convergence](04-step-convergence/README.md)** ⚠️ — minimum step budget and the
+  kdk / dkd / BullFrog comparison on the per-shell spherical `C_ℓ` vs step count.
 - **05 — [Drift on the lightcone](05-drift-on-lightcone/README.md)** ⚠️ — drift-on-lightcone improves
   thick-shell density `C_ℓ`; Born convergence unaffected.
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ⚠️ — per-shell density `C_ℓ` +
