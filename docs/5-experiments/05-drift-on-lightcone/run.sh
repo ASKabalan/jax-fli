@@ -10,7 +10,7 @@ NB_SHELLS="${NB_SHELLS:-8}"    # thick shells — the point of Exp 05
 # the full-lightcone gather onto rank 0 OOMs — see Exp 06). The shared launch() treats a parquet-filled
 # --output directory as "done".
 COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --nb-steps 50 \
---paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --nb-shells $NB_SHELLS --shell-spacing comoving \
+--paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --shell-spacing a --time-stepping D --halo-multiplier 0.5 \
 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
 # 2048³ @ 64 GPUs (16 nodes, --pdim 64 1): local 32³, halo int(32·0.5)=16 (EVEN), local ≤ 512³ → fits f64.
@@ -20,6 +20,10 @@ COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --
 # unchanged.
 for DRIFT in "" "--drift-on-lightcone"; do
   if [ -n "$DRIFT" ]; then tag="exp5_drift"; else tag="exp5_nodrift"; fi
-  launch 16 4 64 1 01:00:00 -- $COMMON $DRIFT \
+  launch 16 4 64 1 00:40:00 -- $COMMON $DRIFT --nb-shells $NB_SHELLS \
     --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
 done
+
+# Double the shells
+launch 16 4 64 1 00:40:00 -- $COMMON --nb-shells 16 \
+    --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
