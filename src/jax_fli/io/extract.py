@@ -531,9 +531,14 @@ def extract_catalog(
     # Each chain is streamed and accumulated independently; patterns must never be pooled into a
     # single load_dataset call (that would mix chains and corrupt the per-chain statistics).
     if repo is not None:
-        chain_globs = list(patterns)
+        # Resolve the pre-warmed HF cache offline (never hits the network; raises if the cache is
+        # cold), then read each chain as local parquet so it works with no internet.
+        from huggingface_hub import snapshot_download
+
+        root = snapshot_download(repo, repo_type="dataset", local_files_only=True)
+        chain_globs = [f"{root}/{glob}" for glob in patterns]
         chain_streams = [
-            hf_datasets.load_dataset(repo, data_files=glob, split="train", streaming=True).with_format("numpy")
+            hf_datasets.load_dataset("parquet", data_files=glob, split="train", streaming=True).with_format("numpy")
             for glob in chain_globs
         ]
     else:

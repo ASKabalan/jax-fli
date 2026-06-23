@@ -7,12 +7,16 @@ density maps (``m*.parquet``). Each shell's measured C_ell is compared to the an
 number-counts theory (``jax_fli.compute_theory_cl_for_density``), put on the same HEALPix
 pixel-window footing.
 
-Figures (→ ``assets/``):
-  fig01-spectra        all 10 shells × 5 resolutions, raw C_ell vs theory (+cosmic-variance band).
-  fig02-convergence    intermediate-ℓ (CV-clean) measured/theory vs mesh, beside the
+The per-shell C_ell track the independent CosmoGrid N-body to ~2-3% out to ell ~ 300 (see exp 06),
+so the clean comparison band is ``ell in [30, 300]``; the residual offset from the halofit-Limber
+*theory* is the analytic model (Limber for thin shells + a few-% halofit), not the simulation.
+
+Figures (-> ``assets/``):
+  fig01-spectra        all 10 shells x 5 resolutions, binned C_ell vs theory (+cosmic-variance band).
+  fig02-convergence    intermediate-ell (CV-clean) measured/theory vs mesh, beside the
                        halo-vs-displacement panel — the headline (anti-convergence + its cause).
-  fig03-deconvolution  best resolutions (2048, 2560): raw vs pixwin-deconvolved → recovery.
-  fig04-maps           the δ maps (shell 9, all resolutions) — no gross artifact, m512 smoother.
+  fig03-deconvolution  best resolutions (2048, 2560): raw vs pixwin-deconvolved -> recovery.
+  fig04-maps           the delta maps (shell 9, all resolutions) — no gross artifact, m512 smoother.
 
 Run from the repo root (CPU is fine; ~minutes, loads the 5 maps for fig04):
     JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/01-resolution-convergence/01-resolution-convergence.py
@@ -34,10 +38,11 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import matplotlib.pyplot as plt
 import numpy as np
+from datasets import load_dataset
 from matplotlib import cm
 from matplotlib.lines import Line2D
 
-import jax_fli
+from jax_fli import compute_theory_cl_for_density
 from jax_fli.io import Catalog
 
 HERE = Path(__file__).resolve().parent
@@ -45,9 +50,8 @@ sys.path.insert(0, str(HERE.parent))
 from _exputils import savefig, set_style  # noqa: E402
 
 ASSETS = HERE / "assets"
-DATA_DIR = HERE.parents[1] / "000_RUNS" / "results" / "exp1"  # local fallback (docs/000_RUNS/results/exp1)
 REPO = "ASKabalan/jax-fli-experiments"
-# 4 HF configs; each bundles all 5 resolutions as rows (mapped to mesh below). perf is CSV-only.
+# 3 HF configs; each bundles all 5 resolutions as rows (indexed by field.mesh_size below).
 CFG_DENSITY = "01-resolution-density"
 CFG_SPECTRA = "01-resolution-spectra"
 CFG_DECONV = "01-resolution-deconvolved-spectra"
@@ -56,53 +60,65 @@ NSIDE = 512
 BOX = 2000.0  # Mpc/h
 MESHES = [512, 1024, 2048, 2560, 3072]
 PX = {512: 4, 1024: 8, 2048: 64, 2560: 128, 3072: 256}  # x-decomposition (GPUs) per rung
-HALO = {m: 0.5 * BOX / PX[m] for m in MESHES}  # physical ghost-zone width = halo_multiplier·box/px
+HALO = {m: 0.5 * BOX / PX[m] for m in MESHES}  # physical ghost-zone width = halo_multiplier*box/px
 COLORS = {m: c for m, c in zip(MESHES, cm.viridis(np.linspace(0.0, 0.9, len(MESHES))))}
 NBINS = 18
-BAND = (30, 200)  # intermediate-ℓ window where the full-sky cosmic variance is ~0.7%
+BAND = (30, 300)  # intermediate-ell window: full-sky CV is tiny and the per-shell C_ell match
+#                   CosmoGrid (exp 06) to ~2-3% out to ell ~ 300.
 
 
 # --------------------------------------------------------------------------------------------
-# Loading + theory
+# Load the spectra, deconvolved spectra, and density maps from HuggingFace (one row per mesh),
+# indexing each config by ``field.mesh_size``.
 # --------------------------------------------------------------------------------------------
-def _load_config(config, local_glob):
-    """Return ``{mesh: (field, cosmo)}`` for a multi-row HF config (one row per resolution), keyed
-    by mesh size; fall back to the local flat parquet if the HF config is unavailable/offline."""
-    try:
-        from datasets import load_dataset
+print("Loading spectra from HF ...")
+_spec_cat = Catalog.from_dataset(load_dataset(REPO, CFG_SPECTRA, split="train").with_format("numpy"))
+print("Loading deconvolved spectra from HF ...")
+_dec_cat = Catalog.from_dataset(load_dataset(REPO, CFG_DECONV, split="train").with_format("numpy"))
+print("Loading density maps from HF (~1 GB, for fig04) ...")
+_den_cat = Catalog.from_dataset(load_dataset(REPO, CFG_DENSITY, split="train").with_format("numpy"))
 
-        cat = Catalog.from_dataset(load_dataset(REPO, config, split="train").with_format("numpy"))
-        fields, cosmos = cat.field, cat.cosmology
-    except Exception:
-        from glob import glob as _glob
+spectra = {int(np.asarray(f.mesh_size).ravel()[0]): f for f in _spec_cat.field}  # mesh -> raw C_ell
+deconv = {int(np.asarray(f.mesh_size).ravel()[0]): f for f in _dec_cat.field}  # mesh -> deconvolved C_ell
+cosmo = _spec_cat.cosmology[0]
 
-        fields, cosmos = [], []
-        for p in sorted(_glob(local_glob)):
-            c = Catalog.from_parquet(p)
-            fields, cosmos = fields + c.field, cosmos + c.cosmology
-    return {int(np.asarray(f.mesh_size)[0]): (f, co) for f, co in zip(fields, cosmos)}
+# The density config also carries the 2560³/3072³ *pencil* re-runs (same mesh, different decomposition,
+# larger halo). Keep the slab run analysed everywhere else — the one whose physical x-halo
+# (halo_size[0]·box/mesh) matches HALO[m] — so fig04's maps and halo labels are the starved slab runs.
+density = {}  # mesh -> SphericalDensity (slab)
+for f in _den_cat.field:
+    m = int(np.asarray(f.mesh_size).ravel()[0])
+    if m in HALO and abs(float(np.asarray(f.halo_size).ravel()[0]) * BOX / m - HALO[m]) < 0.5:
+        density[m] = f
+
+# --------------------------------------------------------------------------------------------
+# Theory (comoving-volume Limber number counts) on the same HEALPix pixel-window footing.
+# --------------------------------------------------------------------------------------------
+print("Computing theory ...")
+ps_ref = spectra[MESHES[0]]
+ell_full = np.asarray(ps_ref.wavenumber)
+z_shells = np.asarray(ps_ref.z_sources)
+chi_shells = np.asarray(ps_ref.comoving_centers)
+n_shells = np.asarray(ps_ref.array).shape[0]
+
+sel = ell_full >= 2
+ell = ell_full[sel]
+theory_cont = np.asarray(
+    compute_theory_cl_for_density(cosmo, ps_ref, ells=jnp.asarray(ell), nonlinear_fn="halofit").array
+)
+pixwin2 = hp.pixwin(NSIDE)[ell.astype(int)] ** 2
+theory_pw = theory_cont * pixwin2[None, :]  # pixel-window-matched (for the RAW measured)
+raw_s = {m: np.asarray(spectra[m].array)[:, sel] for m in MESHES}
+dec_s = {m: np.asarray(deconv[m].array)[:, sel] for m in MESHES}
+edges = np.unique(np.geomspace(2, ell.max(), NBINS + 1).astype(int))
 
 
-print("Loading spectra configs from HF …")
-_spectra = _load_config(CFG_SPECTRA, str(DATA_DIR / "spectra_m*.parquet"))
-_deconv = _load_config(CFG_DECONV, str(DATA_DIR / "spectra_deconv_m*.parquet"))
-_density: dict = {}  # density maps (~1.2 GB) are loaded lazily, only for fig04
-
-
-def load_ps(mesh, deconv=False):
-    """``(PowerSpectrum, cosmology)`` for one resolution from the (deconvolved-)spectra config."""
-    return (_deconv if deconv else _spectra)[mesh]
-
-
-def load_map(mesh):
-    """``SphericalDensity`` map for one resolution (lazy-loads the density config on first call)."""
-    if not _density:
-        _density.update(_load_config(CFG_DENSITY, str(DATA_DIR / "m*.parquet")))
-    return _density[mesh][0]
-
-
+# --------------------------------------------------------------------------------------------
+# Helpers: (2l+1)-weighted bandpowers, a band-averaged measured/theory ratio, and the rms
+# Zel'dovich displacement (for the halo-sizing panel).
+# --------------------------------------------------------------------------------------------
 def log_bin(ell, cl_2d, edges):
-    """(2ℓ+1)-weighted bandpowers. cl_2d: (n_shells, n_ell). Returns leff, cb, nmodes."""
+    """(2l+1)-weighted bandpowers. cl_2d: (n_shells, n_ell). Returns leff, cb, nmodes."""
     w = 2.0 * ell + 1.0
     leff, cb, nmodes = [], [], []
     for lo, hi in zip(edges[:-1], edges[1:]):
@@ -117,7 +133,7 @@ def log_bin(ell, cl_2d, edges):
 
 
 def band_ratio(ell, meas_2d, theo_2d, lo, hi):
-    """(2ℓ+1)-weighted measured/theory over [lo,hi] per shell, + the f_sky=1 CV sigma."""
+    """(2l+1)-weighted measured/theory over [lo,hi] per shell, plus the f_sky=1 CV sigma."""
     m = (ell >= lo) & (ell <= hi)
     w = 2.0 * ell[m] + 1.0
     mb = (meas_2d[:, m] * w).sum(axis=1) / w.sum()
@@ -125,31 +141,16 @@ def band_ratio(ell, meas_2d, theo_2d, lo, hi):
     return mb / tb, float(np.sqrt(2.0 / w.sum()))
 
 
-print("Computing theory …")
-raw = {m: np.asarray(load_ps(m)[0].array) for m in MESHES}
-dec = {m: np.asarray(load_ps(m, deconv=True)[0].array) for m in MESHES}
-ps_ref, cosmo = load_ps(MESHES[0])
-ell_full = np.asarray(ps_ref.wavenumber)
-z_shells = np.asarray(ps_ref.z_sources)
-chi_shells = np.asarray(ps_ref.comoving_centers)
-n_shells = raw[MESHES[0]].shape[0]
-
-sel = ell_full >= 2
-ell = ell_full[sel]
-theory_cont = np.asarray(
-    jax_fli.compute_theory_cl_for_density(
-        cosmo, ps_ref, ells=jnp.asarray(ell), nonlinear_fn="halofit", nz_zmax=0.5
-    ).array
-)
-pixwin2 = hp.pixwin(NSIDE)[ell.astype(int)] ** 2
-theory_pw = theory_cont * pixwin2[None, :]  # pixel-window-matched (for the RAW measured)
-raw_s = {m: raw[m][:, sel] for m in MESHES}
-dec_s = {m: dec[m][:, sel] for m in MESHES}
-edges = np.unique(np.geomspace(2, ell.max(), NBINS + 1).astype(int))
+def _sigma_displacement(z):
+    """rms 1D Zel'dovich displacement from the linear P(k) at redshift z."""
+    a = 1.0 / (1.0 + z)
+    k = jnp.logspace(-4, 1.3, 4000)
+    pk = jc.power.linear_matter_power(cosmo, k, a=a)
+    return float(jnp.sqrt(jnp.trapezoid(pk, k) / (6 * np.pi**2)))
 
 
 # --------------------------------------------------------------------------------------------
-# fig01 — spectra: all shells × all resolutions, raw vs theory (+CV band)
+# fig01 — spectra: all shells x all resolutions, binned C_ell vs theory (+CV band)
 # --------------------------------------------------------------------------------------------
 def fig01_spectra():
     leff, theory_b, nmodes_b = log_bin(ell, theory_pw, edges)
@@ -161,7 +162,7 @@ def fig01_spectra():
         cell = gs[i // 5, i % 5].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.0)
         ax_cl = fig.add_subplot(cell[0])
         ax_r = fig.add_subplot(cell[1], sharex=ax_cl)
-        # top: C_ell vs theory (+ CV band)
+        # top: binned C_ell vs theory (+ CV band)
         ax_cl.fill_between(leff, theory_b[i] * (1 - sigma_b), theory_b[i] * (1 + sigma_b), color="0.78", lw=0, zorder=0)
         ax_cl.loglog(leff, theory_b[i], "k-", lw=1.7, zorder=5)
         for m in MESHES:
@@ -173,7 +174,7 @@ def fig01_spectra():
         ax_cl.tick_params(labelbottom=False)
         if i % 5 == 0:
             ax_cl.set_ylabel(r"$C_\ell$")
-        # bottom (3:1 height): measured / theory per resolution
+        # bottom (3:1 height): binned measured / theory per resolution
         ax_r.fill_between(leff, 1 - sigma_b, 1 + sigma_b, color="0.78", lw=0, zorder=0)
         ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
         for m in MESHES:
@@ -194,7 +195,7 @@ def fig01_spectra():
     ]
     fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.0))
     fig.suptitle(
-        "Per-shell angular $C_\\ell$ vs theory (top) and the measured/theory ratio (bottom) — raw, nside=512, per_plane $\\delta$, full sky",
+        "Per-shell angular $C_\\ell$ vs theory (top) and the binned measured/theory ratio (bottom) — nside=512, per_plane $\\delta$, full sky",
         y=1.02,
     )
     savefig(ASSETS / "fig01-spectra", fig)
@@ -203,13 +204,6 @@ def fig01_spectra():
 # --------------------------------------------------------------------------------------------
 # fig02 — convergence diagnostic + the halo-vs-displacement mechanism
 # --------------------------------------------------------------------------------------------
-def _sigma_displacement(z):
-    a = 1.0 / (1.0 + z)
-    k = jnp.logspace(-4, 1.3, 4000)
-    pk = jc.power.linear_matter_power(cosmo, k, a=a)
-    return float(jnp.sqrt(jnp.trapezoid(pk, k) / (6 * np.pi**2)))  # rms 1D Zel'dovich displacement
-
-
 def fig02_convergence():
     ratios = {m: band_ratio(ell, raw_s[m], theory_pw, *BAND)[0] for m in MESHES}
     cv = band_ratio(ell, raw_s[MESHES[0]], theory_pw, *BAND)[1]
@@ -233,7 +227,7 @@ def fig02_convergence():
         )
     axL.set_xticks(xs)
     axL.set_xticklabels([f"m{m}\npx={PX[m]}" for m in MESHES])
-    axL.set_ylabel(r"measured / theory  ($\ell\in[30,200]$, $(2\ell+1)$-weighted)")
+    axL.set_ylabel(r"measured / theory  ($\ell\in[30,300]$, $(2\ell+1)$-weighted)")
     axL.set_title("Intermediate-ℓ agreement vs resolution (bold = outer shells, χ≥400)")
     axL.grid(alpha=0.25)
     axL.legend(loc="lower left", fontsize=9)
@@ -308,12 +302,12 @@ def fig03_deconvolution(shell=9):
 
 
 # --------------------------------------------------------------------------------------------
-# fig04 — the δ maps (shell 9), shared scale: no gross artifact, m512 smoother
+# fig04 — the delta maps (shell 9), shared scale: no gross artifact, m512 smoother
 # --------------------------------------------------------------------------------------------
 def fig04_maps(shell=9):
     d1 = {}
     for m in MESHES:
-        a = np.asarray(load_map(m).array[shell], dtype=np.float64)
+        a = np.asarray(density[m].array[shell], dtype=np.float64)
         d1[m] = np.log10(np.clip(a / a.mean(), 0.05, None))  # log10(1 + delta)
     v = np.percentile(d1[2048], [1, 99])
     fig = plt.figure(figsize=(20, 8.8))

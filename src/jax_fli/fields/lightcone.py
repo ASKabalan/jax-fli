@@ -595,6 +595,7 @@ class SphericalDensity(AbstractField):
         h: float | None = None,
         mean_density: float | None = None,
         normalization: str = "global",
+        supersample: int = 4,
     ) -> SphericalDensity:
         """
         Convert the spherical (HEALPix) map to a different density unit.
@@ -637,7 +638,12 @@ class SphericalDensity(AbstractField):
         # Off-center observers see only a partial sky: average ρ̄ over the visible footprint
         # when forming the overdensity (mask is unused by the other unit conversions). The
         # builder returns the scalar 1 for a center observer -> treat as no mask (plain mean).
-        vis = build_observer_visibility_mask(self.observer_position, self.nside, apodization_scale_deg=None)
+        vis = build_observer_visibility_mask(
+            self.observer_position,
+            self.nside,
+            apodization_scale_deg=None,
+            supersample=supersample,
+        )
         mask = None if jnp.ndim(vis) == 0 else vis
 
         new_array = convert_units(

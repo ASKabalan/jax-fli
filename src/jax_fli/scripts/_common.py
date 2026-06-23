@@ -296,7 +296,9 @@ def _load_lightcone(args: Namespace, *, sharding=None):
 
     The source is EITHER a local parquet glob (``--input``) OR a HuggingFace repo (``--repo`` +
     ``--data-files``), streamed row by row. On the cluster the HF cache is pre-warmed out of band, so
-    this just calls ``load_dataset(..., streaming=True)`` — no ``snapshot_download``. Each shell is
+    the repo path resolves it offline — ``snapshot_download(..., local_files_only=True)`` for the local
+    snapshot root (never touches the network; raises if the cache is cold), then reads the matched
+    files as local parquet via ``load_dataset("parquet", ...)`` so it works with no internet. Each shell is
     ud_grade-downsampled to ``--nside`` when that is smaller than native, the shells are ordered
     nearest→farthest by comoving distance, and stacked into one ``(S, npix)`` ``SphericalDensity``. A
     single row that is already a stacked ``(S, npix)`` lightcone is used as-is. ``sharding`` (Born
@@ -306,6 +308,7 @@ def _load_lightcone(args: Namespace, *, sharding=None):
     Returns ``(lightcone, cosmology)``.
     """
     from datasets import load_dataset
+    from huggingface_hub import snapshot_download
 
     from jax_fli.io import Catalog
 
@@ -314,7 +317,12 @@ def _load_lightcone(args: Namespace, *, sharding=None):
             raise ValueError("Pass EITHER --input (local glob) OR --repo/--data-files (HuggingFace), not both.")
         ds = load_dataset("parquet", data_files=args.input, split="train", streaming=True)
     elif args.repo and args.data_files:
-        ds = load_dataset(args.repo, data_files=args.data_files, split="train", streaming=True)
+        root = snapshot_download(
+            args.repo,
+            repo_type="dataset",
+            local_files_only=True,
+        )
+        ds = load_dataset("parquet", data_files=f"{root}/{args.data_files}", split="train", streaming=True)
     else:
         raise ValueError("No source: pass --input (local glob) or --repo + --data-files (HuggingFace).")
 
@@ -361,10 +369,12 @@ def _resolve_source(args: Namespace, *, prefix: str = ""):
     Reads the (optionally prefixed) ``input`` XOR ``repo`` + ``data_files`` attributes — the same
     branching as :func:`_load_lightcone`, factored out for the single-row consumers (``fli-infer``
     observable and initial condition). ``prefix="ic"`` reads ``ic_input`` / ``ic_repo`` /
-    ``ic_data_files``. Streams via ``load_dataset(..., streaming=True)`` (the cluster HF cache is
-    pre-warmed out of band, so no ``snapshot_download``).
+    ``ic_data_files``. Streams via ``load_dataset(..., streaming=True)``; the repo path resolves the
+    pre-warmed HF cache offline with ``snapshot_download(..., local_files_only=True)`` and reads the
+    matched files as local parquet, so it works with no internet (raises if the cache is cold).
     """
     from datasets import load_dataset
+    from huggingface_hub import snapshot_download
 
     under = f"{prefix}_" if prefix else ""
     label = f"--{prefix}-" if prefix else "--"
@@ -377,7 +387,8 @@ def _resolve_source(args: Namespace, *, prefix: str = ""):
             raise ValueError(f"Pass EITHER {label}input OR {label}repo/{label}data-files, not both.")
         return load_dataset("parquet", data_files=input_, split="train", streaming=True)
     if repo and data_files:
-        return load_dataset(repo, data_files=data_files, split="train", streaming=True)
+        root = snapshot_download(repo, repo_type="dataset", local_files_only=True)
+        return load_dataset("parquet", data_files=f"{root}/{data_files}", split="train", streaming=True)
     raise ValueError(f"No source: pass {label}input (local glob) or {label}repo + {label}data-files (HuggingFace).")
 
 
