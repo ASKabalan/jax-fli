@@ -327,17 +327,12 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
         if grad_adjoint == "reverse":
             if getattr(args, "time_stepping", "a") != "a":
                 parser.error("--grad reverse requires --time-stepping a (the reverse adjoint assumes uniform a-steps)")
-            # The reverse (reversible backsolve) adjoint is validated for saved-snapshot
-            # lightcones (Exp 09: reverse == checkpointed == finite differences to machine
-            # precision through the volumetric/spherical snapshot path) after the off-grid
-            # boundary-step fix in pm/integrate.py (_boundary_t_prev). It is NOT yet validated
-            # for the drift-on-lightcone interpolators (DriftInterp/OnionTiler/TelephotoInterp),
-            # whose paint/rewind reversibility is untested — use --grad checkpoint with those.
-            if getattr(args, "interp", "none") != "none":
+            if getattr(args, "interp", "none") in ("onion", "telephoto"):
                 parser.error(
-                    "--grad reverse is not yet validated with --interp != none (drift-on-lightcone "
-                    "interpolators). Use --interp none (saved snapshots / --nb-shells / --ts are "
-                    "supported) or --grad checkpoint / checkpointed_<N>."
+                    "--grad reverse is not yet validated with --interp onion/telephoto (the onion / "
+                    "telephoto tilers). Use --interp none — optionally with --drift-on-lightcone, which "
+                    "keeps interp='none' (a DriftInterp) and leaves the reverse adjoint valid — or "
+                    "--grad checkpoint / checkpointed_<N>."
                 )
 
 

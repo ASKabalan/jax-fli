@@ -123,6 +123,8 @@ def main() -> None:
     mask = _resolve_mask(args.mask, nside)
 
     # --- build Configurations ---
+    # Mirrors the fli-infer config, minus adjoint/checkpoints (prior-predictive Predictive sampling
+    # runs no gradients, so the adjoint strategy is irrelevant here).
     config = jfli.ppl.Configurations(
         mesh_size=mesh,
         box_size=tuple(args.box_size),
@@ -147,7 +149,6 @@ def main() -> None:
         kernel_width_pixels=args.kernel_width_pixels,
         pixel_window_deconvolution=args.pixel_window_deconvolution,
         field_sharding=sharding,
-        lensing="born",
         lensing_output=args.lensing_output,
         drift_on_lightcone=args.drift_on_lightcone,
         shell_spacing=args.shell_spacing,

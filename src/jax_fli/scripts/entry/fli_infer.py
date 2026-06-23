@@ -12,12 +12,19 @@ import jax_cosmo as jc
 from numpyro.handlers import condition
 
 import jax_fli as jfli
-from jax_fli.fields import FlatKappaField, SphericalKappaField
+from jax_fli.fields import (
+    DensityField,
+    FlatKappaField,
+    FlatShearField,
+    SphericalKappaField,
+    SphericalShearField,
+)
 from jax_fli.scripts._common import (
     _build_sharding,
     _resolve_mask,
     _resolve_nz_shear,
     _resolve_solver_name,
+    _resolve_source,
     _save_args_log,
 )
 
@@ -26,30 +33,58 @@ from jax_fli.scripts._common import (
 # ---------------------------------------------------------------------------
 
 
-def _load_observable(path: str, sharding):
-    """Load a kappa Catalog from parquet and extract per-bin arrays + metadata."""
-    catalog = jfli.io.Catalog.from_parquet(path, sharding=sharding)
+def _single_row_catalog(ds, *, sharding=None, what="source"):
+    """Materialize a streamed source expected to hold exactly ONE catalog row; return its Catalog.
+
+    Reads at most two rows so a mistakenly-batched source fails fast instead of streaming in full.
+    """
+    rows = []
+    for row in ds.with_format("numpy"):
+        rows.append(row)
+        if len(rows) > 1:
+            raise ValueError(f"The {what} source must contain exactly one row, but found more than one.")
+    if not rows:
+        raise ValueError(f"The {what} source contained no rows.")
+    catalog = jfli.io.Catalog.from_dataset(rows[0], sharding=sharding)
+    if len(catalog.field) != 1:
+        raise ValueError(f"The {what} row expands to {len(catalog.field)} catalog entries; expected a single field.")
+    return catalog
+
+
+def _load_observable(args, *, lensing_output, sharding=None):
+    """Load the single-row observable via ``add_source_args`` and split it into per-bin map arrays.
+
+    The source is a local ``--input`` glob or a HuggingFace ``--repo`` + ``--data-files`` (streamed).
+    It must be a SINGLE catalog row whose field type matches ``--lensing-output``: ``convergence`` →
+    ``Flat``/``SphericalKappaField``; ``shear`` / ``reduced_shear`` → ``Flat``/``SphericalShearField``
+    (there is no density observable — ``lensing_output`` has no ``density`` option). Returns the per-bin
+    map arrays (convergence ``(npix,)`` / ``(ny,nx)``; shear ``(2,npix)`` / ``(2,ny,nx)``) plus the
+    geometry metadata that ``main`` forwards to ``Configurations``.
+    """
+    catalog = _single_row_catalog(_resolve_source(args), sharding=sharding, what="observable")
     obs_field = catalog.field[0]
     obs_cosmo = catalog.cosmology[0]
 
-    if isinstance(obs_field, SphericalKappaField):
-        geometry = "spherical"
-        nside = obs_field.nside
-        flatsky_npix = None
-        field_size = None
-    elif isinstance(obs_field, FlatKappaField):
-        geometry = "flat"
-        nside = None
-        flatsky_npix = obs_field.flatsky_npix
-        field_size = obs_field.field_size
-    else:
-        raise ValueError(
-            f"Observable must be a SphericalKappaField or FlatKappaField, got {type(obs_field).__name__}. "
+    want_shear = lensing_output != "convergence"
+    expected = (FlatShearField, SphericalShearField) if want_shear else (FlatKappaField, SphericalKappaField)
+    if not isinstance(obs_field, expected):
+        kind = "shear" if want_shear else "convergence"
+        raise TypeError(
+            f"--lensing-output {lensing_output} expects a {kind} observable "
+            f"({' or '.join(c.__name__ for c in expected)}), got {type(obs_field).__name__}. "
             "Generate observables with fli-samples or fli-simulate lensing."
         )
 
-    n_kappas = obs_field.array.shape[0]
-    kappa_arrays = [obs_field.array[i] for i in range(n_kappas)]
+    if isinstance(obs_field, (SphericalKappaField, SphericalShearField)):
+        geometry, nside, flatsky_npix, field_size = "spherical", obs_field.nside, None, None
+    else:
+        geometry, nside, flatsky_npix, field_size = "flat", None, obs_field.flatsky_npix, obs_field.field_size
+
+    # One source bin per leading batch axis; a single-bin map round-trips UNBATCHED (so its leading
+    # axis is npix / the spin-2 component, not a bin) — is_batched() accounts for the spin-2 core.
+    arr = obs_field.array
+    kappa_arrays = [arr[i] for i in range(arr.shape[0])] if obs_field.is_batched() else [arr]
+    n_kappas = len(kappa_arrays)
 
     return kappa_arrays, obs_cosmo, obs_field.box_size, geometry, nside, flatsky_npix, field_size, n_kappas
 
@@ -59,10 +94,18 @@ def _load_observable(path: str, sharding):
 # ---------------------------------------------------------------------------
 
 
-def _load_initial_condition(path: str):
-    """Load an IC DensityField from a parquet Catalog."""
-    catalog = jfli.io.Catalog.from_parquet(path)
-    return catalog.field[0]
+def _load_initial_condition(args, *, sharding=None):
+    """Load the optional single-row IC ``DensityField`` via the prefixed ``add_source_args('ic')`` source.
+
+    The source is ``--ic-input`` (local glob) or ``--ic-repo`` + ``--ic-data-files`` (HuggingFace),
+    streamed exactly like the observable. It must be a single catalog row holding a ``DensityField``;
+    the IC array conditions the model (when the IC is fixed) or warm-starts a sampled IC.
+    """
+    catalog = _single_row_catalog(_resolve_source(args, prefix="ic"), sharding=sharding, what="initial condition")
+    ic_field = catalog.field[0]
+    if not isinstance(ic_field, DensityField):
+        raise TypeError(f"The initial condition must be a DensityField, got {type(ic_field).__name__}.")
+    return ic_field
 
 
 # ---------------------------------------------------------------------------
@@ -82,21 +125,21 @@ def parser() -> argparse.ArgumentParser:
         add_output_target_args,
         add_prior_args,
         add_simulation_settings_args,
+        add_source_args,
     )
 
     p = argparse.ArgumentParser(
         prog="fli-infer",
-        description="Run full-field MCMC inference conditioned on observed kappa maps.",
+        description="Run full-field MCMC inference conditioned on an observed kappa / shear map.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    p.add_argument(
-        "--observable",
-        type=str,
-        required=True,
-        metavar="PATH",
-        help="Parquet Catalog with batched kappa field and cosmology.",
-    )
+    # Observable source: a single-row kappa / shear Catalog (local --input glob or HF --repo +
+    # --data-files), validated against --lensing-output in _load_observable. The OPTIONAL initial
+    # condition uses the parallel prefixed source (--ic-input / --ic-repo / --ic-data-files); it must be
+    # a single-row DensityField, used to fix (condition) the IC or to warm-start a sampled IC.
+    add_source_args(p)
+    add_source_args(p, prefix="ic")
     p.add_argument(
         "--path",
         type=str,
@@ -113,7 +156,8 @@ def parser() -> argparse.ArgumentParser:
     add_integration_settings_args(p, solver_default="bf")
     add_lensing_args(p)
     add_prior_args(p)
-    add_infer_args(p)
+    # IC comes from the prefixed --ic-* source above, so drop add_infer_args's --initial-condition.
+    add_infer_args(p, with_initial_condition=False)
     add_forward_model_args(p)
 
     return p
@@ -126,6 +170,15 @@ def parser() -> argparse.ArgumentParser:
 
 def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
     """Validate argument combinations before running JAX."""
+    # Observable source (add_source_args): --input XOR --repo + --data-files (required).
+    if args.input is None and args.repo is None:
+        p.error("an observable source is required: --input (local) or --repo + --data-files (HuggingFace).")
+    if args.repo is not None and not args.data_files:
+        p.error("--data-files is required when --repo is set.")
+    # Initial-condition source (prefixed add_source_args, optional): --ic-input XOR --ic-repo + --ic-data-files.
+    if args.ic_repo is not None and not args.ic_data_files:
+        p.error("--ic-data-files is required when --ic-repo is set.")
+
     if args.mesh_size is None:
         p.error("--mesh-size is required for fli-infer.")
     if args.box_size is None:
@@ -137,8 +190,11 @@ def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
     if not sample_set & {"cosmo", "ic"}:
         p.error(f"--sample must contain at least one of 'cosmo' or 'ic', got: {args.sample}")
 
-    if "ic" not in sample_set and args.initial_condition is None:
-        p.error("--initial-condition is required when 'ic' is not in --sample (IC must be fixed).")
+    if "ic" not in sample_set and not (args.ic_input or args.ic_repo):
+        p.error(
+            "an initial condition is required when 'ic' is not in --sample (IC must be fixed): "
+            "pass --ic-input or --ic-repo + --ic-data-files."
+        )
 
     if args.sampler == "MCLMC" and args.backend != "blackjax":
         p.error("--sampler MCLMC requires --backend blackjax.")
@@ -164,7 +220,7 @@ def main() -> None:
     sharding = _build_sharding(args)
 
     kappa_arrays, obs_cosmo, obs_box_size, geometry, nside, flatsky_npix, field_size, n_kappas = _load_observable(
-        args.observable, sharding
+        args, lensing_output=args.lensing_output, sharding=sharding
     )
 
     cli_box = tuple(args.box_size)
@@ -176,8 +232,8 @@ def main() -> None:
         )
 
     ic_field = None
-    if args.initial_condition is not None:
-        ic_field = _load_initial_condition(args.initial_condition)
+    if args.ic_input or args.ic_repo:
+        ic_field = _load_initial_condition(args)
 
     sample_set = set(args.sample)
 
@@ -237,7 +293,6 @@ def main() -> None:
         t1=args.t1,
         lpt_order=args.lpt_order,
         number_of_shells=args.nb_shells,
-        lensing="born",
         lensing_output=args.lensing_output,
         scheme=args.scheme,
         paint_nside=args.paint_nside,

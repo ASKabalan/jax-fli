@@ -21,7 +21,7 @@ from .pdf import PDF, pdf_spherical
 from .peak_counts import PeakCounts, peak_counts_spherical
 from .power_spec import PowerSpectrum
 from .starlet import require_cosmostat, starlet_coefficients_spherical
-from .theory import compute_theory_cl, compute_theory_cl_for_density, tophat_z
+from .theory import comoving_tophat, compute_theory_cl, compute_theory_cl_for_density, tophat_z
 
 __all__ = [
     # ---- two-point ----
@@ -36,6 +36,7 @@ __all__ = [
     "anafast_masked",
     "compute_mcm",
     "MCM",
+    "comoving_tophat",
     "compute_theory_cl",
     "compute_theory_cl_for_density",
     "tophat_z",

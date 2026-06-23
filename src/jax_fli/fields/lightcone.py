@@ -10,6 +10,8 @@ import jax.numpy as jnp
 import jax_healpy as jhp
 from jax.image import resize
 
+from ..data.masks import build_observer_visibility_mask
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
@@ -138,6 +140,7 @@ class FlatDensity(AbstractField):
             volume_element=volume_element,
             field_sharding=self.field_sharding,
             normalization=normalization,
+            mask=None,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -592,6 +595,7 @@ class SphericalDensity(AbstractField):
         h: float | None = None,
         mean_density: float | None = None,
         normalization: str = "global",
+        supersample: int = 4,
     ) -> SphericalDensity:
         """
         Convert the spherical (HEALPix) map to a different density unit.
@@ -631,6 +635,17 @@ class SphericalDensity(AbstractField):
         pixel_solid_angle = 4 * jnp.pi / npix  # steradians per pixel
         shell_volume_per_pixel = pixel_solid_angle * (R_max**3 - R_min**3) / 3.0
 
+        # Off-center observers see only a partial sky: average ρ̄ over the visible footprint
+        # when forming the overdensity (mask is unused by the other unit conversions). The
+        # builder returns the scalar 1 for a center observer -> treat as no mask (plain mean).
+        vis = build_observer_visibility_mask(
+            self.observer_position,
+            self.nside,
+            apodization_scale_deg=None,
+            supersample=supersample,
+        )
+        mask = None if jnp.ndim(vis) == 0 else vis
+
         new_array = convert_units(
             array=self.array,
             origin=self.unit,
@@ -643,6 +658,7 @@ class SphericalDensity(AbstractField):
             volume_element=shell_volume_per_pixel,
             field_sharding=self.field_sharding,
             normalization=normalization,
+            mask=mask,
         )
 
         return self.replace(array=new_array, unit=unit)

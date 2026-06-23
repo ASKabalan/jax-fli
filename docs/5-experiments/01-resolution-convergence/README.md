@@ -21,13 +21,18 @@ its own mean — the choice consistent with a per-shell number-counts prediction
 the well-sampled outer shells) and its **full-sky** angular `C_ℓ` with healpy `anafast`
 (`fli-summary-stats --method healpy --normalization per_plane --mask none`). The reference is the
 analytic **Limber number-counts** `C_ℓ` (`jax_fli.compute_theory_cl_for_density`, bias 1, halofit),
-put on the same footing as the measurement by multiplying it by the HEALPix pixel window
-`pixwin(nside)²` (the painted map carries `W_ℓ²`). A second spectra set is produced with
-`--pixel-window-deconvolution`, which divides that window back out.
+computed with the correct **comoving-volume** shell selection: a painted shell is a comoving-volume
+projection of `δ` (radial weight `q(χ) ∝ χ²`), and the theory is the edge-exact per-shell Limber
+integral of that, **not** a redshift top-hat (the deprecated path, which under-sampled the narrow
+inner shells and added spurious per-shell scatter). It is put on the same footing as the measurement
+by multiplying by the HEALPix pixel window `pixwin(nside)²` (the painted map carries `W_ℓ²`). A second
+spectra set is produced with `--pixel-window-deconvolution`, which divides that window back out.
 
-The clean comparison band is **intermediate ℓ** (`ℓ ∈ [30, 200]`), where the full-sky cosmic
-variance is only **≈ 0.7 %** — small enough that a real resolution effect cannot hide behind it,
-and large enough that the coarse-mesh and pixel-window roll-offs have not yet kicked in.
+The clean comparison band is **intermediate ℓ** (`ℓ ∈ [30, 300]`), where the full-sky cosmic
+variance is only **≈ 0.5 %** — small enough that a real resolution effect cannot hide behind it,
+and large enough that the coarse-mesh and pixel-window roll-offs have not yet kicked in. The upper
+edge `ℓ ≈ 300` is set by the independent **CosmoGrid** cross-check (exp 06), where the same per-shell
+pipeline tracks a different N-body code to ~2–3 % out to there.
 
 ## Results
 
@@ -35,27 +40,38 @@ and large enough that the coarse-mesh and pixel-window roll-offs have not yet ki
 
 ![Per-shell angular C_ell for all 10 shells and 5 resolutions, against Limber theory](assets/fig01-spectra.svg)
 
-Every shell × resolution measured `C_ℓ` (log-binned, coloured by mesh) against the pixel-window-matched
-theory (black) with its ±1σ full-sky cosmic-variance band (grey); each panel pairs the `C_ℓ` (top)
-with its **measured/theory ratio** (bottom, 3:1) for every resolution. The shells span `z ≈ 0.017`
-(shell 0) to `0.35` (shell 9). At large scales all resolutions scatter around theory at roughly the
-realisation level; the resolution story lives at higher ℓ, quantified next.
+Every shell × resolution measured `C_ℓ` (**`(2ℓ+1)`-weighted bandpowers**, up to 18 log-spaced bins,
+coloured by mesh) against the pixel-window-matched theory (black); each panel pairs the `C_ℓ` (top)
+with its **binned measured/theory ratio** (bottom, 3:1) for every resolution, over a grey **±1σ
+cosmic-variance band** `√(2/N_modes)` per bin. The shells span `z ≈ 0.017` (shell 0) to `0.35`
+(shell 9). Binning tames the per-ℓ cosmic-variance scatter so the **band level** is legible (≈ 0.9 on
+the converged runs). The **nearest shells sit systematically below theory**: there the `χ²` weighting
+probes higher `k`, where PM force resolution and non-linearity bite (shell 0 reaches only `≈ 0.6` of
+theory). The resolution story lives at intermediate ℓ, quantified next.
 
 ### Convergence — and the anti-convergence of the over-fine runs
 
 ![Left: intermediate-ell measured/theory vs resolution; right: physical halo vs the particle-displacement scale](assets/fig02-convergence.svg)
 
-**Left** — the `(2ℓ+1)`-weighted measured/theory ratio over the CV-clean band `ℓ ∈ [30, 200]`, one
-line per shell (outer, well-sampled shells bold). It is **non-monotonic**: it rises to ≈ 1 at
-**1024³ and 2048³** (these match theory to a few percent), then **falls back**. The robust,
-theory-independent statement is the **relative** one: **2560³ and 3072³ carry ~4 % and ~17 % less
+**Left** — the measured/theory ratio, **`(2ℓ+1)`-weighted** over the CV-clean band `ℓ ∈ [30, 300]`,
+one line per shell (outer, well-sampled shells bold). It is **non-monotonic**: the outer shells rise
+to a resolution-independent plateau at **1024³ and 2048³** (`≈ 0.88` and `≈ 0.92` of theory — they
+agree with *each other* to ~3 %, i.e. converged), then **fall back**. The plateau sits a consistent
+**~8–12 % below** the halofit-Limber theory, flat in ℓ — and **that offset is the theory, not the
+simulation.** Exp 06 (the CosmoGrid comparison) settles it: there the same per-shell pipeline
+reproduces the independent **CosmoGrid** TreePM N-body to **~2–3 % out to `ℓ ≈ 300`**, and CosmoGrid
+*itself* sits ~15–25 % below the *same* halofit-Limber theory at low/mid ℓ. An independent N-body
+undershooting the analytic curve by the same amount means the offset is the **Limber approximation
+for thin shells (plus a few-percent halofit), not a missing normalisation factor** — indeed the
+per-plane `δ = ρ/⟨ρ⟩_shell − 1` provably divides the shell-volume and `4π/npix` factors straight out
+(`per_plane ≈ global`). This offset is **not** what this experiment is about. The robust,
+theory-independent statement is the **relative** one: **2560³ and 3072³ carry ~8 % and ~29 % less
 power than the converged 2048³** at scales all three resolve identically — a deficit that is the
-**same sign in all 10 shells** and **grows with the decomposition `pₓ`**, far beyond the ~0.7 %
-cosmic variance of the band (so it is not a statistical fluke). A *finer* mesh delivering *less*
-power, at scales it resolves easily, is not convergence. It is also not particle shot noise (which
-is *additive* — subtracting it makes the coarse meshes *more* deficient, and it is < 0.5 % of signal
-on the outer high-mesh shells), and not the overdensity normalisation (raw `DENSITY` equals
-`n̄ = mesh³/box³`, which `δ` divides straight out; `per_plane ≈ global`).
+**same sign in all 10 shells** and **grows with the decomposition `pₓ`**, far beyond the ~0.5 % cosmic
+variance of the band (so it is not a statistical fluke). A *finer* mesh delivering *less* power, at
+scales it resolves easily, is not convergence. It is also not particle shot noise (which is
+*additive* — subtracting it makes the coarse meshes *more* deficient, and it is < 0.5 % of signal on
+the outer high-mesh shells).
 
 **Right** — the cause. The distributed PM keeps particles in fixed Lagrangian slabs and paints into a
 padded slab whose **ghost zone (halo) has physical width `halo_multiplier · box / pₓ = box/(2 pₓ)`**,
@@ -78,9 +94,12 @@ theory / 2048³.
 A separate, orthogonal correction. The painted-map `anafast` carries the HEALPix pixel window, so the
 **raw** ratio (grey) rolls off toward ~0.5 by `ℓ = 2 nside` — power that no mesh refinement recovers.
 `--pixel-window-deconvolution` divides out `pixwin(nside)²` and **restores it**: the deconvolved
-2048³ (the converged resolution) tracks theory to ≈ 0.9–1.0 across the band, approaching the green
-`±2 %` target near `ℓ ~ 100–300`. This is the right footing for using these maps as a sub-percent
-reference, independent of the halo issue above.
+2048³ (the converged resolution) recovers the high-ℓ roll-off and tracks the continuous theory at
+`≈ 0.85–0.95` across the band — flat in ℓ, but offset a few percent low (the same plateau as fig02,
+below the green `±2 %` target). Deconvolution fixes the *pixel-window* roll-off; the residual is the
+separate **theory-side offset** discussed above (the halofit-Limber model over-predicting for thin
+shells, confirmed by the CosmoGrid comparison — not a window effect), and is independent of the halo
+issue.
 
 ### The maps show no localised artifact
 
@@ -100,13 +119,13 @@ Fixed: `--sim-mode pm`, BullFrog (`bf`), `--nb-steps 50`, `--paint-order cic`, `
 (Ω_c 0.2589, Ω_b 0.0486, h 0.6774, σ₈ 0.8159, n_s 0.9667), `--seed 0`, **float64**
 (`--enable-x64`), `--halo-multiplier 0.5`.
 
-| mesh | GPUs (`pₓ`) | nodes | physical halo `box/2pₓ` | intermediate-ℓ measured/theory |
+| mesh | GPUs (`pₓ`) | nodes | physical halo `box/2pₓ` | measured/theory, `ℓ∈[30,300]` |
 |------|--:|--:|--:|--:|
-| 512³  | 4   | 1  | 250 Mpc/h | ~0.85 (coarse-mesh limited) |
-| 1024³ | 8   | 2  | 125 Mpc/h | **≈ 0.97 (converged)** |
-| 2048³ | 64  | 16 | 15.6 Mpc/h | **≈ 0.98 (converged)** |
-| 2560³ | 128 | 32 | 7.8 Mpc/h | ~0.94 (halo-starved) |
-| 3072³ | 256 | 64 | 3.9 Mpc/h | ~0.81 (halo-starved) |
+| 512³  | 4   | 1  | 250 Mpc/h | ~0.71 (coarse-mesh limited) |
+| 1024³ | 8   | 2  | 125 Mpc/h | **≈ 0.88 (converged)** |
+| 2048³ | 64  | 16 | 15.6 Mpc/h | **≈ 0.92 (converged)** |
+| 2560³ | 128 | 32 | 7.8 Mpc/h | ~0.87 (halo-starved) |
+| 3072³ | 256 | 64 | 3.9 Mpc/h | ~0.71 (halo-starved) |
 
 > The GPU count per rung is the smallest `pₓ` (with `pₓ | mesh` and `mesh/pₓ` a multiple of 4) that
 > keeps the local mesh ≤ 512³ on a float64 H100. That choice ties the halo to `pₓ`, which is the knob
@@ -124,7 +143,7 @@ so the requirement, and the knob to turn, is
 > `halo_multiplier · box / pₓ  ≳  σ_disp`   ⟺   `halo_multiplier ≳ σ_disp · pₓ / box`.
 
 Calibration from the rungs: 2048³ (halo 15.6 ≈ 1.5 σ_disp) converged; 2560³/3072³ (7.8/3.9, at or
-below σ_disp) lost ~6 %/~20 %. Target **`halo ≳ 1.5 σ_disp`** for margin — by raising
+below σ_disp) lost ~8 %/~29 %. Target **`halo ≳ 1.5 σ_disp`** for margin — by raising
 `--halo-multiplier` or using fewer, fatter slabs (smaller `pₓ`); the halo padding costs memory, so
 trade it against the per-GPU float64 ceiling.
 
@@ -149,4 +168,4 @@ Density maps, both spectra sets, and the perf CSV/reports + launch logs are publ
 `ASKabalan/jax-fli-experiments` HuggingFace dataset as four configs — `01-resolution-density`,
 `01-resolution-spectra`, `01-resolution-deconvolved-spectra`, and `01-resolution-perf` — each
 bundling all five resolutions as rows (index by `field.mesh_size`). The figure script loads them
-from there, with a local `results/exp1` fallback.
+straight from there.
