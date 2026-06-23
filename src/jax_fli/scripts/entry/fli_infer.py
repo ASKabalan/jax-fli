@@ -293,7 +293,6 @@ def main() -> None:
         t1=args.t1,
         lpt_order=args.lpt_order,
         number_of_shells=args.nb_shells,
-        lensing="born",
         lensing_output=args.lensing_output,
         scheme=args.scheme,
         paint_nside=args.paint_nside,

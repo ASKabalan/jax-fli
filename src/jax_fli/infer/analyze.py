@@ -97,7 +97,7 @@ def analyze(
         n_chains = ce.n_chains
 
         # Build ArviZ InferenceData (reused for rank, trace, and summary)
-        idata = az.from_dict(posterior={k: np.asarray(v) for k, v in ce.cosmo.items()})
+        idata = az.from_dict({"posterior": {k: np.asarray(v) for k, v in ce.cosmo.items()}})
 
         # --------------------------------------------------------------
         # Output 1: Field projections
@@ -183,30 +183,30 @@ def analyze(
         # --------------------------------------------------------------
         # Output 3: ArviZ rank plot
         # --------------------------------------------------------------
-        az.plot_rank(idata, var_names=ce.cosmo_keys)
-        plt.suptitle(f"Rank Plots — {safe}", y=1.02)
-        plt.savefig(outfolder / f"rank_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-        plt.close()
+        pc = az.plot_rank_dist(idata, var_names=ce.cosmo_keys)
+        pc.add_title(f"Rank Plots — {safe}")
+        pc.savefig(outfolder / f"rank_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+        plt.close("all")
 
         # --------------------------------------------------------------
         # Output 4: ArviZ trace plot
         # --------------------------------------------------------------
-        az.plot_trace(idata, var_names=ce.cosmo_keys)
-        plt.suptitle(f"Chain Traces — {safe}", y=1.02)
-        plt.savefig(outfolder / f"trace_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-        plt.close()
+        pc = az.plot_trace_dist(idata, var_names=ce.cosmo_keys)
+        pc.add_title(f"Chain Traces — {safe}")
+        pc.savefig(outfolder / f"trace_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+        plt.close("all")
 
         # --------------------------------------------------------------
         # Summary section for this model
         # --------------------------------------------------------------
-        summary_df = az.summary(idata, var_names=ce.cosmo_keys)[["mean", "sd", "ess_bulk", "r_hat"]]
+        summary_df = az.summary(idata, var_names=ce.cosmo_keys, round_to="none")[["mean", "sd", "ess_bulk", "r_hat"]]
         agg_table = tb.tabulate(summary_df, headers="keys", tablefmt="github", floatfmt=".4f")
 
         ess_rows = []
         for p in ce.cosmo_keys:
             row = [p]
             for c in range(n_chains):
-                chain_idata = az.from_dict(posterior={k: np.asarray(v)[c : c + 1] for k, v in ce.cosmo.items()})
+                chain_idata = az.from_dict({"posterior": {k: np.asarray(v)[c : c + 1] for k, v in ce.cosmo.items()}})
                 chain_ess = az.ess(chain_idata, method="bulk")
                 row.append(f"{float(np.asarray(chain_ess[p]).flat[0]):.1f}")
             ess_rows.append(row)

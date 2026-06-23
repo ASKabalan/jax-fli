@@ -19,7 +19,12 @@ from pathlib import Path
 
 def parser() -> ArgumentParser:
     """Build the argument parser for fli-dorian-rt."""
-    from jax_fli.scripts.parser import add_lensing_args, add_lensing_postproc_args, add_source_args
+    from jax_fli.scripts.parser import (
+        add_distributed_args,
+        add_lensing_args,
+        add_lensing_postproc_args,
+        add_source_args,
+    )
 
     p = ArgumentParser(
         prog="fli-dorian-rt",
@@ -40,6 +45,10 @@ def parser() -> ArgumentParser:
         help="Also emit the Born convergence byproduct from the same dorian pass (default: ray-traced only)",
     )
     add_lensing_args(p)
+    # dorian is single-process numpy+MPI (it gets its world from MPI.COMM_WORLD, not a JAX mesh), but
+    # fli-launcher unconditionally appends --nodes/--gpus-per-node/--pdim to every payload. Accept and
+    # ignore them here so dorian can be launched uniformly through fli-launcher like fli-born-rt.
+    add_distributed_args(p)
     # Ray-tracing integrates through high-z shells, so default the n(z) ceiling to 3.0 (the reference
     # raytrace_kappa.py value), vs Born's 1.5.
     p.set_defaults(max_z=3.0)

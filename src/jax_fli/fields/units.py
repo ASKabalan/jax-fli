@@ -31,6 +31,7 @@ def convert_units(
     volume_element: float | None = None,  # Volume per voxel/pixel for density conversions
     field_sharding: Any | None = None,
     normalization: str = "global",  # "global" or "per_plane"
+    mask: Array | None = None,  # Optional mask for density conversions
 ) -> Array:
     """
     Convert array between units of the same physical quantity.
@@ -74,7 +75,9 @@ def convert_units(
     if isinstance(origin, PositionUnit):
         return _convert_position(array, origin, destination, mesh_size, box_size, field_sharding)
     elif isinstance(origin, DensityUnit):
-        return _convert_density(array, origin, destination, volume_element, omega_m, h, mean_density, normalization)
+        return _convert_density(
+            array, origin, destination, volume_element, omega_m, h, mean_density, normalization, mask
+        )
     elif isinstance(origin, ConvergenceUnit):
         return _convert_convergence(array, origin, destination)
     else:
@@ -145,6 +148,7 @@ def _convert_density(
     h: float | None = None,
     mean_density: float | None = None,
     normalization: str = "global",
+    mask: Array | None = None,
 ) -> Array:
     """
     Convert between density units.
@@ -175,6 +179,8 @@ def _convert_density(
 
         HEALPix pixel (thick shell):
             volume_element = (4π / 12 / nside²) × (R_max³ - R_min³) / 3
+    mask : Array, optional
+        Optional mask to apply to the density field before computing the mean density.
 
     omega_m : float, optional
         Matter density parameter. Required for MSUN_H_PER_MPC3 conversions.
@@ -255,14 +261,30 @@ def _convert_density(
 
     elif destination == DensityUnit.OVERDENSITY:
         if mean_density is None:
+            # Mean density ρ̄ for δ = ρ/ρ̄ - 1. With a partial-sky visibility ``mask``
+            # (off-center observer), average over VISIBLE pixels only so the unseen,
+            # zero-filled region does not dilute ρ̄ (which would inflate δ by ~1/f_sky).
+            # mask=None (full sky / center observer) keeps the plain mean — unchanged.
+            # Cast the mask to float first: a uint8 sum over ~50M pixels overflows.
+            w = None if mask is None else jnp.asarray(mask, dtype=density.dtype)
             if normalization == "per_plane" and density.ndim > 1:
                 # Mean over all spatial axes (axis 1 onward), keepdims for broadcast.
                 # e.g. SphericalDensity (n_shells, npix)  → mean shape (n_shells, 1)
                 #      FlatDensity      (n_shells, ny, nx) → mean shape (n_shells, 1, 1)
                 reduce_axes = tuple(range(1, density.ndim))
-                mean_density = jnp.mean(density, axis=reduce_axes, keepdims=True)
+                if w is None:
+                    mean_density = jnp.mean(density, axis=reduce_axes, keepdims=True)
+                else:
+                    wb = jnp.broadcast_to(w, density.shape)
+                    mean_density = jnp.sum(density * wb, axis=reduce_axes, keepdims=True) / jnp.sum(
+                        wb, axis=reduce_axes, keepdims=True
+                    )
             else:
-                mean_density = jnp.mean(density)
+                if w is None:
+                    mean_density = jnp.mean(density)
+                else:
+                    wb = jnp.broadcast_to(w, density.shape)
+                    mean_density = jnp.sum(density * wb) / jnp.sum(wb)
         eps = jnp.finfo(density.dtype).eps
         safe_mean = jnp.where(mean_density == 0, eps, mean_density)
         return density / safe_mean - 1.0

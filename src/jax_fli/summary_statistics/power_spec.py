@@ -320,21 +320,39 @@ class PowerSpectrum(AbstractField):
     def stack(cls, power_spectra: Sequence[PowerSpectrum]) -> PowerSpectrum:
         """Stack multiple PowerSpectrum objects along a new leading axis.
 
-        All wavenumber grids must match (allclose). Arrays are concatenated
-        along batch axis (introducing a leading dimension if needed).
-        Metadata is copied from the first element.
+        All wavenumber grids must match and all names must agree. Arrays are stacked
+        along a new leading batch axis. The per-entry dynamic metadata
+        (``scale_factors``, ``comoving_centers``, ``z_sources``, ``density_width``) is
+        stacked along the same axis so it stays aligned with the batch — element ``i``
+        of the result keeps element ``i``'s metadata. ``wavenumber`` is shared (kept as
+        the first element's 1-D grid) and static metadata is taken from the first
+        element. This mirrors :meth:`AbstractField.stack` (``jax.tree.map(jnp.stack)``),
+        which ``PowerSpectrum`` cannot use directly only because ``wavenumber`` must
+        stay 1-D rather than being stacked.
         """
         # Make sure that all wavenumber grids match and they have the same name
-        ref_k = power_spectra[0].wavenumber
-        name = power_spectra[0].name
+        ref = power_spectra[0]
+        ref_k = ref.wavenumber
+        name = ref.name
         for spec in power_spectra[1:]:
-            if spec.shape != power_spectra[0].shape:
+            if spec.shape != ref.shape:
                 raise ValueError("All PowerSpectrum instances must share the same shape to be stacked.")
             if spec.name != name:
                 raise ValueError("All PowerSpectrum instances must share the same name to be stacked.")
 
         stacked_array = jnp.stack([spec.array for spec in power_spectra], axis=0)
-        ref = power_spectra[0]
+
+        def _stack_meta(attr: str):
+            """Stack a per-entry dynamic metadata field along the new batch axis.
+
+            Returns None if it is absent (None) on any entry, so partially-populated
+            metadata is not silently fabricated.
+            """
+            values = [getattr(spec, attr) for spec in power_spectra]
+            if any(v is None for v in values):
+                return None
+            return jnp.stack([jnp.asarray(v) for v in values], axis=0)
+
         return cls(
             wavenumber=ref_k,
             array=stacked_array,
@@ -342,10 +360,10 @@ class PowerSpectrum(AbstractField):
             name=name,
             mesh_size=ref.mesh_size,
             box_size=ref.box_size,
-            comoving_centers=ref.comoving_centers,
-            density_width=ref.density_width,
-            z_sources=ref.z_sources,
-            scale_factors=ref.scale_factors,
+            comoving_centers=_stack_meta("comoving_centers"),
+            density_width=_stack_meta("density_width"),
+            z_sources=_stack_meta("z_sources"),
+            scale_factors=_stack_meta("scale_factors"),
             nside=ref.nside,
             flatsky_npix=ref.flatsky_npix,
             field_size=ref.field_size,
