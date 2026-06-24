@@ -220,4 +220,11 @@ class BinnedStatistic(AbstractField):
             if s.kind != ref.kind:
                 raise ValueError("All statistics must share the same kind to be stacked.")
         stacked = jnp.stack([s.array for s in stats], axis=0)
-        return ref.replace(array=stacked)
+        # Stack the per-shell lightcone metadata alongside the array so the batched result keeps
+        # one metadata row per stacked statistic (skip fields that are None on the reference).
+        meta_updates = {
+            f: jnp.stack([getattr(s, f) for s in stats], axis=0)
+            for f in ("z_sources", "comoving_centers", "scale_factors", "density_width")
+            if getattr(ref, f) is not None
+        }
+        return ref.replace(array=stacked, **meta_updates)

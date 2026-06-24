@@ -131,7 +131,7 @@ code); rerun them on a GPU/cluster to reproduce the full-resolution figures.
 | 10 | [Multi-host PM](docs/2-advanced-usage/10-multi-host-pm.md) | Launching across nodes + validation vs CosmoGrid |
 
 **Command-line tools** — one page per script under
-[Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`, `fli-summary-stats`,
+[Scripts & utilities](docs/4-scripts-and-utilities/): `fli-simulate`,
 `fli-born-rt`, `fli-dorian-rt`, `fli-samples`, `fli-infer`, `fli-2pcf`, `fli-extract`,
 `fli-launcher`. Sampling/inference tutorials and experiments are in preparation.
 

@@ -21,7 +21,6 @@ __all__ = [
     "_resolve_nz_shear",
     "_resolve_solver_name",
     "_resolve_mask",
-    "_resolve_summary_stats_mask",
     "_build_sharding",
     "_save_args_log",
     "_load_lightcone",
@@ -83,38 +82,6 @@ def _resolve_mask(mask_arg, nside):
             raise ValueError("--mask des_y3 requires spherical geometry (a model nside).")
         return jfli.data.get_desy3_mask(nside)
     return _load_healpix_mask(mask_arg, nside)
-
-
-def _resolve_summary_stats_mask(mask_arg, nside, observer_position, apodization_scale_deg: float = 1.0):
-    """Resolve the fli-summary-stats ``--mask`` into an apodized HEALPix footprint (or None).
-
-    Spherical geometry only. Accepts:
-
-    * ``none`` / ``None`` → no mask;
-    * ``infer_from_observer_position`` → the apodized observer-visibility mask built from
-      ``observer_position`` (a centered observer sees the whole sky, so this returns ``None``);
-    * ``des_y3`` → the DES Y3 footprint, apodized with a C2 window;
-    * a ``.npy`` / ``.npz`` / ``.fits`` path → loaded, ud_graded, and apodized.
-    """
-    if mask_arg is None:
-        return None
-    key = mask_arg.lower()
-    if key == "none":
-        return None
-    if key in ("infer_from_observer_position", "infer", "observer"):
-        mask = jfli.data.build_observer_visibility_mask(tuple(observer_position), nside, apodization_scale_deg)
-        import numpy as np
-
-        # build_observer_visibility_mask returns the scalar 1 for a centered observer (whole sky);
-        # treat that as no footprint restriction.
-        return None if np.ndim(mask) == 0 else mask
-    if nside is None:
-        raise ValueError("--mask requires spherical geometry (a HEALPix nside).")
-    if key in ("des_y3", "desy3"):
-        binary = jfli.data.get_desy3_mask(nside)
-    else:
-        binary = _load_healpix_mask(mask_arg, nside)
-    return jfli.data.apodize(binary, apodization_scale_deg)
 
 
 # ---------------------------------------------------------------------------

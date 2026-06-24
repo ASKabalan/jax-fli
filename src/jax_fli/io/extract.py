@@ -17,7 +17,7 @@ from jax.experimental.multihost_utils import process_allgather
 from ..fields import DensityField
 from .catalog import Catalog
 
-__all__ = ["extract_catalog", "requires_datasets", "CatalogExtract"]
+__all__ = ["extract_catalog", "extract_cosmo_catalog", "requires_datasets", "CatalogExtract"]
 
 _Param = ParamSpec("_Param")
 _Return = TypeVar("_Return")
@@ -636,3 +636,76 @@ def extract_catalog(
         std_field=result_std_field,
         power_spectra=result_power_spectra,
     )
+
+
+def extract_cosmo_catalog(
+    set_name: str,
+    cosmo_keys: list[str] | tuple[str, ...],
+    patterns: list[str] | tuple[str, ...],
+    truth: Any = None,
+) -> CatalogExtract:
+    """Build a :class:`CatalogExtract` from cosmo-only ``npz`` outputs (power-spectrum / 2PCF runs).
+
+    The power-spectrum model has no initial-condition field, so :func:`sample2catalog` saves the
+    sampled cosmology as ``cosmo_{batch}.npz`` rather than a parquet Catalog (which
+    :func:`extract_catalog` reads). This loader collects those files into the
+    ``(n_chains, n_samples)`` cosmo arrays consumed by :func:`~jax_fli.infer.analyze` and
+    :func:`~jax_fli.infer.plot_posterior`.
+
+    Parameters
+    ----------
+    set_name : str
+        Name for the returned :class:`CatalogExtract`.
+    cosmo_keys : list or tuple of str
+        Cosmological parameter names to collect (e.g. ``["Omega_c", "sigma8"]``).
+    patterns : list or tuple of str
+        Per-chain sources — **one entry == one chain**. Each entry is a directory searched
+        recursively for ``cosmo_*.npz`` (batches concatenated in index order), or a direct
+        glob of such files. Chains must have equal sample counts.
+    truth : jax_cosmo.Cosmology, optional
+        Truth cosmology; its standard parameters are stored (flattened) in
+        ``CatalogExtract.truth_cosmo`` for posterior truth markers.
+
+    Returns
+    -------
+    CatalogExtract
+        With ``cosmo[key]`` of shape ``(n_chains, n_samples)``; field/power attributes are ``None``.
+    """
+    import glob as _glob
+
+    if not patterns:
+        raise ValueError("'patterns' must be a non-empty list of per-chain cosmo-npz sources.")
+
+    def _batch_index(p: str):
+        stem = os.path.splitext(os.path.basename(p))[0]
+        digits = stem.split("_")[-1]
+        return int(digits) if digits.isdigit() else stem
+
+    cosmo_lists: dict[str, list[list[float]]] = {key: [] for key in cosmo_keys}
+    for pat in patterns:
+        files = (
+            _glob.glob(os.path.join(pat, "**", "cosmo_*.npz"), recursive=True)
+            if os.path.isdir(pat)
+            else _glob.glob(pat)
+        )
+        if not files:
+            raise FileNotFoundError(f"No cosmo_*.npz files found for chain pattern '{pat}'.")
+        files = sorted(files, key=_batch_index)
+        per_key: dict[str, list] = {key: [] for key in cosmo_keys}
+        for f in files:
+            with np.load(f) as data:
+                for key in cosmo_keys:
+                    if key not in data:
+                        raise KeyError(f"'{key}' not found in {f}; available keys: {list(data.keys())}")
+                    per_key[key].append(np.atleast_1d(np.asarray(data[key], dtype=np.float64)))
+        for key in cosmo_keys:
+            cosmo_lists[key].append(np.concatenate(per_key[key]).tolist())
+
+    cosmo_dict = {key: jnp.asarray(cosmo_lists[key]) for key in cosmo_keys}
+
+    truth_cosmo = None
+    if truth is not None:
+        _cosmo_param_keys = ["Omega_c", "Omega_b", "h", "n_s", "sigma8", "w0", "wa", "Omega_k", "Omega_nu"]
+        truth_cosmo = {k: float(getattr(truth, k)) for k in _cosmo_param_keys if hasattr(truth, k)}
+
+    return CatalogExtract(name=set_name, cosmo=cosmo_dict, truth_cosmo=truth_cosmo)

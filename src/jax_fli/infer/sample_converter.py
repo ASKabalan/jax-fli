@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from ..fields import DensityField
-from ..fields.lensing_maps import FlatKappaField, SphericalKappaField
+from ..fields.lensing_maps import FlatKappaField, FlatShearField, SphericalKappaField, SphericalShearField
 from ..io import Catalog
 
 if TYPE_CHECKING:
@@ -73,7 +73,11 @@ def sample2catalog(config: Configurations):
     """
 
     is_spherical = config.geometry == "spherical"
-    KappaFieldCls = SphericalKappaField if is_spherical else FlatKappaField
+    # The observable can be convergence (kappa) or shear / reduced shear; pick the matching field class.
+    if config.lensing_output == "convergence":
+        ObservableFieldCls = SphericalKappaField if is_spherical else FlatKappaField
+    else:
+        ObservableFieldCls = SphericalShearField if is_spherical else FlatShearField
 
     def cb(samples, path, batch_id, metrics=None):
         """Save orbax checkpoint and parquet Catalogs for one batch.
@@ -135,17 +139,17 @@ def sample2catalog(config: Configurations):
             sample_catalog = Catalog(field=initial_conditions, cosmology=cosmo)
             sample_catalog.to_parquet(os.path.join(ic_dir, f"samples_{batch_id}.parquet"))
 
-        # Check if samples has kappa
-        if "kappa_0" not in samples:
-            print("No kappa samples found, skipping kappa catalog saving.")
+        # Check if samples has lensing observables (convergence or shear)
+        if "observable_0" not in samples:
+            print("No observable samples found, skipping observable catalog saving.")
             return
-        fields_dir = os.path.join(path, "kappa_fields")
+        fields_dir = os.path.join(path, "observable_fields")
         os.makedirs(fields_dir, exist_ok=True)
-        # find out how many kappa bins there are by counting keys
-        kappa_keys = [k for k in samples if k.startswith("kappa_") and k.split("_")[-1].isdigit()]
-        n_bins = len(kappa_keys)
-        # Create the kappa fields class
-        kappa_meta_data = samples["kappa_meta_data"]
+        # find out how many tomographic bins there are by counting keys
+        observable_keys = [k for k in samples if k.startswith("observable_") and k.split("_")[-1].isdigit()]
+        n_bins = len(observable_keys)
+        # Create the observable fields class
+        observable_meta_data = samples["observable_meta_data"]
         cosmo_arr = np.asarray(cosmo.Omega_c)
         if cosmo_arr.ndim > 0:
             # Batched cosmology (Predictive mode): build one catalog entry per sample
@@ -154,22 +158,22 @@ def sample2catalog(config: Configurations):
             cosmo_list = []
             for s_idx in range(n_samples):
                 cosmo_s = jax.tree.map(lambda p: p[s_idx], cosmo)
-                meta_s = kappa_meta_data[s_idx]
-                kappa_s = jnp.stack([samples[f"kappa_{i}"][s_idx] for i in range(n_bins)], axis=0)
+                meta_s = observable_meta_data[s_idx]
+                observable_s = jnp.stack([samples[f"observable_{i}"][s_idx] for i in range(n_bins)], axis=0)
                 fields_list.append(
-                    KappaFieldCls.FromDensityMetadata(
-                        array=kappa_s, field=meta_s, name=f"kappa_fields_batch_{batch_id}_sample_{s_idx}"
+                    ObservableFieldCls.FromDensityMetadata(
+                        array=observable_s, field=meta_s, name=f"observable_fields_batch_{batch_id}_sample_{s_idx}"
                     )
                 )
                 cosmo_list.append(cosmo_s)
-            kappa_catalog = Catalog(field=fields_list, cosmology=cosmo_list)
+            observable_catalog = Catalog(field=fields_list, cosmology=cosmo_list)
         else:
-            kappa_array = jnp.stack([samples[f"kappa_{i}"] for i in range(n_bins)], axis=0)
-            kappa_field = KappaFieldCls.FromDensityMetadata(
-                array=kappa_array, field=kappa_meta_data, name=f"kappa_fields_batch_{batch_id}"
+            observable_array = jnp.stack([samples[f"observable_{i}"] for i in range(n_bins)], axis=0)
+            observable_field = ObservableFieldCls.FromDensityMetadata(
+                array=observable_array, field=observable_meta_data, name=f"observable_fields_batch_{batch_id}"
             )
-            kappa_catalog = Catalog(field=kappa_field, cosmology=cosmo)
-        kappa_catalog.to_parquet(os.path.join(fields_dir, f"fields_{batch_id}.parquet"))
+            observable_catalog = Catalog(field=observable_field, cosmology=cosmo)
+        observable_catalog.to_parquet(os.path.join(fields_dir, f"fields_{batch_id}.parquet"))
 
         if "lightcone" in samples:
             lightcone_dir = os.path.join(path, "lightcones")

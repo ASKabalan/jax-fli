@@ -295,7 +295,6 @@ class FlatShearField(FlatDensity):
         """
         if self.unit == unit:
             return self
-
         new_array = convert_units(
             array=self.array,
             origin=self.unit,
@@ -385,7 +384,6 @@ class SphericalShearField(SphericalDensity):
         """
         if self.unit == unit:
             return self
-
         new_array = convert_units(
             array=self.array,
             origin=self.unit,
@@ -412,6 +410,7 @@ class SphericalShearField(SphericalDensity):
 
         # NOTE: this inverse transform could mirror get_shear's distributed sharding (the inverse of
         # the shear sharding logic in _src/lensing/_sharding.py). Deferred — not yet wired here.
+        # Because in my forward model I never go from shear to convergence, I haven't needed it yet. The single-device path is correct.
         kappa = shear2kappa_spherical(self.array, lmax=lmax, method=method, iter=iter)
         return SphericalKappaField.FromDensityMetadata(
             array=kappa,

@@ -49,14 +49,6 @@ class DensityField(AbstractField):
                 "Please set the correct unit when constructing the field."
             )
 
-    def apply_sharding(self) -> DensityField:
-        """Shard the 3-D density: ``P([None,] "x", "y", None)`` (X→M, Y→N, Z replicated).
-
-        Uses the canonical layout in ``field_sharding`` directly (see ``AbstractField.apply_sharding``);
-        the volumetric box is the reference layout the lensing maps transpose from.
-        """
-        return super().apply_sharding()
-
     def __getitem__(self, key) -> DensityField:
         """
         Index into batched DensityField.

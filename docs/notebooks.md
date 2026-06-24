@@ -46,9 +46,10 @@ Command-line entry points for batch / HPC runs — one page per script under
 
 ## Experiments
 
-@CLAUDE this should have a general description then points to 5-experiments/README.md
-
-Reproduction studies that produce paper-ready figures — see [Experiments](5-experiments/).
+End-to-end reproduction studies, each a self-contained, runnable script that produces
+(initial conditions → LPT/N-body → lightcone → lensing → statistics/inference) on real
+reference data. For the catalogue, conventions, and lifecycle of these studies, start at
+the [experiments index](5-experiments/README.md).
 
 - [Experiment 08 — Masked shear](5-experiments/08-masked-shear/README.md) — Kaiser–Squires
   κ → γ on a cut sky (DES Y3 and observer-visibility masks), masked vs full-sky shear maps and

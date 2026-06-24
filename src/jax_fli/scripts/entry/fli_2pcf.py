@@ -130,9 +130,34 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--batch-count", type=int, default=10, dest="batch_count", help="Number of sequential batches (default: 10)"
     )
-    p.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    p.add_argument("--sampler", choices=["NUTS", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
     p.add_argument(
-        "--backend", choices=["numpyro", "blackjax"], default="blackjax", help="Sampling backend (default: blackjax)"
+        "--max-num-doublings",
+        type=int,
+        default=10,
+        dest="max_num_doublings",
+        help="NUTS leapfrog trajectory doubling depth (default: 10)",
+    )
+    p.add_argument(
+        "--target-accept",
+        type=float,
+        default=0.8,
+        dest="target_accept",
+        help="NUTS window-adaptation target acceptance rate (default: 0.8)",
+    )
+    p.add_argument(
+        "--mclmc-desired-energy-var",
+        type=float,
+        default=1e-3,
+        dest="mclmc_desired_energy_var",
+        help="MCLMC desired energy variance for L/step_size tuning (default: 1e-3)",
+    )
+    p.add_argument(
+        "--mclmc-init-step-size-scale",
+        type=float,
+        default=1e-4,
+        dest="mclmc_init_step_size_scale",
+        help="MCLMC initial step size = sqrt(total_dim) * scale (default: 1e-4)",
     )
     p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
     p.add_argument("--no-progress-bar", action="store_true", help="Suppress tqdm progress bars")
@@ -163,8 +188,6 @@ def main() -> None:
         p.error("Only one of --nside or --flatsky-npix can be specified.")
     if args.flatsky_npix is not None and args.field_size is None:
         p.error("--field-size is required when using --flatsky-npix.")
-    if args.sampler == "MCLMC" and args.backend != "blackjax":
-        p.error("--sampler MCLMC requires --backend blackjax.")
 
     _save_args_log(args, args.path, "fli-2pcf")
 
@@ -217,6 +240,12 @@ def main() -> None:
         sigma_e=args.sigma_e,
         ells=obs_ells,
         f_sky=args.f_sky,
+        # Sampler settings (BlackJAX NUTS/MCLMC)
+        sampler=args.sampler,
+        nuts_max_num_doublings=args.max_num_doublings,
+        nuts_target_accept=args.target_accept,
+        mclmc_desired_energy_var=args.mclmc_desired_energy_var,
+        mclmc_init_step_size_scale=args.mclmc_init_step_size_scale,
     )
 
     # --- build probabilistic model and condition on observed C_ell ---
@@ -231,8 +260,13 @@ def main() -> None:
         num_warmup=args.num_warmup,
         num_samples=args.num_samples,
         batch_count=args.batch_count,
-        sampler=args.sampler,
-        backend=args.backend,
+        sampler=config.sampler,
+        max_num_doublings=config.nuts_max_num_doublings,
+        target_accept=config.nuts_target_accept,
+        mclmc_desired_energy_var=config.mclmc_desired_energy_var,
+        mclmc_num_tune=config.mclmc_num_tune,
+        mclmc_init_step_size_scale=config.mclmc_init_step_size_scale,
+        mclmc_diagonal_preconditioning=config.mclmc_diagonal_preconditioning,
         progress_bar=not args.no_progress_bar,
         save_callback=jfli.ppl.sample2catalog(config),
     )

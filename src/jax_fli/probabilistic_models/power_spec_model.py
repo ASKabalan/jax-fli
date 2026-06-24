@@ -11,6 +11,19 @@ import numpyro.distributions as dist
 from .config import Configurations
 
 
+def _nz_to_distributions(nz_shear):
+    """Ensure every nz entry is a redshift_distribution; wrap bare floats in delta_nz.
+
+    Mirrors the full-field model so ``nz_shear`` may be given as source redshifts (floats)
+    or as ``jax_cosmo`` redshift distributions interchangeably.
+    """
+    if isinstance(nz_shear, (list, tuple)):
+        return [
+            nz if isinstance(nz, jc.redshift.redshift_distribution) else jc.redshift.delta_nz(nz) for nz in nz_shear
+        ]
+    return [jc.redshift.delta_nz(z) for z in nz_shear]
+
+
 def pixel_window_function(ell, pixel_size_arcmin):
     """
     Calculate the pixel window function W_l for a given angular wave number l and pixel size.
@@ -67,8 +80,10 @@ def make_2pt_model(config, nonlinear_fn=jc.power.halofit):
             raise ValueError("spherical geometry requires config.nside")
         pixel_scale = jnp.sqrt(4 * jnp.pi / (12 * (config.nside**2))) * (180.0 * 60.0 / jnp.pi)
 
+    nz_list = _nz_to_distributions(config.nz_shear)
+
     def forward_model(cosmo):
-        tracer = jc.probes.WeakLensing(config.nz_shear, sigma_e=config.sigma_e)
+        tracer = jc.probes.WeakLensing(nz_list, sigma_e=config.sigma_e)
         cell_theory = jc.angular_cl.angular_cl(cosmo, config.ells, [tracer], nonlinear_fn=nonlinear_fn)
         cell_theory = cell_theory * pixel_window_function(config.ells, pixel_scale)
         cell_noise = jc.angular_cl.noise_cl(config.ells, [tracer])
@@ -104,18 +119,24 @@ def powerspec_probmodel(config: Configurations, nonlinear_fn=jc.power.halofit) -
     nonlinear_fn : callable, optional
         Nonlinear power spectrum function. Default is jc.power.halofit.
 
+    The model is *generative*: the ``C_ell`` site has no ``obs=``. For inference,
+    condition it on observed spectra externally, e.g.
+    ``numpyro.handlers.condition(model, {"C_ell": obs_cell.flatten()})`` — see
+    ``jax_fli.scripts.entry.fli_2pcf``.
+
     Returns
     -------
     callable
         NumPyro model function with no arguments that registers a single
-        C_ell sample site with shape (N_ell, N_pairs).
+        ``C_ell`` sample site of shape ``(N_pairs * N_ell,)`` (the row-major
+        flatten of ``(N_pairs, N_ell)``, matching the dense covariance block order).
     """
 
     forward_model = make_2pt_model(config, nonlinear_fn=nonlinear_fn)
 
     fiducial_cell_theory, fiducial_cell_noise = forward_model(config.fiducial_cosmology())
 
-    tracer = jc.probes.WeakLensing(config.nz_shear, sigma_e=config.sigma_e)
+    tracer = jc.probes.WeakLensing(_nz_to_distributions(config.nz_shear), sigma_e=config.sigma_e)
     C = jc.angular_cl.gaussian_cl_covariance(
         config.ells, [tracer], fiducial_cell_theory, fiducial_cell_noise, f_sky=config.f_sky, sparse=True
     )
