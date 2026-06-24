@@ -69,14 +69,6 @@ class FlatDensity(AbstractField):
                     f"Array spatial shape {spatial_shape} does not match flatsky_npix {self.flatsky_npix}."
                 )
 
-    def apply_sharding(self) -> FlatDensity:
-        """Shard the flat-sky map: ``P([None,] "x", "y")`` (first spatial dim→M, second→N).
-
-        Uses the canonical layout in ``field_sharding`` directly. Flat-sky convergence/shear inherit
-        this image layout — the flat Kaiser-Squires path is a plain ``vmap`` FFT, not bins-sharded.
-        """
-        return super().apply_sharding()
-
     def __getitem__(self, key) -> FlatDensity:
         if self.array.ndim < 3:
             warn(
@@ -568,15 +560,6 @@ class SphericalDensity(AbstractField):
                         f"HEALPix npix {npix} for nside {self.nside}."
                     )
 
-    def apply_sharding(self) -> SphericalDensity:
-        """Shard the HEALPix map: ``P([None,] "x")`` (NPIX→M; the N axis is unused for a bare density).
-
-        Uses the canonical layout in ``field_sharding`` directly — ``get_sharding_for_shape`` trims the
-        3-D ``P("x","y")`` to ``P("x")`` for the 1-D npix axis. The convergence/shear subclasses
-        override this to add the BINS/N axis.
-        """
-        return super().apply_sharding()
-
     def __getitem__(self, key) -> SphericalDensity:
         if self.array.ndim < 2:
             warn(
@@ -625,6 +608,12 @@ class SphericalDensity(AbstractField):
         """
         if self.unit == unit:
             return self
+
+        if self.nside >= 1024 and supersample > 2:
+            warn("""
+            High-resolution HEALPix maps (nside >= 1024) with supersample > 2 may be slow to convert.
+            and might cause memory issues. consider using a lower supersample value for converting SphericalDensity fields.
+            """)
 
         if self.comoving_centers is None or self.density_width is None:
             raise ValueError("comoving_centers and density_width metadata are required for unit conversion.")
@@ -1081,6 +1070,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "jax",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute angular transfer function sqrt(Cl_other / Cl_self).
 
@@ -1094,6 +1086,10 @@ class SphericalDensity(AbstractField):
             Method for computing power spectrum ("jax" or "healpy").
         batch_size : int, optional
             Batch size for lax.map processing.
+        mask, mcm, nlb
+            Optional masking arguments forwarded to :meth:`angular_cl`. With an apodized
+            ``mask`` both spectra are computed as mask-decoupled bandpowers (``nlb`` per band),
+            reusing a precomputed mode-coupling matrix ``mcm`` if given.
 
         Returns
         -------
@@ -1104,11 +1100,17 @@ class SphericalDensity(AbstractField):
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_other = other.angular_cl(
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         transfer_ratio = (cl_other.array / cl_self.array) ** 0.5
         name = "transfer" if self.name is None else self.name + "_transfer"
@@ -1134,6 +1136,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "jax",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute angular coherence Cl_cross / sqrt(Cl_self * Cl_other).
 
@@ -1147,6 +1152,10 @@ class SphericalDensity(AbstractField):
             Method for computing power spectrum ("jax" or "healpy").
         batch_size : int, optional
             Batch size for lax.map processing.
+        mask, mcm, nlb
+            Optional masking arguments forwarded to :meth:`angular_cl`. With an apodized
+            ``mask`` the auto and cross spectra are computed as mask-decoupled bandpowers
+            (``nlb`` per band), reusing a precomputed mode-coupling matrix ``mcm`` if given.
 
         Returns
         -------
@@ -1157,17 +1166,26 @@ class SphericalDensity(AbstractField):
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_other = other.angular_cl(
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_cross = self.angular_cl(
             other,
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         coherence_ratio = cl_cross.array / (cl_self.array * cl_other.array) ** 0.5
         name = "coherence" if self.name is None else self.name + "_coherence"
