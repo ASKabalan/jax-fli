@@ -254,7 +254,7 @@ def anafast_masked(
         if method == "healpy":
             import healpy as hp
 
-            E, Bb = hp.map2alm_spin([g1, g2], spin=2, lmax=_lmax, pol=True)
+            E, Bb = hp.map2alm_spin([np.asarray(g1), np.asarray(g2)], spin=2, lmax=_lmax)
             ee = hp.alm2cl(E)
             eb = hp.alm2cl(E, Bb)
             bb = hp.alm2cl(Bb)

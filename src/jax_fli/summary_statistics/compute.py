@@ -173,15 +173,119 @@ def angular_cl_spherical(
     )
 
 
+def angular_cl_spherical_batched(
+    maps,
+    maps2=None,
+    *,
+    lmax: int | None = None,
+    method: str = "jax",
+    mask=None,
+    pol: bool = False,
+    purify_e: bool = False,
+    purify_b: bool = False,
+    mcm=None,
+    nlb: int = 16,
+    batch_size: int | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Batched spherical angular Cl. Returns ``(wavenumber, spectra)``.
+
+    Thin batching layer over the single-map :func:`angular_cl_spherical`: it owns the
+    leading-batch loop and the backend branching that used to live in the field methods.
+    ``method="healpy"`` loops in Python (healpy needs concrete arrays); any other method
+    maps with :func:`jax.lax.map` (honouring ``batch_size``).
+
+    ``maps`` is ``(npix,)`` / ``(B, npix)`` for a scalar field, or ``(2, npix)`` /
+    ``(B, 2, npix)`` when ``pol=True``; a single (unbatched) input drops the batch axis on
+    the way out. ``maps2`` is an optional second map (stack) for scalar cross-spectra.
+
+    With ``mask`` (or a precomputed ``mcm``) the result is mask-decoupled into bandpowers
+    and ``wavenumber`` is the effective bandpower multipoles; otherwise it is the full
+    ``0..lmax`` grid. The MCM is built **once** here and reused across the batch.
+    """
+    maps = jnp.asarray(maps)
+    single_ndim = 2 if pol else 1
+    if maps.ndim not in (single_ndim, single_ndim + 1):
+        raise ValueError(
+            f"angular_cl_spherical_batched expected a single map (ndim {single_ndim}) or a "
+            f"batched stack (ndim {single_ndim + 1}), got array shape {tuple(maps.shape)}."
+        )
+    single = maps.ndim == single_ndim
+
+    # Build the mode-coupling matrix once so it is reused across the batch (compute_mcm
+    # defaults lmax to 3*nside-1 internally when lmax is None).
+    _mcm = mcm
+    if mask is not None and _mcm is None:
+        from .decouple import compute_mcm
+
+        _mcm = compute_mcm(mask, lmax=lmax, nlb=nlb, pol=pol, method=method)
+
+    def _kern(m1, m2):
+        return angular_cl_spherical(
+            m1,
+            m2,
+            lmax=lmax,
+            method=method,
+            mask=mask,
+            pol=pol,
+            purify_e=purify_e,
+            purify_b=purify_b,
+            mcm=_mcm,
+            nlb=nlb,
+        )
+
+    if single:
+        return _kern(maps, maps2)
+
+    if maps2 is not None and jnp.asarray(maps2).shape != maps.shape:
+        raise ValueError("maps2 must match maps shape for a cross spectrum.")
+
+    if method == "healpy":
+        # healpy needs concrete arrays -> loop in Python (cannot run under jax transforms).
+        ell = None
+        spectra = []
+        for i in range(maps.shape[0]):
+            m2 = None if maps2 is None else maps2[i]
+            ell, sp = _kern(maps[i], m2)
+            spectra.append(sp)
+        assert ell is not None, "batch must be non-empty"
+        return ell, jnp.stack(spectra, axis=0)
+
+    ell_stack, spectra_stack = jax.lax.map(lambda pair: _kern(pair[0], pair[1]), (maps, maps2), batch_size=batch_size)
+    return ell_stack[0], spectra_stack
+
+
 def cross_angular_cl_spherical(
     maps,
     *,
     lmax: int | None = None,
     method: str = "healpy",
+    mask=None,
+    mcm=None,
+    nlb: int = 16,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Cross-spherical (HEALPix) angular Cl for all pairs. Returns (ell, spectra)."""
-    ell_out, spectra = _cross_spherical_cl(maps, lmax=lmax, method=method)
-    return ell_out, spectra
+    """Cross-spherical (HEALPix) angular Cl for all unique pairs ``(i <= j)``. Returns ``(ell, spectra)``.
+
+    With ``mask=None`` this is the plain healpy all-pairs spectrum (unbinned, full
+    ``0..lmax``). With an apodized ``mask`` (or a precomputed ``mcm``) each pair is masked
+    and **decoupled** into bandpowers (``ell`` = effective bandpower multipoles), looped in
+    upper-triangular order ``(0,0), (0,1), ..., (B-1,B-1)`` to match
+    :meth:`FlatDensity.cross_angular_cl`.
+    """
+    if mask is None:
+        ell_out, spectra = _cross_spherical_cl(maps, lmax=lmax, method=method)
+        return ell_out, spectra
+
+    from .decouple import anafast_masked, compute_mcm
+
+    maps = jnp.asarray(maps)
+    n_maps = maps.shape[0]
+    _mcm = mcm if mcm is not None else compute_mcm(mask, lmax=lmax, nlb=nlb, pol=False, method=method)
+    spectra = [
+        anafast_masked(maps[i], maps[j], mask=mask, lmax=lmax, method=method, pol=False, mcm=_mcm, nlb=nlb)[1]
+        for i in range(n_maps)
+        for j in range(i, n_maps)
+    ]
+    return _mcm.ell_eff, jnp.stack(spectra, axis=0)
 
 
 def deconvolve_spherical(
@@ -224,6 +328,7 @@ __all__ = [
     "coherence",
     "angular_cl_flat",
     "angular_cl_spherical",
+    "angular_cl_spherical_batched",
     "cross_angular_cl_spherical",
     "deconvolve_spherical",
 ]
