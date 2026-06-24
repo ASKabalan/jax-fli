@@ -36,6 +36,7 @@ class Configurations:
     dealiased: bool = False  # dealias the painted density in Fourier space
     exact_growth: bool = False  # use exact (ODE) growth factors
     shell_spacing: str = "a"
+    time_stepping: str = "D"  # "D" = growth-factor stepping, "a" = uniform a-stepping
     min_width: float = 50.0  # Mpc/h comoving, minimum shell width
 
     # Lensing

@@ -66,6 +66,7 @@ def make_full_field_model(
         laplace_fd=config.laplace_fd,
         order=config.paint_order,
         deconvolution=config.deconvolution,
+        time_stepping=config.time_stepping,
         t0=config.t0,
         t1=config.t1,
         n_steps=config.nb_steps,

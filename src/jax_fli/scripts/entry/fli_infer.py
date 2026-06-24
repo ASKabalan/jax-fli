@@ -307,6 +307,7 @@ def main() -> None:
         dealiased=args.dealiased,
         exact_growth=args.exact_growth,
         shell_spacing=args.shell_spacing,
+        time_stepping=args.time_stepping,
         min_width=args.min_width,
         # Lensing
         lensing_output=args.lensing_output,
