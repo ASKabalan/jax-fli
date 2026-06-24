@@ -26,7 +26,7 @@ def parser() -> argparse.ArgumentParser:
     # statistics stay separate); a single local --input root dir auto-expands its chain_N/ subdirs.
     add_source_args(p, multi=True)
 
-    p.add_argument("--set-name", type=str, required=True, metavar="NAME", help="Name label for the CatalogExtract.")
+    p.add_argument("--name", type=str, required=True, metavar="NAME", help="Name label for the CatalogExtract.")
     p.add_argument("--output", type=str, required=True, metavar="PATH", help="Output parquet file path.")
     p.add_argument(
         "--cosmo-keys",
@@ -74,7 +74,7 @@ def main() -> None:
 
     ce = extract_catalog(
         cosmo_keys=args.cosmo_keys,
-        set_name=args.set_name,
+        set_name=args.name,
         patterns=patterns,
         repo=repo,
         truth=truth,

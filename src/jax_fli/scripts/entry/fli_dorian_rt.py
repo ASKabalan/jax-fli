@@ -32,6 +32,7 @@ def parser() -> ArgumentParser:
     )
     add_source_args(p)
     add_lensing_postproc_args(p)
+    p.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
     p.add_argument(
         "--rt-interp",
         choices=["bilinear", "ngp", "nufft"],
@@ -72,6 +73,7 @@ def main() -> None:
     import jax_fli as jfli
 
     # Every rank holds the full replicated lightcone (dorian is numpy + MPI).
+    # WARNING _load_lightcone is not MPI friendly
     lightcone, cosmo = _load_lightcone(args)
     assert cosmo is not None
 
@@ -98,9 +100,15 @@ def main() -> None:
         _save_args_log(args, str(out_dir), "fli-dorian-rt")
         base = lightcone.name or f"M{lightcone.mesh_size[0]}_B{int(lightcone.box_size[0])}_N{lightcone.nside}"
         out_rt = out_dir / f"RAYTRACE_{base}.parquet"
+        if args.name is not None:
+            name_raytrace = f"{args.name} raytraced"
+            kappa_rt = kappa_rt.replace(name=name_raytrace)
         Catalog(field=kappa_rt, cosmology=cosmo).to_parquet(str(out_rt))
         print(f"  Saved raytrace kappa {tuple(kappa_rt.array.shape)} → {out_rt}")
         if args.with_born and kappa_born is not None:
+            if args.name is not None:
+                name_born = f"{args.name} born"
+                kappa_born = kappa_born.replace(name=name_born)
             out_born = out_dir / f"RAYTRACE_{base}_born.parquet"
             Catalog(field=kappa_born, cosmology=cosmo).to_parquet(str(out_born))
             print(f"  Saved Born byproduct {tuple(kappa_born.array.shape)} → {out_born}")

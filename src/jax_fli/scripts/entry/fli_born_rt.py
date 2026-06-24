@@ -29,6 +29,8 @@ def parser() -> ArgumentParser:
         prog="fli-born-rt",
         description="Stack a density lightcone and post-process it with Born lensing.",
     )
+    p.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
+
     add_source_args(p)
     add_lensing_postproc_args(p)
     add_common_args(p)
@@ -80,9 +82,11 @@ def main() -> None:
     if lead:
         _save_args_log(args, str(out_dir), "fli-born-rt")
     # to_parquet is collective (process_allgather); only the lead rank writes the file.
+    if args.name is not None:
+        kappa = kappa.replace(name=args.name)
     Catalog(field=kappa, cosmology=cosmo).to_parquet(str(out_path))
     if lead:
-        print(f"  Saved Born kappa {tuple(kappa.array.shape)} → {out_path}")
+        print(f"  Saved Born {kappa.name} {tuple(kappa.array.shape)} → {out_path}")
 
 
 if __name__ == "__main__":
