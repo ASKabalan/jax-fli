@@ -18,12 +18,12 @@ COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --
 # the end-of-run 3D rms displacement σ₃D(z=0) = 10.2 Mpc/h → halo/σ = 1.53 ≥ 1.5 ✅ (the converged Exp 01
 # rung). Drift-on-lightcone repaints existing particles, so the displacement scale — and this check — is
 # unchanged.
-for DRIFT in "" "--drift-on-lightcone"; do
-  if [ -n "$DRIFT" ]; then tag="exp5_drift"; else tag="exp5_nodrift"; fi
-  launch 16 4 64 1 00:40:00 -- $COMMON $DRIFT --nb-shells $NB_SHELLS \
-    --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
-done
 
-# Double the shells
-launch 16 4 64 1 00:40:00 -- $COMMON --nb-shells 16 \
-    --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
+NB_SHELLS=(5 8 10 12 16 20 25 30 40)
+
+for NB_S in "${NB_SHELLS[@]}"; do
+  for DRIFT in "" "--drift-on-lightcone"; do
+    if [ -n "$DRIFT" ]; then tag="exp5_drift_${NB_S}"; else tag="exp5_nodrift_${NB_S}"; fi
+    launch 16 4 64 1 00:40:00 -- $COMMON $DRIFT --nb-shells $NB_S \
+      --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
+  done
