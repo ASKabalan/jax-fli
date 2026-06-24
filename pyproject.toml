@@ -94,7 +94,8 @@ raytrace = ["dorian-raytrace-mpi"]
 sampling = [
   "blackjax",
   "numpyro",
-  "orbax-checkpoint"
+  "orbax-checkpoint",
+  "fastprogress"
 ]
 # Spherical starlet wavelets (SphericalDensity.starlet_coefficients) need CosmoStat, which
 # imports as `pycs` and ships a C++ backend with a non-trivial build.
@@ -124,7 +125,6 @@ packages = ["src/jax_fli"]
 "bin/fli-launcher" = "fli-launcher"
 "bin/fli-samples" = "fli-samples"
 "bin/fli-simulate" = "fli-simulate"
-"bin/fli-summary-stats" = "fli-summary-stats"
 
 [tool.hatch.version]
 source = "vcs"

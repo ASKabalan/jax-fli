@@ -151,3 +151,11 @@ DEBUGGING/**
 
 # IDE
 .vscode/
+EXPERIMENT_TO_SEE
+HANDOUTS
+000_RUNS
+DEL
+TRASH
+_diag
+results
+rosenbrock_samples*
