@@ -85,7 +85,7 @@ over the first axis (`pdim_x`), a few hundred MB/device — larger under the pen
 slab (`128`) — still small beside the float64 mesh.
 *(A later masking analysis must use the same observer `(0.1, 0.5, 0.9)` to recover the footprint.)*
 
-## Results
+## Setup: geometry & footprint
 
 The figure below records the whole geometry decision: the DES Y3 source `n(z)` and lensing efficiency
 `q(z)`, the two depth cuts, and which CosmoGrid shells each set simulates.
@@ -129,6 +129,97 @@ CosmoGrid above each shell's `ℓ_max` is resolution/painting, not geometry — 
 The quadrant's `dx ≈ 1.16` is now comparable to CosmoGrid's spacing, so the clean comparison trades only
 the full-sky runs' coarser small-scale resolution for our faithful (untiled) large-scale modes.
 
+## Results: matching the CosmoGrid density
+
+Our runs use **independent** initial phases (CosmoGrid's cosmology and shell `z`-edges, **not** its
+white-noise field), so the comparison is purely **statistical** — angular `C_ℓ`, one-point PDF, peak
+counts, and starlet wavelets — never pixel-by-pixel. Both sides are reduced to **overdensity**
+`δ = ρ/ρ̄ − 1`: our shells are stored as `DENSITY` and CosmoGrid's as raw `COUNTS`, so neither counts
+nor density are directly comparable (different mean level, different particle mass) — `δ` (each shell
+normalised by its own mean) is the only common footing. Because every comparison is at a **matched
+nside**, the HEALPix pixel window is identical on both sides and cancels in every ratio.
+
+**How well, and to what scale, do the spectra match?** Same-nside overdensity `C_ℓ`, per shell, our PM
+vs CosmoGrid, with the Limber number-counts theory as a faint reference.
+
+![Per-shell density spectra](assets/fig01-spectra-near-mid-far.svg)
+
+Over the geometry-limited band the two agree to a few percent; the ratio then falls at high `ℓ` from
+three stacked effects — the PM force-mesh Nyquist `ℓ_max ≈ π·χ/dx` (dotted line), the **un-deconvolved
+CIC force window** (this run paints CIC with no deconvolution, which bleeds small-scale power), and the
+shot-noise floor. The near shell (`z = 0.07`) is additionally thin-shell/discreteness-limited. The
+honest statement is **"matched for `ℓ ≲ ℓ_max(shell)`"**; pushing higher is a resolution/painting
+comparison, not a geometry one.
+
+The all-shell view confirms it and adds the two control axes:
+
+![Spectra agreement vs distance](assets/fig02-band-vs-distance.svg)
+
+The `(2ℓ+1)`-weighted ratio sits near unity over an intermediate-`χ` plateau and degrades with `ℓ`
+(worst at `ℓ ≈ 800`). The **slab and pencil decompositions overlie** (the device layout does not bias
+the field), and the **decoupled quadrant tracks the full sky** (the masked measurement recovers the
+same spectrum). The finer-`dx` quadrant holds up better at high `ℓ` than the coarser full-sky mesh, as
+the resolution budget predicts.
+
+Dropping both sides to the matched **nside 512** isolates the large/intermediate scales the higher-order
+statistics also live on:
+
+![nside-512 cross-check](assets/fig03-nside512-crosscheck.svg)
+
+There the mid/far shells agree with CosmoGrid to within `±5 %` across a broad band — the clean,
+resolution-matched result.
+
+**The fields themselves.** Independent realisations cannot share structures, only their *statistics* —
+so the maps are read for **texture and geometry**, not coincidence:
+
+![Full-sky δ maps](assets/fig04-maps-fullsky.svg)
+
+The near shell shows the same cosmic-web texture in our PM runs and in CosmoGrid (different web, same
+statistics); the thicker far shells are smoother. The big-quadrant runs paint only the observer's
+visibility cone, which **shrinks as the shell recedes** (near ≈ full sky, far ≈ a cap):
+
+![Quadrant δ maps](assets/fig05-maps-quadrant.svg)
+
+**Higher-order statistics** are not self-normalising, so they are computed on the matched-nside `δ`
+maps. The one-point PDF:
+
+![Overdensity PDF](assets/fig06-pdf.svg)
+
+and the peak counts:
+
+![Peak counts](assets/fig07-peak-counts.svg)
+
+agree well through the bulk; at the near shell the PDF/peaks break into a **discreteness comb** (low
+occupancy → shot noise). CosmoGrid carries a slightly heavier high-`δ` tail than the coarser full-sky
+PM (a true N-body resolves more massive collapsed structures than CIC-PM).
+
+**On a masked sky** the PDF and peak counts have no MASTER-style deconvolution, so they are computed on
+the **footprint pixels only** — selecting the visible pixels for the PDF, and apodising-then-tapering
+for the peaks — with the **same footprint applied to CosmoGrid** so the two are measured on identical
+pixels:
+
+![Masked higher-order](assets/fig08-masked-higher-order.svg)
+
+Here the finer-`dx` quadrant run shows *more* peaks than CosmoGrid (the opposite of the coarse full-sky
+run), consistent with its `dx ≈ 1.16` approaching CosmoGrid's particle spacing.
+
+**Starlet (spherical wavelet)** coefficients decompose the field by scale, making the
+scale-dependence of the match explicit:
+
+![Starlet coefficient distributions](assets/fig09-starlet.svg)
+
+The rows are the near/mid/far shells (5/25/38); the coefficient distributions agree at the coarse
+scales and diverge at the finest (where the CIC window and shot noise live) — the same story the
+spectra tell, resolved scale by scale, and consistently across depth. The same coefficients as maps:
+
+![Starlet coefficient maps](assets/fig10-starlet-maps.svg)
+
+show the fine scales (left) carrying small-scale detail and the coarse scales (right) the smooth
+large-scale field, matching in texture between our PM and CosmoGrid at every scale. The bottom row is
+their difference (PM − CosmoGrid): because the two are independent realisations it is **not** a
+residual — it keeps the full per-scale amplitude (the structures do not cancel), the visual signature
+of two uncorrelated fields that nonetheless share the same scale-by-scale statistics.
+
 ## How to run
 
 ```bash
@@ -141,11 +232,16 @@ MODE=dryrun bash run.sh
 # 3. Submit to SLURM. Each run writes a *directory* results/exp6/cosmogrid_{2bin,3bin}_{fullsky,quadrant}_{slab,pencil}/
 #    holding one parquet per shell (shell_0000.parquet, …) — see --shells-per-file below.
 bash run.sh
+
+# 4. Build the comparison figures (fig01–fig10) from the published HuggingFace products (CPU; float64).
+#    fig09/fig10 (starlet) need the optional CosmoStat backend: `uv sync --extra starlet`.
+JAX_PLATFORMS=cpu uv run --no-sync python build.py
 ```
 
 The wall-times in `run.sh` are first-guess estimates — tune after the first run. The catalogs are
 then published to HuggingFace and studied locally against the CosmoGrid reference, per the
-[experiments lifecycle](../CLAUDE.md).
+[experiments lifecycle](../CLAUDE.md). `build.py` loads only the published spectra/maps from the
+`ASKabalan/jax-fli-experiments` dataset — no GPU and no re-simulation.
 
 > **Gate before cluster hours.** `MODE=dryrun` only *resolves* the eight commands — it does not run the
 > simulator. The `m2560` template validated a *cubic* mesh, nside 512, centred observer, slab

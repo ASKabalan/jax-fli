@@ -70,6 +70,7 @@ interpolation is `DriftInterp` when `drift_on_lightcone=True` else
 | `t1` | `float` | `1.0` | Final scale factor. |
 | `number_of_shells` | `int` | `8` | Lightcone shells. |
 | `shell_spacing` | `str` | `"comoving"` | Shell distribution: `"comoving"` or `"a"`. |
+| `time_stepping` | `str` | `"D"` | Integrator time-stepping variable: `"D"` (growth-factor stepping) or `"a"` (uniform a-stepping). |
 | `min_width` | `float` | `50.0` | Minimum shell width (Mpc/h comoving). |
 | `drift_on_lightcone` | `bool` | `False` | Drift particles to their lightcone-crossing epoch (`DriftInterp`). Set `True` for lightcone experiments. |
 | `deconvolution` | `bool` | `False` | Deconvolve the mass-assignment window (solver). |
@@ -125,3 +126,15 @@ Observed per-pixel σ inside the footprint is `sigma_e / sqrt(n_gal · pixel_are
 |--------|------|---------|-------------|
 | `ells` | `Array` | `jnp.arange(2, 2048)` | Multipoles for the C(ℓ) model. |
 | `f_sky` | `float` | `1.0` | Sky fraction for the Gaussian C(ℓ) covariance. |
+
+## Sampler settings
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sampler` | `str` | `"NUTS"` | Sampler type: `"NUTS"` or `"MCLMC"`. |
+| `nuts_max_num_doublings` | `int` | `10` | NUTS leapfrog trajectory doubling depth (BlackJAX `max_tree_depth` analogue). |
+| `nuts_target_accept` | `float` | `0.8` | NUTS window-adaptation target acceptance rate. |
+| `mclmc_desired_energy_var` | `float` | `1e-3` | MCLMC desired energy variance for `L`/`step_size` tuning. |
+| `mclmc_num_tune` | `int \| None` | `None` | MCLMC tuning steps; defaults to `num_warmup`. |
+| `mclmc_init_step_size_scale` | `float` | `1e-4` | MCLMC initial step scale factor: `sqrt(total_dim) * scale`. |
+| `mclmc_diagonal_preconditioning` | `bool` | `False` | Enable diagonal preconditioning for MCLMC. |
