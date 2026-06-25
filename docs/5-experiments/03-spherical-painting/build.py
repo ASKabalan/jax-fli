@@ -114,17 +114,17 @@ theory_pw_arr = {ns: np.asarray(t.array) for ns, t in theory_pw.items()}
 theory_b = {ns: np.asarray(t.bin(nlb=NLB, lmin=2).array) for ns, t in theory_pw.items()}
 leff = np.asarray(theory_pw[1024].bin(nlb=NLB, lmin=2).wavenumber)
 
-spec_b = {1024: {s: np.asarray(spec1024[s].bin(nlb=NLB, lmin=2).array) for s in SCHEMES},
-          2048: {s: np.asarray(spec2048[s].bin(nlb=NLB, lmin=2).array) for s in SCHEMES}}
+spec_b = {
+    1024: {s: np.asarray(spec1024[s].bin(nlb=NLB, lmin=2).array) for s in SCHEMES},
+    2048: {s: np.asarray(spec2048[s].bin(nlb=NLB, lmin=2).array) for s in SCHEMES},
+}
 
 
 # =============================================================================
 # fig01–fig04 — per-shell binned C_ell + ratio, the four painting schemes at one native nside
 # =============================================================================
 def plot_schemes_batch(nside, shell_idxs, title, stem):
-    fig, axes = plt.subplots(
-        nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col"
-    )
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     fig.suptitle(title, y=1.0)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
@@ -141,14 +141,18 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
         ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
         ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
         for s in SCHEMES:
-            ax_r.plot(leff, spec_b[nside][s][sh] / theory_b[nside][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.3)
+            ax_r.plot(
+                leff, spec_b[nside][s][sh] / theory_b[nside][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.3
+            )
         ax_r.set_xscale("log")
         ax_r.set_ylim(0.3, 1.3)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_r.set_ylabel("meas / theory")
-    handles = [Line2D([], [], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.6, label=SCHEME_LABEL[s]) for s in SCHEMES]
+    handles = [
+        Line2D([], [], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.6, label=SCHEME_LABEL[s]) for s in SCHEMES
+    ]
     handles += [
         Line2D([], [], color="k", ls="--", lw=1.4, label=rf"Limber theory $\times\,w_\ell^2$({nside})"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
@@ -209,9 +213,7 @@ def plot_udsample_grid(native_nside, title, stem):
 # fig07 — native nside 2048 vs 1024 for two schemes (NGP, RBF08), per shell + ratio
 # =============================================================================
 def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
-    fig, axes = plt.subplots(
-        nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col"
-    )
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     fig.suptitle(title, y=1.0)
     # nside distinguished by line style (1024 dotted, 2048 solid); scheme by colour.
     style = {1024: dict(ls=":"), 2048: dict(ls="-")}
@@ -244,7 +246,9 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
     for s in schemes_sel:
         for ns in (1024, 2048):
             handles.append(
-                Line2D([], [], color=SCHEME_COLORS[s], ls=style[ns]["ls"], lw=1.6, label=f"{SCHEME_LABEL[s]} — nside {ns}")
+                Line2D(
+                    [], [], color=SCHEME_COLORS[s], ls=style[ns]["ls"], lw=1.6, label=f"{SCHEME_LABEL[s]} — nside {ns}"
+                )
             )
     handles += [
         Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$(1024)"),
@@ -258,13 +262,44 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
 
 def main():
     set_style()
-    plot_schemes_batch(1024, range(0, 5), "Native nside 1024 — painting schemes vs theory, shells 0–4", "fig01-schemes-native1024-shells-0-4")
-    plot_schemes_batch(1024, range(5, 10), "Native nside 1024 — painting schemes vs theory, shells 5–9", "fig02-schemes-native1024-shells-5-9")
-    plot_schemes_batch(2048, range(0, 5), "Native nside 2048 — painting schemes vs theory, shells 0–4", "fig03-schemes-native2048-shells-0-4")
-    plot_schemes_batch(2048, range(5, 10), "Native nside 2048 — painting schemes vs theory, shells 5–9", "fig04-schemes-native2048-shells-5-9")
-    plot_udsample_grid(2048, "Paint@2048 vs paint@2048 → ud_grade → 1024 vs theory (near + far shells)", "fig05-udsample-vs-native2048")
-    plot_udsample_grid(1024, "Native nside 1024 vs paint@2048 → ud_grade → 1024 vs theory — pixel-window recovery (near + far shells)", "fig06-udsample-vs-native1024")
-    plot_nside_compare(["ngp", "rbf08"], range(5, 10), "Native nside 2048 vs 1024 — NGP and RBF 0.8 px vs theory, shells 5–9", "fig07-nside-compare-ngp-rbf08-shells-5-9")
+    plot_schemes_batch(
+        1024,
+        range(0, 5),
+        "Native nside 1024 — painting schemes vs theory, shells 0–4",
+        "fig01-schemes-native1024-shells-0-4",
+    )
+    plot_schemes_batch(
+        1024,
+        range(5, 10),
+        "Native nside 1024 — painting schemes vs theory, shells 5–9",
+        "fig02-schemes-native1024-shells-5-9",
+    )
+    plot_schemes_batch(
+        2048,
+        range(0, 5),
+        "Native nside 2048 — painting schemes vs theory, shells 0–4",
+        "fig03-schemes-native2048-shells-0-4",
+    )
+    plot_schemes_batch(
+        2048,
+        range(5, 10),
+        "Native nside 2048 — painting schemes vs theory, shells 5–9",
+        "fig04-schemes-native2048-shells-5-9",
+    )
+    plot_udsample_grid(
+        2048, "Paint@2048 vs paint@2048 → ud_grade → 1024 vs theory (near + far shells)", "fig05-udsample-vs-native2048"
+    )
+    plot_udsample_grid(
+        1024,
+        "Native nside 1024 vs paint@2048 → ud_grade → 1024 vs theory — pixel-window recovery (near + far shells)",
+        "fig06-udsample-vs-native1024",
+    )
+    plot_nside_compare(
+        ["ngp", "rbf08"],
+        range(5, 10),
+        "Native nside 2048 vs 1024 — NGP and RBF 0.8 px vs theory, shells 5–9",
+        "fig07-nside-compare-ngp-rbf08-shells-5-9",
+    )
     print(f"assets written to {ASSETS}")
 
 

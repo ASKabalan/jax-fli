@@ -44,7 +44,7 @@ pcs_deconv_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root
 tsc_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{TSC}", split="train"))
 tsc_deconv_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{TSC_DECONV}", split="train"))
 
-cic_spectra , cic_cosmo = cic_cat.field[0], cic_cat.cosmology[0]
+cic_spectra, cic_cosmo = cic_cat.field[0], cic_cat.cosmology[0]
 cic_deconv_spectra = cic_deconv_cat.field[0]
 pcs_spectra = pcs_cat.field[0]
 pcs_deconv_spectra = pcs_deconv_cat.field[0]
@@ -96,9 +96,7 @@ deconv_b = {k: np.asarray(v.bin(nlb=NLB, lmin=2).array) for k, v in deconv.items
 # fig01 / fig02 — per-shell binned C_ell vs theory (top) + ratio (bottom), CIC vs TSC vs PCS (raw)
 # =============================================================================
 def plot_schemes_batch(data_b, shell_idxs, title, stem):
-    fig, axes = plt.subplots(
-        nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col"
-    )
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     fig.suptitle(title, y=1.0)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
@@ -122,7 +120,9 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_r.set_ylabel("meas / theory")
-    handles = [Line2D([], [], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, label=SCHEME_LABEL[k]) for k in SCHEME_COLORS]
+    handles = [
+        Line2D([], [], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, label=SCHEME_LABEL[k]) for k in SCHEME_COLORS
+    ]
     handles += [
         Line2D([], [], color="k", ls="--", lw=1.4, label=r"Limber number-counts theory $\times\,w_\ell^2$"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
@@ -180,15 +180,29 @@ def plot_deconv_grid(scheme, stem):
 
 def main():
     set_style()
-    plot_schemes_batch(raw_b, range(0, 5), "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (no deconvolution), shells 0–4", "fig01-schemes-shells-0-4")
-    plot_schemes_batch(raw_b, range(5, 10), "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (no deconvolution), shells 5–9", "fig02-schemes-shells-5-9")
+    plot_schemes_batch(
+        raw_b,
+        range(0, 5),
+        "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (no deconvolution), shells 0–4",
+        "fig01-schemes-shells-0-4",
+    )
+    plot_schemes_batch(
+        raw_b,
+        range(5, 10),
+        "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (no deconvolution), shells 5–9",
+        "fig02-schemes-shells-5-9",
+    )
     plot_deconv_grid("cic", "fig03-cic-deconv")
     plot_deconv_grid("pcs", "fig04-pcs-deconv")
     plot_deconv_grid("tsc", "fig05-tsc-deconv")
-    plot_schemes_batch(deconv_b, range(5, 10), "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (force-window deconvolved), shells 5–9", "fig06-schemes-deconv-shells-5-9")
+    plot_schemes_batch(
+        deconv_b,
+        range(5, 10),
+        "Per-shell angular $C_\\ell$ vs theory and ratio — CIC vs TSC vs PCS (force-window deconvolved), shells 5–9",
+        "fig06-schemes-deconv-shells-5-9",
+    )
     print(f"assets written to {ASSETS}")
 
 
 if __name__ == "__main__":
     main()
-

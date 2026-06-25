@@ -47,7 +47,9 @@ born_kappa_s3_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{r
 born_kappa_s3_512_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{BORN_KAPPA_S3_512}", split="train")
 )
-born_kappa_des_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BORN_KAPPA_DES_Y3}", split="train"))
+born_kappa_des_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{BORN_KAPPA_DES_Y3}", split="train")
+)
 
 born_kappa_s3 = born_kappa_s3_cat.field[0]
 born_kappa_s3_512 = born_kappa_s3_512_cat.field[0]
