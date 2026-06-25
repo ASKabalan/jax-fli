@@ -7,9 +7,11 @@ re-exports from here for backward compatibility.
 """
 
 from .binned import BinnedStatistic
+from .binning import bin_bandpowers, linear_edges, log_edges
 from .compute import (
     angular_cl_flat,
     angular_cl_spherical,
+    angular_cl_spherical_batched,
     coherence,
     cross_angular_cl_spherical,
     deconvolve_spherical,
@@ -31,12 +33,16 @@ __all__ = [
     "coherence",
     "angular_cl_flat",
     "angular_cl_spherical",
+    "angular_cl_spherical_batched",
     "cross_angular_cl_spherical",
     "deconvolve_spherical",
     "anafast_masked",
     "compute_mcm",
     "MCM",
     "comoving_tophat",
+    "bin_bandpowers",
+    "linear_edges",
+    "log_edges",
     "compute_theory_cl",
     "compute_theory_cl_for_density",
     "tophat_z",

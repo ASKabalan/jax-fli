@@ -26,8 +26,7 @@ from ..summary_statistics import (
     PeakCounts,
     PowerSpectrum,
     angular_cl_flat,
-    angular_cl_spherical,
-    compute_mcm,
+    angular_cl_spherical_batched,
     cross_angular_cl_spherical,
     deconvolve_spherical,
     pdf_spherical,
@@ -35,7 +34,6 @@ from ..summary_statistics import (
     starlet_coefficients_spherical,
 )
 from ..summary_statistics.binned import resolve_bin_edges
-from ..summary_statistics.decouple import anafast_masked
 from .units import DensityUnit, convert_units
 
 
@@ -867,108 +865,30 @@ class SphericalDensity(AbstractField):
         ``method`` selects the SHT backend and defaults to ``"jax"`` (jittable/differentiable);
         ``"healpy"`` runs healpy's C ``anafast`` and requires concrete (non-traced) arrays.
         """
-        if mask is not None:
-            _lmax = lmax if lmax is not None else 3 * self.nside - 1
-            _method = method  # pass through; "healpy" runs real healpy on the masked decoupled path
-            _mcm = mcm if mcm is not None else compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=False, method=_method)
-            d1 = self.array
-            d2 = mesh2.array if mesh2 is not None else None
-            single = d1.ndim == 1
-            flat1 = d1.reshape((-1, d1.shape[-1]))
-            flat2 = None if d2 is None else d2.reshape((-1, d2.shape[-1]))
-            if _method == "healpy":
-                # healpy needs concrete arrays -> loop in Python (cannot run under jax.vmap)
-                if flat2 is None:
-                    cls = jnp.stack(
-                        [
-                            anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
-                            for m in flat1
-                        ]
-                    )
-                else:
-                    cls = jnp.stack(
-                        [
-                            anafast_masked(m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[
-                                1
-                            ]
-                            for m1, m2 in zip(flat1, flat2)
-                        ]
-                    )
-            elif flat2 is None:
-                cls = jax.vmap(
-                    lambda m: anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
-                )(flat1)
-            else:
-                cls = jax.vmap(
-                    lambda m1, m2: anafast_masked(
-                        m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb
-                    )[1]
-                )(flat1, flat2)
-            return PowerSpectrum(
-                name=self.name,
-                wavenumber=_mcm.ell_eff,
-                array=cls[0] if single else cls,
-                n_components=1,
-                mesh_size=self.mesh_size,
-                box_size=self.box_size,
-                comoving_centers=self.comoving_centers,
-                density_width=self.density_width,
-                z_sources=self.z_sources,
-                scale_factors=self.scale_factors,
-                nside=self.nside,
-                status=FieldStatus.SPECTRA,
-                unit=SpectralUnit.ANGULAR_CL,
-            )
-
-        def _compute(pair):
-            m1, m2 = pair
-            return angular_cl_spherical(m1, m2, lmax=lmax, method=method)
-
         data1 = self.array
         data2 = mesh2.array if mesh2 is not None else None
-
-        if data1.ndim == 1:
-            data1 = data1[None, ...]
-            data2 = data2[None, ...] if data2 is not None else None
-        elif data1.ndim != 2:
+        if data1.ndim not in (1, 2):
             raise ValueError("SphericalDensity.angular_cl expects array shape (npix) or (B,npix)")
-
-        if method == "healpy":
-            spectras = []
-            ell = None
-            for i in range(data1.shape[0]):
-                map1 = data1[i]
-                map2 = data2[i] if data2 is not None else None
-                ell, spectra = angular_cl_spherical(map1, map2, lmax=lmax, method=method)
-                spectras.append(spectra)
-            assert ell is not None, "ell should have been set in loop"
-            spectra = jnp.stack(spectras, axis=0)
-            spectra = spectra if self.array.ndim == 2 else spectra[0]
-            return PowerSpectrum(
-                name=self.name,
-                wavenumber=ell,
-                array=spectra,
-                mesh_size=self.mesh_size,
-                box_size=self.box_size,
-                comoving_centers=self.comoving_centers,
-                density_width=self.density_width,
-                z_sources=self.z_sources,
-                scale_factors=self.scale_factors,
-                nside=self.nside,
-                status=FieldStatus.SPECTRA,
-                unit=SpectralUnit.ANGULAR_CL,
-            )
-
         if data2 is not None and data2.shape != data1.shape:
             raise ValueError("mesh2 must match shape for cross Cl")
 
-        ell_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
-        wavenumber = ell_stack[0]
-        spectra = spectra_stack if self.array.ndim == 2 else spectra_stack[0]
+        wavenumber, spectra = angular_cl_spherical_batched(
+            data1,
+            data2,
+            lmax=lmax,
+            method=method,
+            mask=mask,
+            purify_e=purify_e,
+            purify_b=purify_b,
+            mcm=mcm,
+            nlb=nlb,
+            batch_size=batch_size,
+        )
         return PowerSpectrum(
             name=self.name,
             wavenumber=wavenumber,
             array=spectra,
+            n_components=1,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -986,6 +906,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "healpy",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute all cross-angular power spectra for batched HEALPix maps.
 
@@ -993,17 +916,22 @@ class SphericalDensity(AbstractField):
         corresponding to all unique pairs (i,j) where i <= j, in upper triangular order:
         (0,0), (0,1), ..., (0,B-1), (1,1), (1,2), ..., (B-1,B-1)
 
-        This method uses healpy's anafast function with pol=False, which efficiently
-        computes all cross-spectra in a single call.
+        With ``mask=None`` this uses healpy's ``anafast`` (full ``0..lmax`` grid). With an
+        apodized ``mask`` (or a precomputed ``mcm``) every pair is masked and **decoupled**
+        into bandpowers (``wavenumber`` = effective bandpower multipoles, ``nlb`` multipoles
+        per band); the MCM is built once from ``mask`` and reused across all pairs.
 
         Parameters
         ----------
         lmax : int, optional
             Maximum multipole moment. Defaults to 3*nside-1.
         method : str, default="healpy"
-            Must be "healpy". JAX method is not supported for cross-spectra.
+            SHT backend ("healpy" or "jax"). "jax" is supported on the masked path.
         batch_size : int, optional
-            Not used for healpy method. Included for API consistency.
+            Not used for the all-pairs paths. Included for API consistency.
+        mask, mcm, nlb
+            Optional masking arguments. With an apodized ``mask`` the cross-spectra are
+            returned as mask-decoupled bandpowers, reusing a precomputed ``mcm`` if given.
 
         Returns
         -------
@@ -1046,7 +974,7 @@ class SphericalDensity(AbstractField):
             )
 
         # Call the power module function
-        ell, angular_cls = cross_angular_cl_spherical(data, lmax=lmax, method=method)
+        ell, angular_cls = cross_angular_cl_spherical(data, lmax=lmax, method=method, mask=mask, mcm=mcm, nlb=nlb)
 
         return PowerSpectrum(
             name=self.name,
