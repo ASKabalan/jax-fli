@@ -42,12 +42,12 @@ launch_rt() {
 
 for NB_S in "${NB_SHELLS[@]}"; do
   echo "Lau,nching drift-on-lightcone vs none for NB_S=$NB_S"
-  launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
+  launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 00:40:00 -- \
     fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_drift_${NB_S}/shell*.parquet" \
-    --nz-shear 0.35 --nside 64 --enable-x64 --normalization global \
+    --nz-shear 0.35 --nside 2048 --enable-x64 --normalization global  --name "kappa_drift_shells_$NB_S" \
     --output "$RESULTS/exp5/born_drift_${NB_S}"
-  #launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
-  #  fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_nodrift_${NB_S}/shell*.parquet" \
-  #  --nz-shear 0.35 --nside 64 --enable-x64 --normalization global \
-  #  --output "$RESULTS/exp5/born_nodrift_${NB_S}"
+  launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
+    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_nodrift_${NB_S}/shell*.parquet" \
+    --nz-shear 0.35 --nside 2048 --enable-x64 --normalization global --name "kappa_nodrift_shells_$NB_S" \
+    --output "$RESULTS/exp5/born_nodrift_${NB_S}"
 done
