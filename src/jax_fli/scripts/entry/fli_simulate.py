@@ -620,7 +620,8 @@ def main() -> None:
         output_dir = f"{os.path.dirname(args.output)}/" if args.output else ""
         report_file = f"{output_dir}/perf_{sim_type}.csv"
         nb_steps = getattr(args, "nb_steps", "")
-        func_name = f"{sim_type}{nb_steps}"
+        name = getattr(args, "name", "")
+        func_name = f"{sim_type}{nb_steps}_{name}"
         timer.report(report_file, function=func_name, extra_info=extra_info, **metadata)
         print(f"Performance report saved to {report_file}")
         # Keep the last timed result and fall through to the save below, so one --perf run yields BOTH

@@ -9,7 +9,7 @@ NB_SHELLS="${NB_SHELLS:-8}"    # thick shells — the point of Exp 05
 # spherical painting at nside 2048, one parquet per shell (--shells-per-file 1; required at nside 2048,
 # the full-lightcone gather onto rank 0 OOMs — see Exp 06). The shared launch() treats a parquet-filled
 # --output directory as "done".
-COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --nb-steps 50 \
+COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --nb-steps 50 --min-width 5.0 \
 --paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --shell-spacing a --time-stepping D --halo-multiplier 0.5 \
 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
@@ -27,3 +27,27 @@ for NB_S in "${NB_SHELLS[@]}"; do
     launch 16 4 64 1 00:40:00 -- $COMMON $DRIFT --nb-shells $NB_S \
       --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
   done
+done
+
+CPU_QOS="${CPU_QOS:-qos_cpu-t3}"
+
+launch_rt() {
+  local account=$1 constraint=$2 qos=$3 nodes=$4 gpn=$5 px=$6 py=$7 tlimit=$8; shift 8
+  [ "$1" = "--" ] && shift
+  fli-launcher --mode "$MODE" --account "$account" --constraint "$constraint" \
+    --nodes "$nodes" --gpus-per-node "$gpn" --cpus-per-node "$CPUS" --qos "$qos" \
+    --time-limit "$tlimit" --slurm-script "$SLURM_SCRIPT" --output-logs "$OUTPUT_LOGS" \
+    --pdim "$px" "$py" -- "$@"
+}
+
+for NB_S in "${NB_SHELLS[@]}"; do
+  echo "Lau,nching drift-on-lightcone vs none for NB_S=$NB_S"
+  launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
+    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_drift_${NB_S}/shell*.parquet" \
+    --nz-shear 0.35 --nside 64 --enable-x64 --normalization global \
+    --output "$RESULTS/exp5/born_drift_${NB_S}"
+  #launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
+  #  fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_nodrift_${NB_S}/shell*.parquet" \
+  #  --nz-shear 0.35 --nside 64 --enable-x64 --normalization global \
+  #  --output "$RESULTS/exp5/born_nodrift_${NB_S}"
+done
