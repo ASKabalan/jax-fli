@@ -31,10 +31,12 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
   × force-deconvolution on/off, impact on the spherical `C_ℓ`.
 - **03 — [Spherical painting + pixel-window](03-spherical-painting/README.md)** ⚠️ — interpolation
   scheme (NGP / bilinear / RBF) and HEALPix pixel-window impact.
-- **04 — [Step convergence](04-step-convergence/README.md)** ⚠️ — minimum step budget and the
+- **04 — [Step convergence](04-step-convergence/README.md)** ✅ — minimum step budget and the
   kdk / dkd / BullFrog comparison on the per-shell spherical `C_ℓ` vs step count.
-- **05 — [Drift on the lightcone](05-drift-on-lightcone/README.md)** ⚠️ — drift-on-lightcone improves
-  thick-shell density `C_ℓ`; Born convergence unaffected.
+- **05 — [Drift on the lightcone](05-drift-on-lightcone/README.md)** ✅ — the drift sharpens
+  thick-shell density `C_ℓ`; the Born convergence is unaffected.
+- **05b — [Drift on the lightcone, 3-bin](05b-drift-on-lightcone-3bin/README.md)** ⚠️ — the deeper
+  5 Gpc/h, 2560³, three-source-bin tomographic counterpart of Experiment 05.
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ⚠️ — per-shell density `C_ℓ` +
   cross-correlation vs the CosmoGrid shells (needs the CosmoGrid shell edges).
 - **07 — [Born lensing vs CosmoGrid](07-born-lensing/README.md)** ⚠️ — convergence `C_ℓ` +
@@ -48,7 +50,7 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
 
   [![Masked shear footprints](08-masked-shear/assets/fig01-masks.svg)](08-masked-shear/README.md)
 
-## Performance & gradients (9–12)
+## Performance & gradients
 
 - **09 — [Gradient through the lightcone](09-gradient-validation/README.md)** ✅ *(local)* — adjoint
   `∂L/∂δ` vs finite differences (correctness, float64) + reversible-reconstruction stability: error vs
@@ -57,13 +59,11 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
 
   [![Adjoint vs finite differences](09-gradient-validation/assets/fig01-grad-vs-fd.svg)](09-gradient-validation/README.md)
 
-- **10 — [Adjoint performance: memory & wall-time](10-memory-checkpoints/README.md)** ⚠️ *(HPC)* — peak
-  memory + wall-time of the `reverse` vs `checkpointed` adjoints across the two cost axes (integration
-  steps, saved shells) plus the checkpoint-count trade.
-- **11 — [Performance: throughput, strong & weak scaling](11-scaling/README.md)** ⚠️ — per-stage cost
-  + strong & weak scaling (perf + memory), in float32 *and* float64.
-- **12 — [Solver reversibility error](12-solver-reversibility/README.md)** ⚠️ — forward → reverse
-  round-trip error vs step count.
+- **11 — [Performance: strong & weak scaling](11-scaling/README.md)** ⚠️ — PM strong & weak scaling
+  (perf + memory) on slab decompositions, in float32 *and* float64.
+- **12 — [Gradient scaling](12-scaling-gradient/README.md)** ⚠️ — strong & weak scaling of the
+  initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the
+  former adjoint memory / checkpoint-count study.
 
 ## Field-level inference (13–15) — blocked on the inference pipeline
 

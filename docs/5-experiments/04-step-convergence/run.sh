@@ -1,6 +1,6 @@
 #!/bin/bash
 # Experiment 04 — step-count convergence + solver comparison.
-# All three integrators {kdk,dkd,bf} × nb-steps {5,6,10,20,30,50} = 18 sims at fixed resolution. float64.
+# All three integrators {kdk,dkd,bf} × nb-steps {10,20,30,40,50} = 15 sims at fixed resolution. float64.
 # Question: how few PM steps give a converged per-shell spherical C_ℓ, and how do the solvers compare?
 # (Merges the former 04-solver-comparison + 04b-step-convergence — they were the same sweep.)
 source "$(dirname "$0")/../_launch_common.sh"
@@ -19,8 +19,10 @@ NB_SHELLS="${NB_SHELLS:-10}"   # lightcone shells (box/2 / N ≥ min_width 50 Mp
 #                                    (see Exp 06). The shared launch() treats a parquet-filled dir as "done".
 COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --paint-order cic \
 --nside 2048 --shells-per-file 1 --scheme ngp --nb-shells $NB_SHELLS --shell-spacing a \
---time-stepping a \
 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
+
+# Time-stepping is per-solver: BullFrog integrates in the growth factor D (better per arXiv:2409.19049),
+# while kdk/dkd stay in the scale factor a.
 
 # 2048³ @ 64 GPUs (16 nodes, --pdim 64 1): local 2048/64 = 32³, halo int(32·0.5)=16 (EVEN), local ≤ 512³ → fits f64.
 # Halo sizing (Exp 01 max-drift rule): physical ghost zone = halo_multiplier·box/px = 0.5·2000/64 = 15.6 Mpc/h,
@@ -28,8 +30,9 @@ COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --paint-order 
 # 2048³ rung of Exp 01). Box+cosmology fix σ_disp, so this one check covers every (solver, steps) here.
 #       nodes gpn px py  time
 for SOLVER in kdk dkd bf; do
+  if [ "$SOLVER" = "bf" ]; then TSTEP="D"; else TSTEP="a"; fi
   for STEPS in 10 20 30 40 50; do
-    launch 16 4 64 1 01:00:00 -- $COMMON --solver "$SOLVER" --nb-steps "$STEPS" \
+    launch 16 4 64 1 01:00:00 -- $COMMON --solver "$SOLVER" --time-stepping "$TSTEP" --nb-steps "$STEPS" \
       --output "$RESULTS/exp4/${SOLVER}_s${STEPS}" \
       --name "exp4_${SOLVER}_STEPS%nb_steps%_s%seed%"
   done

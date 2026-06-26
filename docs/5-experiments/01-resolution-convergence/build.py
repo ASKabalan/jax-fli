@@ -2,7 +2,7 @@
 
 Renders the SVG figures for ``docs/5-experiments/01-resolution-convergence/README.md`` from the
 per-shell spherical angular power spectra of the five slab runs (``spectra_m*.parquet``), the
-two pencil re-runs (computed here from their density maps), and the density maps themselves
+two pencil re-runs (precomputed ``spectra_m*_pencils.parquet``), and the density maps themselves
 (``m*.parquet`` / ``m*_pencils.parquet``). Each shell's measured C_ell is compared to the
 analytic Limber number-counts theory (``jax_fli.compute_theory_cl_for_density``), put on the
 same HEALPix pixel-window footing (× pixwin²(512)). Spectra are bandpower-binned with
@@ -32,7 +32,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import jax_cosmo as jc
@@ -44,7 +43,6 @@ from matplotlib import cm
 from matplotlib.colors import Normalize
 from matplotlib.lines import Line2D
 
-import jax_fli as jfli
 from jax_fli import compute_theory_cl_for_density
 from jax_fli.io import Catalog
 
@@ -69,21 +67,80 @@ LPLOT = 2 * NSIDE  # trust boundary: beyond ell = 2*nside the maps are pixel-noi
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
-
-def _load(path):
-    return Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{path}", split="train"))
-
-
 # -----------------------------------------------------------------------------
-# Slab spectra (precomputed), slab density maps (fig06), pencil density maps (fig07 + their spectra).
+# Explicit per-file loads — every HF parquet used is visible on its own line. Slab angular spectra and
+# the precomputed pencil spectra (fig01–06), slab + pencil density maps (fig07/fig08 + the pencil halo).
 # -----------------------------------------------------------------------------
-_spec_cats = {m: _load(f"01-resolution/spectra/spectra_m{m}.parquet") for m in MESHES}
-spectra = {m: c.field[0] for m, c in _spec_cats.items()}  # mesh -> raw C_ell PowerSpectrum
-cosmo = _spec_cats[MESHES[0]].cosmology[0]
+spec_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m512.parquet", split="train")
+)
+spec_1024_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m1024.parquet", split="train")
+)
+spec_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2048.parquet", split="train")
+)
+spec_2560_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2560.parquet", split="train")
+)
+spec_3072_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m3072.parquet", split="train")
+)
 
-density = {m: _load(f"01-resolution/density/m{m}.parquet").field[0] for m in MESHES}  # slab SphericalDensity
-density_pencil = {m: _load(f"01-resolution/density/m{m}_pencils.parquet").field[0] for m in PENCILS}
+spec_2560_pencil_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2560_pencils.parquet", split="train")
+)
+spec_3072_pencil_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m3072_pencils.parquet", split="train")
+)
+
+dens_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m512.parquet", split="train")
+)
+dens_1024_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m1024.parquet", split="train")
+)
+dens_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2048.parquet", split="train")
+)
+dens_2560_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2560.parquet", split="train")
+)
+dens_3072_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m3072.parquet", split="train")
+)
+
+dens_2560_pencil_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2560_pencils.parquet", split="train")
+)
+dens_3072_pencil_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m3072_pencils.parquet", split="train")
+)
+
+cosmo = spec_512_cat.cosmology[0]  # one fiducial cosmology shared by every run
+
+# Mesh-indexed views the figure loops iterate over (built by hand from the explicit loads above).
+spectra = {
+    512: spec_512_cat.field[0],
+    1024: spec_1024_cat.field[0],
+    2048: spec_2048_cat.field[0],
+    2560: spec_2560_cat.field[0],
+    3072: spec_3072_cat.field[0],
+}
+density = {
+    512: dens_512_cat.field[0],
+    1024: dens_1024_cat.field[0],
+    2048: dens_2048_cat.field[0],
+    2560: dens_2560_cat.field[0],
+    3072: dens_3072_cat.field[0],
+}
+density_pencil = {2560: dens_2560_pencil_cat.field[0], 3072: dens_3072_pencil_cat.field[0]}
 PENCIL_HALO = {m: float(np.asarray(density_pencil[m].halo_size).ravel()[0]) * BOX / m for m in PENCILS}
+
+# Every parquet must carry the same fiducial cosmology — check silently, stop if a file disagrees.
+for _c in (spec_1024_cat, spec_2048_cat, spec_2560_cat, spec_3072_cat, spec_2560_pencil_cat, spec_3072_pencil_cat):
+    assert np.isclose(float(_c.cosmology[0].Omega_c), float(cosmo.Omega_c))
+    assert np.isclose(float(_c.cosmology[0].sigma8), float(cosmo.sigma8))
 
 LMAX = int(spectra[MESHES[0]].wavenumber.max())
 ell = jnp.arange(LMAX + 1)
@@ -92,9 +149,25 @@ z_shells = np.asarray(spectra[MESHES[0]].z_sources)
 chi_shells = np.asarray(spectra[MESHES[0]].comoving_centers)
 n_shells = np.asarray(spectra[MESHES[0]].array).shape[0]
 
-# Pencil C_ell: overdensity angular spectrum from the density map, same footing as the slab spectra.
+
+def _on_slab_ell(arr):
+    """Right-pad a precomputed pencil C_ell (lmax 1500) up to the slab ell grid (lmax 1535) with NaN.
+
+    The two were computed at slightly different lmax; every figure here works on ell <= 2*nside = 1024,
+    well inside both, so the pad only realigns the axis and never enters a band/plot.
+    """
+    arr = np.asarray(arr)
+    if arr.shape[1] == ell_full.size:
+        return arr
+    out = np.full((arr.shape[0], ell_full.size), np.nan)
+    out[:, : arr.shape[1]] = arr
+    return out
+
+
+# Precomputed pencil C_ell (HF), on the same ell footing as the slab spectra (was angular_cl on the maps).
 spectra_pencil = {
-    m: density_pencil[m].to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX) for m in PENCILS
+    2560: _on_slab_ell(spec_2560_pencil_cat.field[0].array),
+    3072: _on_slab_ell(spec_3072_pencil_cat.field[0].array),
 }
 
 # -----------------------------------------------------------------------------
@@ -103,7 +176,7 @@ spectra_pencil = {
 # -----------------------------------------------------------------------------
 theory = compute_theory_cl_for_density(cosmo, spectra[MESHES[0]], ell)  # (n_shells, n_ell)
 pixwin2 = hp.pixwin(NSIDE, lmax=LMAX) ** 2  # numpy (LMAX+1,)
-theory_pw = eqx.tree_at(lambda p: p.array, theory, theory.array * pixwin2)
+theory_pw = theory * pixwin2  # abstract field: broadcasts (n_shells, n_ell) * (n_ell,) over the array
 theory_pw_arr = np.asarray(theory_pw.array)
 raw_s = {m: np.asarray(spectra[m].array) for m in MESHES}  # full-grid measured (fig03/04/05)
 
@@ -270,7 +343,7 @@ def fig03_convergence():
 
 def fig06_convergence_pencil():
     # m2560/m3072 from their pencil decomposition (the larger ghost zone) instead of the starved slab
-    raw_mixed = {m: (np.asarray(spectra_pencil[m].array) if m in PENCILS else raw_s[m]) for m in MESHES}
+    raw_mixed = {m: (spectra_pencil[m] if m in PENCILS else raw_s[m]) for m in MESHES}
     halo_mixed = {m: (PENCIL_HALO[m] if m in PENCILS else HALO[m]) for m in MESHES}
     labels = [f"m{m}\n{'pencil' if m in PENCILS else f'px={PX[m]}'}" for m in MESHES]
     _fig_convergence(
@@ -289,7 +362,7 @@ def fig06_convergence_pencil():
 def plot_slab_pencil(m, stem):
     lo, hi = BAND
     r_slab, _ = band_ratio(ell_full, raw_s[m], theory_pw_arr, lo, hi)
-    r_pencil, _ = band_ratio(ell_full, np.asarray(spectra_pencil[m].array), theory_pw_arr, lo, hi)
+    r_pencil, _ = band_ratio(ell_full, spectra_pencil[m], theory_pw_arr, lo, hi)
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
     ax.axhspan(0.95, 1.05, color="0.82", lw=0, label=r"±5%")
     ax.axhline(1.0, color="0.4", ls="--", lw=1.0)
