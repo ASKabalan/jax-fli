@@ -208,7 +208,6 @@ def _sigma_displacement(z):
 # =============================================================================
 def plot_spectra_batch(shell_idxs, title, stem):
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(title, y=1.0)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
@@ -325,7 +324,6 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     axR.set_title("Halo vs the displacement scale")
     axR.grid(alpha=0.25, which="both")
     axR.legend(loc="upper right", fontsize=9)
-    fig.suptitle(suptitle, y=1.0)
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -375,7 +373,6 @@ def plot_slab_pencil(m, stem):
     ax.set_ylim(0.4, 1.1)
     ax.grid(alpha=0.25)
     ax.legend(loc="lower left", fontsize=10)
-    fig.suptitle(f"m{m}: the larger pencil-decomposition halo recovers the power the starved slab loses", y=0.98)
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -409,11 +406,6 @@ def fig07_maps(shell=9):
         )
         hp.orthview(d1[m], sub=(3, 5, i + 6), rot=(20, 35), half_sky=True, xsize=400, title="", **mv)
         hp.mollview(d1[m], sub=(3, 5, i + 11), title="", **mv)
-    fig.suptitle(
-        f"δ maps, shell {shell} (z={z_shells[shell]:.2f}), $\\log_{{10}}(1+\\delta)$ — top row flat gnomonic "
-        r"patch (~26°), middle orthographic globe, bottom full-sky mollview; no boundary artifact, m512 smoother",
-        y=1.0,
-    )
     savefig(ASSETS / "fig07-maps-slabs", fig)
 
 
@@ -452,11 +444,6 @@ def fig08_maps_slab_pencil(shell=9):
             notext=True,
             bgcolor=(0.0,) * 4,
         )
-    fig.suptitle(
-        f"δ maps, shell {shell} (z={z_shells[shell]:.2f}), $\\log_{{10}}(1+\\delta)$ — slab vs pencil decomposition "
-        "(top row gnomonic patch, bottom row full-sky mollview)",
-        y=1.02,
-    )
     savefig(ASSETS / "fig08-maps-slab-pencil", fig)
 
 

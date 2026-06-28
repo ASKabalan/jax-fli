@@ -125,7 +125,6 @@ spec_b = {
 # =============================================================================
 def plot_schemes_batch(nside, shell_idxs, title, stem):
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(title, y=1.0)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
@@ -205,7 +204,6 @@ def plot_udsample_grid(native_nside, title, stem):
         handles.append(Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$(1024)"))
     handles.append(Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"))
     fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.0))
-    fig.suptitle(title, y=1.02)
     savefig(ASSETS / stem, fig)
 
 
@@ -214,7 +212,6 @@ def plot_udsample_grid(native_nside, title, stem):
 # =============================================================================
 def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(title, y=1.0)
     # nside distinguished by line style (1024 dotted, 2048 solid); scheme by colour.
     style = {1024: dict(ls=":"), 2048: dict(ls="-")}
     for col, sh in enumerate(shell_idxs):

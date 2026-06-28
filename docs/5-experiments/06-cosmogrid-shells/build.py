@@ -169,7 +169,6 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
     binned = {nb: bandpowers(sim_fs[nb]) for nb in NBINS}  # nb -> (ell, cl)
 
     fig, axes = plt.subplots(2, 3, figsize=(16, 6.2), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle("Per-shell density $C_\\ell$ — jax-fli PM vs CosmoGrid (full sky, overdensity, nside 2048)", y=1.0)
     for col, sh in enumerate(shells):
         axs, axr = axes[0, col], axes[1, col]
         axs.plot(ell_np[2:], theory[sh][2:], color=C_TH, ls="--", lw=1.2, zorder=2)
@@ -249,7 +248,6 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
     handles += [Line2D([], [], color="0.3", ls=DECOMP_LS[d], lw=1.5, label=f"{d} decomposition") for d in DECOMPS]
     handles += [Line2D([], [], color="0.82", lw=6, label=r"$\pm5\%$")]
     fig.legend(handles=handles, loc="upper center", ncol=7, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.04))
-    fig.suptitle("Density $C_\\ell$ agreement vs comoving distance — slab≈pencil, full-sky≈decoupled-quadrant", y=0.99)
     fig.tight_layout()
     savefig(ASSETS / "fig02-band-vs-distance", fig)
 
@@ -264,7 +262,6 @@ def fig03_nside512(sim_fs_512, cg_lo):
     shells = [NEAR, MID, FAR]
 
     fig, axes = plt.subplots(2, 3, figsize=(16, 6.0), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle("Matched-resolution cross-check at nside 512 — jax-fli PM vs CosmoGrid (overdensity)", y=1.0)
     for col, sh in enumerate(shells):
         axs, axr = axes[0, col], axes[1, col]
         axs.plot(ell_cg, cg_b[sh], color=C_CG, lw=1.8)
@@ -333,12 +330,6 @@ def fig04_maps_fullsky(od_fs, cg_od):
                 notext=True,
                 bgcolor=(0.0,) * 4,
             )
-    fig.suptitle(
-        r"$\delta$ maps, $\log_{10}(1+\delta)$ — independent realisations: matching texture, "
-        "NOT matching structures (full sky, nside 512; scale per row)",
-        y=1.04,
-        fontsize=13,
-    )
     savefig(ASSETS / "fig04-maps-fullsky", fig)
 
 
@@ -363,12 +354,6 @@ def fig05_maps_quadrant(od_q):
                 notext=True,
                 bgcolor=(0.0,) * 4,
             )
-    fig.suptitle(
-        r"$\delta$ maps, big-quadrant footprint, $\log_{10}(1+\delta)$ — the visibility cone "
-        "shrinks as the shell recedes (nside 512; scale per row)",
-        y=1.02,
-        fontsize=13,
-    )
     savefig(ASSETS / "fig05-maps-quadrant", fig)
 
 
@@ -406,7 +391,6 @@ def _higher_order_grid(od_fs, cg_od, xy, title, stem, xlabel):
         if sh == NEAR:
             ax.set_ylabel("count")
             ax.legend(frameon=False)
-    fig.suptitle(title, y=1.02)
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -426,7 +410,6 @@ def fig08_masked(od_q, cg_od):
     # on the very same pixels (these statistics have no MASTER-style mask deconvolution).
     footprint = np.asarray(spherical_visibility_mask(NSIDE_LO, OBS_QUAD, threshold=1.0)).astype(bool)
     apo = np.asarray(jfli.data.apodize(footprint.astype(float), 2.0))
-    fsky = footprint.mean()
     z = np.asarray(cg_od.z_sources)
     shells = [MID, FAR]
 
@@ -460,11 +443,6 @@ def fig08_masked(od_q, cg_od):
         )
         ax.grid(alpha=0.3, which="both")
 
-    fig.suptitle(
-        f"Masked higher-order statistics on the big-quadrant footprint ($f_{{sky}}={fsky:.2f}$): "
-        "select footprint pixels (PDF) / apodize then taper (peaks), same pixels in both maps",
-        y=1.0,
-    )
     fig.tight_layout()
     savefig(ASSETS / "fig08-masked-higher-order", fig)
 
@@ -504,11 +482,6 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
                 ax.set_ylabel(f"shell {sh} (z={z[sh]:.2f})\nprobability density")
                 if r == 0:
                     ax.legend(frameon=False, fontsize=8)
-    fig.suptitle(
-        "Spherical starlet coefficient distributions — near/mid/far shells (rows 5/25/38): agreement at "
-        "coarse scales, divergence at fine scales (CIC window + shot noise)",
-        y=1.0,
-    )
     fig.tight_layout()
     savefig(ASSETS / "fig09-starlet", fig)
 
@@ -518,7 +491,6 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
 # =============================================================================================
 def fig10_starlet_maps(od_fs, cg_od, nscales=5):
     sh = MID
-    z = float(np.asarray(cg_od.z_sources)[sh])
     st_sim = np.asarray(_overdensity_shell(od_fs[2], sh).starlet_coefficients(nscales=nscales).array)
     st_cg = np.asarray(_overdensity_shell(cg_od, sh).starlet_coefficients(nscales=nscales).array)
     # The two are INDEPENDENT realisations: the third row (sim − CosmoGrid) is not a residual but a
@@ -542,17 +514,10 @@ def fig10_starlet_maps(od_fs, cg_od, nscales=5):
                 max=vm[s],
                 cmap="RdBu_r",
                 cbar=True,
-                unit="starlet coefficient",
+                unit="",
                 notext=True,
                 bgcolor=(0.0,) * 4,
             )
-    fig.suptitle(
-        f"Spherical starlet coefficient maps per scale — shell {sh}, z = {z:.2f}: fine scales (left) "
-        "carry small-scale detail, coarse scales (right) the smooth field. Bottom row = difference "
-        "(independent realisations → uncorrelated, full amplitude retained) (nside 512)",
-        y=1.0,
-        fontsize=13,
-    )
     savefig(ASSETS / "fig10-starlet-maps", fig)
 
 

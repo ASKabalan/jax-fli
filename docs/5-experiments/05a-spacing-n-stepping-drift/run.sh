@@ -1,10 +1,11 @@
 #!/bin/bash
-# Experiment 05 — drift on the lightcone vs none (thick shells; density-shell C_ℓ). float64.
+# Experiment 05a — spacing & stepping: drift on the lightcone vs none (thick shells; density-shell C_ℓ).
+# Single point source, 2 Gpc/h, 2048³, float64. The deeper 3-bin counterparts are 05b/05c/05d.
 source "$(dirname "$0")/../_launch_common.sh"
 
-echo "### Exp 05 — drift on the lightcone  (MODE=$MODE)"
+echo "### Exp 05a — drift on the lightcone  (MODE=$MODE)"
 
-NB_SHELLS="${NB_SHELLS:-8}"    # thick shells — the point of Exp 05
+NB_SHELLS="${NB_SHELLS:-8}"    # thick shells — the point of Exp 05a
 # Production knobs (see Exp 01/02/03/06): 2048³ mesh, CIC paint with NO force --deconvolution, ngp
 # spherical painting at nside 2048, one parquet per shell (--shells-per-file 1; required at nside 2048,
 # the full-lightcone gather onto rank 0 OOMs — see Exp 06). The shared launch() treats a parquet-filled
@@ -23,9 +24,9 @@ NB_SHELLS=(5 8 10 12 16 20 25 30 40)
 
 for NB_S in "${NB_SHELLS[@]}"; do
   for DRIFT in "" "--drift-on-lightcone"; do
-    if [ -n "$DRIFT" ]; then tag="exp5_drift_${NB_S}"; else tag="exp5_nodrift_${NB_S}"; fi
+    if [ -n "$DRIFT" ]; then tag="exp5a_drift_${NB_S}"; else tag="exp5a_nodrift_${NB_S}"; fi
     launch 16 4 64 1 00:40:00 -- $COMMON $DRIFT --nb-shells $NB_S \
-      --output "$RESULTS/exp5/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
+      --output "$RESULTS/exp5a/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
   done
 done
 
@@ -43,14 +44,14 @@ launch_rt() {
 for NB_S in "${NB_SHELLS[@]}"; do
   echo "Launching drift-on-lightcone vs none for NB_S=$NB_S"
   launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 00:40:00 -- \
-    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_drift_${NB_S}/shell*.parquet" \
+    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05a-drift/density/exp5a_drift_${NB_S}/shell*.parquet" \
     --nz-shear 0.35 --nside 2048 --enable-x64 --normalization global  --name "kappa_drift_shells_$NB_S" \
-    --output "$RESULTS/exp5/born_drift_${NB_S}"
+    --output "$RESULTS/exp5a/born_drift_${NB_S}"
   launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 1 1 1 1 00:40:00 -- \
-    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-drift-n-shells/density/exp5_nodrift_${NB_S}/shell*.parquet" \
+    fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05a-drift/density/exp5a_nodrift_${NB_S}/shell*.parquet" \
     --nz-shear 0.35 --nside 2048 --enable-x64 --normalization global --name "kappa_nodrift_shells_$NB_S" \
-    --output "$RESULTS/exp5/born_nodrift_${NB_S}"
+    --output "$RESULTS/exp5a/born_nodrift_${NB_S}"
 done
 
 # The deeper 3-bin tomographic counterpart (5 Gpc/h box, 2560³, 3 source bins) is its own experiment:
-# see ../05b-drift-on-lightcone-3bin/.
+# see ../05b-spacing-n-stepping-3bin/.

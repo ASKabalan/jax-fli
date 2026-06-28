@@ -73,7 +73,6 @@ def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
         gridspec_kw={"height_ratios": [3, 1]},
         sharex="col",
     )
-    fig.suptitle(title, fontsize=15)
 
     for i in range(5):
         ax_spec = axes[0, i]
@@ -176,7 +175,6 @@ for ax, ltarget in zip(axes, TARGETS):
     ax.grid(alpha=0.25)
     ax.legend(loc="lower right", fontsize=8)
 axes[0].set_ylabel(r"measured / theory  ($(2\ell+1)$-weighted)")
-fig.suptitle(r"CosmoGrid density convergence — theory × pixwin$^2$(2048) (pixel-window-matched)", y=1.0)
 fig.tight_layout()
 savefig(ASSETS / "fig04-convergence-pixwin", fig)
 

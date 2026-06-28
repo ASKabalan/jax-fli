@@ -128,7 +128,6 @@ def plot_spectra(s, stem):
     fig, axes = plt.subplots(
         2, n_show, figsize=(4.3 * n_show, 5.2), gridspec_kw={"height_ratios": [3, 1]}, sharex="col"
     )
-    fig.suptitle(s["spectra_title"], fontsize=14)
     for i in range(n_show):
         axs, axr = axes[0, i], axes[1, i]
         for ns in nsides:
@@ -187,7 +186,6 @@ def plot_pdf(s, stem):
         if i == 0:
             ax.set_ylabel("count")
             ax.legend(frameon=False)
-    fig.suptitle(s["pdf_title"], y=1.02, fontsize=14)
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -228,11 +226,6 @@ def plot_starlet(s, stem):
                 ax.set_ylabel(f"bin {r + 1} (z≈{s['z'][r]:.2f})\nprobability density")
                 if r == 0:
                     ax.legend(frameon=False, fontsize=8)
-    fig.suptitle(
-        f"{s['starlet_title']} — rows are tomographic bins: coarse-scale agreement, "
-        "fine-scale divergence (CIC window + resolution)",
-        y=1.0,
-    )
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -242,7 +235,6 @@ def plot_starlet(s, stem):
 # =============================================================================================
 def plot_starlet_maps(s, stem):
     i = s["n_show"] - 1  # deepest shown bin (strongest lensing signal)
-    z = float(s["z"][i])
     st_l = np.asarray(mean_sub(s["lens512"])[i].starlet_coefficients(nscales=NSCALES).array)
     st_r = np.asarray(mean_sub(s["ref512"])[i].starlet_coefficients(nscales=NSCALES).array)
     rows = [(s["lens_label"], st_l), (s["ref_label"], st_r), ("difference (lensed − reference)", st_l - st_r)]
@@ -263,17 +255,10 @@ def plot_starlet_maps(s, stem):
                 max=vm[sc],
                 cmap="RdBu_r",
                 cbar=True,
-                unit="starlet coefficient",
+                unit="",
                 notext=True,
                 bgcolor=(0.0,) * 4,
             )
-    fig.suptitle(
-        f"{s['starlet_title']} maps — bin {i + 1} (z≈{z:.2f}): fine scales (left) carry small-scale "
-        "detail, coarse scales (right) the smooth field. Bottom row = difference (independent "
-        "realisations → uncorrelated)",
-        y=1.0,
-        fontsize=13,
-    )
     savefig(ASSETS / stem, fig)
 
 
@@ -308,12 +293,6 @@ def plot_maps(s, stem):
                 notext=True,
                 bgcolor=(0.0,) * 4,
             )
-    fig.suptitle(
-        f"{s['maps_title']} (matched nside 512). Bottom row = difference: independent "
-        "realisations → uncorrelated, full amplitude retained",
-        y=1.0,
-        fontsize=13,
-    )
     savefig(ASSETS / stem, fig)
 
 

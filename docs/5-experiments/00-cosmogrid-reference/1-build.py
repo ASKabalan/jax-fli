@@ -8,6 +8,7 @@ from pathlib import Path
 import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
+import jax_cosmo as jc
 import numpy as np
 from datasets import load_dataset
 from huggingface_hub import snapshot_download
@@ -105,7 +106,6 @@ def plot_kappa_set(series, theory, title, stem):
         gridspec_kw={"height_ratios": [3, 1]},
         sharex="col",
     )
-    fig.suptitle(title, fontsize=15)
 
     for i in range(n_bins):
         ax_spec = axes[0, i]
@@ -186,5 +186,31 @@ plot_kappa_set(
     "DES Y3 source n(z) — jax-fli Born κ vs Limber theory",
     "fig07-kappa-des",
 )
+
+# =============================================================================
+# fig08 — the two source n(z) distributions and their lensing efficiency q(z)
+# (built from jax_fli.data.get_{stage3,des_y3}_nz_shear, the same WeakLensing kernel as data.plot_nz)
+# =============================================================================
+z_grid = jnp.linspace(0.0, 2.0, 300)
+_cm = plt.get_cmap("YlOrRd")
+
+fig, axes = plt.subplots(2, 2, sharex="col", figsize=(13, 6), gridspec_kw={"hspace": 0.05})
+for col, (nz_list, src_cosmo, name) in enumerate([(nz_s3, cg_cosmo, "Stage-3"), (nz_des, des_cosmo, "DES Y3")]):
+    colors = [_cm(x) for x in np.linspace(0.35, 0.95, len(nz_list))]
+    qz = np.asarray(jc.probes.WeakLensing(nz_list).kernel(src_cosmo, z_grid, 1000.0))  # (nbins, nz)
+    for i, nz in enumerate(nz_list):
+        axes[0, col].plot(z_grid, nz(z_grid), color=colors[i], lw=2, label=f"bin {i + 1}")
+        axes[1, col].plot(z_grid, qz[i], color=colors[i], lw=2)
+    axes[0, col].set_title(f"{name} source n(z)")
+    axes[1, col].set_xlabel(r"redshift $z$")
+    axes[0, col].set_ylim(bottom=0.0)
+    axes[1, col].set_ylim(bottom=0.0)
+    axes[0, col].legend(frameon=False, fontsize=8)
+    axes[0, col].grid(alpha=0.3)
+    axes[1, col].grid(alpha=0.3)
+axes[0, 0].set_ylabel(r"$n(z)$")
+axes[1, 0].set_ylabel(r"$q(z)$  (lensing efficiency)")
+fig.tight_layout()
+savefig(ASSETS / "fig08-nz-bins", fig)
 
 print(f"assets written to {ASSETS}")

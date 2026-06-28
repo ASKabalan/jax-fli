@@ -97,7 +97,6 @@ deconv_b = {k: np.asarray(v.bin(nlb=NLB, lmin=2).array) for k, v in deconv.items
 # =============================================================================
 def plot_schemes_batch(data_b, shell_idxs, title, stem):
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(title, y=1.0)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
@@ -171,10 +170,6 @@ def plot_deconv_grid(scheme, stem):
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
     fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=10, frameon=False, bbox_to_anchor=(0.5, 1.0))
-    fig.suptitle(
-        f"{SCHEME_LABEL[scheme]}: the Fourier-space force-window deconvolution recovers the small-scale power",
-        y=1.02,
-    )
     savefig(ASSETS / stem, fig)
 
 

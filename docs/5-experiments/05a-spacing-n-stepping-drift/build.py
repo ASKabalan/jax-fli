@@ -1,17 +1,17 @@
-"""Experiment 05 — drift on the lightcone (thick shells; density-shell C_ell + Born lensing): figures.
+"""Experiment 05a — drift on the lightcone (thick shells; density-shell C_ell + Born lensing): figures.
 
-Renders the SVG figures for ``docs/5-experiments/05-drift-on-lightcone/README.md``. The drift moves each
+Renders the SVG figures for ``docs/5-experiments/05a-spacing-n-stepping-drift/README.md``. The drift moves each
 particle to the scale factor at which it actually crosses the lightcone, removing the frozen-epoch error
 of a thick shell — so a *drifted* coarse lightcone matches a *much finer* undrifted one.
 
-  fig01   illustration (local 256³ sim, runs on a laptop): the same particle cloud coloured by the
+  fig01   illustration (small local 256³ sim): the same particle cloud coloured by the
           redshift it is assigned under a 10-shell freeze, the drift's smooth z(r), and a 40-shell freeze.
   fig02   per-shell density C_ell at the near / mid / far shell: the 10-shell drift / no-drift runs vs a
           continuous-lightcone reference built by summing the matching 40-shell run (counts -> overdensity).
   fig03   Born convergence C_ell vs the number of shells, drift vs no-drift, each ratioed to its 40-shell run.
 
 Run from the repo root (CPU is fine; fig01 runs a small sim, fig02 loads a few nside-2048 maps):
-    JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/05-drift-on-lightcone/build.py
+    JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/05a-spacing-n-stepping-drift/build.py
 """
 
 from __future__ import annotations
@@ -58,109 +58,151 @@ root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 # -----------------------------------------------------------------------------
 drift_10_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/density_spectra/spectra_exp5_drift_10.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_10.parquet",
+        split="train",
     )
 )
 nodrift_10_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/density_spectra/spectra_exp5_nodrift_10.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_10.parquet",
+        split="train",
     )
 )
 nodrift_40_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/density_spectra/spectra_exp5_nodrift_40.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_40.parquet",
+        split="train",
     )
 )
 
 kappa_drift_5_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_5.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_5.parquet",
+        split="train",
     )
 )
 kappa_drift_8_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_8.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_8.parquet",
+        split="train",
     )
 )
 kappa_drift_10_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_10.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_10.parquet",
+        split="train",
     )
 )
 kappa_drift_12_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_12.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_12.parquet",
+        split="train",
     )
 )
 kappa_drift_16_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_16.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_16.parquet",
+        split="train",
     )
 )
 kappa_drift_20_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_20.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_20.parquet",
+        split="train",
     )
 )
 kappa_drift_25_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_25.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_25.parquet",
+        split="train",
     )
 )
 kappa_drift_30_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_30.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_30.parquet",
+        split="train",
     )
 )
 kappa_drift_40_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_drift_40.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_40.parquet",
+        split="train",
     )
 )
 
 kappa_nodrift_5_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_5.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_5.parquet",
+        split="train",
     )
 )
 kappa_nodrift_8_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_8.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_8.parquet",
+        split="train",
     )
 )
 kappa_nodrift_10_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_10.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_10.parquet",
+        split="train",
     )
 )
 kappa_nodrift_12_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_12.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_12.parquet",
+        split="train",
     )
 )
 kappa_nodrift_16_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_16.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_16.parquet",
+        split="train",
     )
 )
 kappa_nodrift_20_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_20.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_20.parquet",
+        split="train",
     )
 )
 kappa_nodrift_25_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_25.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_25.parquet",
+        split="train",
     )
 )
 kappa_nodrift_30_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_30.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_30.parquet",
+        split="train",
     )
 )
 kappa_nodrift_40_cat = Catalog.from_dataset(
     load_dataset(
-        "parquet", data_files=f"{root}/05-drift-n-shells/kappa_spectra/spectra_born_nodrift_40.parquet", split="train"
+        "parquet",
+        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_40.parquet",
+        split="train",
     )
 )
 
@@ -235,7 +277,7 @@ def _logbin(ell, y, nb=20):
 # fig01 — local illustration: one particle cloud, three redshift-assignment colourings
 # =============================================================================
 def fig01_illustration():
-    """Local 256³ sim (laptop): paint particles in a thick radial bin, colour by the redshift each
+    """Small local 256³ sim: paint particles in a thick radial bin, colour by the redshift each
     particle is assigned under (a) a 10-shell freeze, (b) the drift's smooth z(r), (c) a 40-shell freeze."""
     key = jax.random.PRNGKey(7)
     mesh_size, box_size, nside, n_steps = (256, 256, 256), (2000.0, 2000.0, 2000.0), 256, 10
@@ -293,11 +335,6 @@ def fig01_illustration():
     axes[0].set_ylabel("y [Mpc/h]")
     cbar = fig.colorbar(sc, ax=axes, fraction=0.018, pad=0.01)
     cbar.set_label("assigned redshift z")
-    fig.suptitle(
-        "Same particles (256³ laptop run), three redshift labellings of one thick radial bin: a 10-shell freeze "
-        "bands the redshift, the drift recovers the smooth true $z(r)$, and 40 shells only then approach it",
-        y=1.0,
-    )
     savefig(ASSETS / "fig01-redshift-assignment", fig)
 
 
@@ -309,7 +346,7 @@ def _thick_ref_cl(target_shell):
     shells in COUNTS (per-pixel volume cancels on conversion), then overdensity -> angular_cl."""
     lo, hi = edges10[0, target_shell], edges10[1, target_shell]
     members = np.where((chi40 > lo) & (chi40 < hi))[0]
-    files = [f"{root}/05-drift-n-shells/density/exp5_nodrift_40/shell_{i:04d}.parquet" for i in members]
+    files = [f"{root}/05-spacing-n-stepping/05a-drift/density/exp5a_nodrift_40/shell_{i:04d}.parquet" for i in members]
     maps = [Catalog.from_dataset(load_dataset("parquet", data_files=f, split="train")).field[0] for f in files]
     counts = sum(np.asarray(m.to(jfli.DensityUnit.COUNTS).array) for m in maps)
     thick = (
@@ -329,11 +366,6 @@ def fig02_density_shells():
     cols = [("near", NEAR_SHELL), ("mid", MID_SHELL), ("far", FAR_SHELL)]
     drift_arr, nodrift_arr = np.asarray(drift_10.array), np.asarray(nodrift_10.array)
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(
-        "Per-shell density $C_\\ell$ at the near / mid / far shell: a 10-shell lightcone with and without the drift, "
-        "against the continuous-lightcone reference (the matching 40-shell no-drift run summed in counts)",
-        y=1.0,
-    )
     for col, (label, sh) in enumerate(cols):
         ref = _thick_ref_cl(sh)
         bc, ref_b = _logbin(ell_full, ref)
@@ -365,7 +397,7 @@ def fig02_density_shells():
         ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
         ax_r.semilogx(bc, no_b / ref_b, color="tab:red", lw=1.4)
         ax_r.semilogx(bc, dr_b / ref_b, color="tab:blue", lw=1.4)
-        ax_r.set_ylim(0.9, 1.1)
+        ax_r.set_ylim(0.95, 1.05)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
@@ -388,12 +420,6 @@ def fig03_lensing():
     counts = [n for n in NSHELLS_KAPPA if n != 40]
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(13.5, 6.6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
-    fig.suptitle(
-        "Born convergence $C_\\ell$ vs the number of lightcone shells, no-drift (left) vs with-drift (right), each "
-        "ratioed to its own 40-shell run — the convergence is nearly identical: unlike the density shells (fig02), the "
-        "radial $\\kappa$ projection is largely insensitive to the drift (the line-of-sight integral dominates the error)",
-        y=1.0,
-    )
     for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
         bc, ref_b = _logbin(ell_full, kappa[40])
         ax_s, ax_r = axes[0, col], axes[1, col]
@@ -409,7 +435,7 @@ def fig03_lensing():
         for n in counts:
             _, c_b = _logbin(ell_full, kappa[n])
             ax_r.semilogx(bc, c_b / ref_b, color=colors[n], lw=1.2)
-        ax_r.set_ylim(0.9, 1.1)
+        ax_r.set_ylim(0.93, 1.07)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         ax_r.set_ylabel("meas / 40 shells") if col == 0 else None

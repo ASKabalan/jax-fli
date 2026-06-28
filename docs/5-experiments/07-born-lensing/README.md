@@ -17,6 +17,20 @@ distributions.
 
 Both source sets are also put against **Limber weak-lensing theory**.
 
+The runs — every published exp-06 density lightcone Born-integrated for both sources:
+
+| dimension | values |
+|-----------|--------|
+| source `n(z)` | Stage-3, DES Y3 |
+| tomographic depth | 2-bin (sources `[:2]`, `z ≤ 0.82`), 3-bin (sources `[:3]`, `z ≤ 1.06`) |
+| footprint | full-sky, big-quadrant |
+| decomposition | slab, pencil |
+
+That is `2 × 2 × 2 = 8` density lightcones × 2 source distributions = **16 Born runs** (`fli-born-rt`,
+`--min-z 0.01`, `--n-integrate 32`, `--normalization global`, float64, **8 GPU** = 2 nodes × 4, slab
+`--pdim 8 1`). The figures below use the **full-sky slab** pair (2-bin and 3-bin); the Born integral is
+geometry-agnostic, so the footprint/decomposition variants ride on the exp-06 density cross-checks.
+
 ## Method
 
 `run.sh` runs `fli-born-rt`, Born-integrating the published exp-06 nside-2048 density lightcones
@@ -50,7 +64,11 @@ CosmoGrid's native κ and our lensed PM-sim both track the theory through the in
 2-bin and 3-bin runs overlie on their shared bins (the box depth does not bias the shared sources).
 The 512-downsampled lensed curve loses power earlier than the native-2048 one — the un-deconvolved CIC
 window and the lower-resolution map, exactly the high-`ℓ` story of experiment 06, now propagated
-through the Born integral.
+through the Born integral. The headline caveat is the **nearest bin**: convergence is **worst in bin 1**
+(`z ≈ 0.31`), whose ratio scatters most and sits furthest from theory, while the deeper bins (2, 3) track
+it cleanly. That is expected — the low-redshift bin's lensing kernel weights the **near shells**, which
+experiment 06 showed are the least converged (the PM gravity is least accurate closest in), so the
+deepest, best-converged density feeds the best κ and the nearest, lowest-signal bin the worst.
 
 The one-point PDF (monopole removed, matched nside 512):
 

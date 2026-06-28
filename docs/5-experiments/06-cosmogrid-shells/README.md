@@ -21,6 +21,17 @@ grid over two source depths × two observer placements × two device decompositi
 - **slab / pencil** — each of the four geometries above is run under both a **1-D slab**
   (`--pdim 128 1`) and a **2-D pencil** (`--pdim 32 4`) device decomposition (see §4).
 
+| dimension | values |
+|-----------|--------|
+| source depth | 2-bin (`z ≲ 0.82`, 40 shells), 3-bin (`z ≲ 1.06`, 46 shells) |
+| observer | full-sky `(0.5, 0.5, 0.5)`, big-quadrant `(0.1, 0.5, 0.9)` |
+| decomposition | slab `--pdim 128 1`, pencil `--pdim 32 4` |
+
+→ **8 runs** (`2 × 2 × 2`), all **2560³-class meshes on 128 GPU** (32 nodes × 4), BullFrog, 50 steps, CIC
+(no `--deconvolution`), NGP nside-2048 painting, `--shells-per-file 1`, **CosmoGrid run000 cosmology**,
+float64. The per-run boxes / meshes / shell counts are derived below and tabulated in
+[§ Setup](#setup-geometry--footprint).
+
 ## Method
 
 Everything below is computed by [`prep_geometry.py`](prep_geometry.py) (CPU only) and written into

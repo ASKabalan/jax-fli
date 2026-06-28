@@ -1,6 +1,6 @@
 # Experiment 05b — Drift on the lightcone, 3-bin tomography ⚠️ WIP
 
-**Goal.** Carry the [Experiment 05](../05-drift-on-lightcone/README.md) result — drifting particles to their
+**Goal.** Carry the [Experiment 05a](../05a-spacing-n-stepping-drift/README.md) result — drifting particles to their
 lightcone-crossing epoch sharpens the per-shell density `C_ℓ` for **thick** shells — into **tomographic Born
 convergence with three source bins**. Exp 05 ran a 2 Gpc/h box, deep enough only for a single point source at
 `z = 0.35`; the radial projection there washes the drift effect out of the convergence. This experiment uses a

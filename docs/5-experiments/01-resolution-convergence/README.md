@@ -7,6 +7,23 @@ convergence: the spectra converge up to **2048³**, then the **over-fine runs lo
 cause is not physics but a **starved distributed-PM ghost zone**. This experiment establishes the
 usable resolution *and* surfaces (with a quantitative diagnosis and a fix) that artifact.
 
+The five resolution rungs — one PM sim each, identical but for the mesh (and the GPU count `pₓ` and
+ghost-zone halo the mesh forces):
+
+| mesh | GPUs (`pₓ`) | nodes | physical halo `box/2pₓ` |
+|-------|----:|----:|----------:|
+| 512³  | 4   | 1  | 250 Mpc/h |
+| 1024³ | 8   | 2  | 125 Mpc/h |
+| 2048³ | 64  | 16 | 15.6 Mpc/h |
+| 2560³ | 128 | 32 | 7.8 Mpc/h |
+| 3072³ | 256 | 64 | 3.9 Mpc/h |
+
+Fixed across all five: BullFrog (`bf`), `--nb-steps 50` (`a = 0.001 → 1`), `--paint-order cic`,
+`--scheme ngp`, `--nside 512`, `--nb-shells 10`, `--shell-spacing comoving`, box `2000³` Mpc/h, CosmoGrid
+fiducial cosmology, `--seed 0`, **float64**, `--halo-multiplier 0.5`. Two **pencil** re-runs (2560³ and
+3072³ at `--pdim 32 4`) test the fix — see [§ The runs](#the-runs) for the per-rung sizing and the
+measured intermediate-ℓ ratios.
+
 ## Method
 
 Each rung is one PM simulation (BullFrog, 50 steps, `a = 0.001 → 1`) painting a lightcone of
@@ -25,35 +42,38 @@ computed with the correct **comoving-volume** shell selection: a painted shell i
 projection of `δ` (radial weight `q(χ) ∝ χ²`), and the theory is the edge-exact per-shell Limber
 integral of that, **not** a redshift top-hat (the deprecated path, which under-sampled the narrow
 inner shells and added spurious per-shell scatter). It is put on the same footing as the measurement
-by multiplying by the HEALPix pixel window `pixwin(nside)²` (the painted map carries `W_ℓ²`). A second
-spectra set is produced with `--pixel-window-deconvolution`, which divides that window back out.
+by multiplying by the HEALPix pixel window `pixwin(nside)²` (the painted map carries `W_ℓ²`).
 
-The clean comparison band is **intermediate ℓ** (`ℓ ∈ [30, 300]`), where the full-sky cosmic
-variance is only **≈ 0.5 %** — small enough that a real resolution effect cannot hide behind it,
-and large enough that the coarse-mesh and pixel-window roll-offs have not yet kicked in. The upper
-edge `ℓ ≈ 300` is set by the independent **CosmoGrid** cross-check (exp 06), where the same per-shell
-pipeline tracks a different N-body code to ~2–3 % out to there.
+The clean comparison band is a narrow window at **intermediate ℓ** (`ℓ ∈ [270, 330]`, around
+`ℓ ≈ 300`), where the full-sky cosmic variance over the band is **sub-percent** — small enough that a
+real resolution effect cannot hide behind it — and which sits below where the coarse-mesh and
+pixel-window roll-offs and the **CosmoGrid** cross-check break down (exp 06: the same per-shell pipeline
+tracks a different N-body code to ~2–3 % out to `ℓ ≈ 300`). The broader `ℓ ∈ [30, 300]` band is
+cosmic-variance-dominated by its few large-scale modes, so it is *not* used for the convergence ratio.
 
 ## Results
 
 ### The per-shell spectra
 
-![Per-shell angular C_ell for all 10 shells and 5 resolutions, against Limber theory](assets/fig01-spectra.svg)
+Every shell × resolution measured `C_ℓ` (**`(2ℓ+1)`-weighted bandpowers**, coloured by mesh) against the
+pixel-window-matched Limber theory (black), each panel pairing the `C_ℓ` (top) with its binned
+measured/theory ratio (bottom, 3:1) over a grey **±1σ cosmic-variance band** — the first then the last
+five of the 10 shells (`z ≈ 0.017 → 0.35`):
 
-Every shell × resolution measured `C_ℓ` (**`(2ℓ+1)`-weighted bandpowers**, up to 18 log-spaced bins,
-coloured by mesh) against the pixel-window-matched theory (black); each panel pairs the `C_ℓ` (top)
-with its **binned measured/theory ratio** (bottom, 3:1) for every resolution, over a grey **±1σ
-cosmic-variance band** `√(2/N_modes)` per bin. The shells span `z ≈ 0.017` (shell 0) to `0.35`
-(shell 9). Binning tames the per-ℓ cosmic-variance scatter so the **band level** is legible (≈ 0.9 on
-the converged runs). The **nearest shells sit systematically below theory**: there the `χ²` weighting
-probes higher `k`, where PM force resolution and non-linearity bite (shell 0 reaches only `≈ 0.6` of
-theory). The resolution story lives at intermediate ℓ, quantified next.
+![Per-shell C_ell vs theory, shells 0–4, all 5 resolutions](assets/fig01-spectra-shells-0-4.svg)
+![Per-shell C_ell vs theory, shells 5–9, all 5 resolutions](assets/fig02-spectra-shells-5-9.svg)
+
+The **nearest shells sit systematically below theory** — there the `χ²` weighting probes higher `k`, where
+PM force resolution and non-linearity bite, and the thin low-`z` shells are discreteness-limited (shell 0
+reaches only `≈ 0.6` of theory). The mid and far shells track theory well. The resolution ordering is not
+the naive one — `512³` is coarse-mesh / shot-noise limited, and the *over-fine* `2560³`/`3072³` lose
+large-scale power — which the next figure quantifies.
 
 ### Convergence — and the anti-convergence of the over-fine runs
 
-![Left: intermediate-ell measured/theory vs resolution; right: physical halo vs the particle-displacement scale](assets/fig02-convergence.svg)
+![Convergence vs resolution (left) and halo vs displacement (right), slab runs](assets/fig03-convergence.svg)
 
-**Left** — the measured/theory ratio, **`(2ℓ+1)`-weighted** over the CV-clean band `ℓ ∈ [30, 300]`,
+**Left** — the measured/theory ratio, **`(2ℓ+1)`-weighted** over the CV-clean band `ℓ ∈ [270, 330]`,
 one line per shell (outer, well-sampled shells bold). It is **non-monotonic**: the outer shells rise
 to a resolution-independent plateau at **1024³ and 2048³** (`≈ 0.88` and `≈ 0.92` of theory — they
 agree with *each other* to ~3 %, i.e. converged), then **fall back**. The plateau sits a consistent
@@ -83,34 +103,49 @@ CIC deposit / force contribution → broadband power loss, worse for the smaller
 and by how much, the deficit appears. `halo_multiplier = 0.5` was sized for memory and the even-halo
 constraint, and at `pₓ ≥ 128` it inadvertently dropped the ghost zone below the displacement scale.
 
-This is the leading, quantitatively-matched explanation; the **decisive test** (future work) is to
-re-run 3072³ with `--halo-multiplier ≈ 1.5` (halo ≈ 10 Mpc/h) — the power should climb back to
-theory / 2048³.
+This is the leading, quantitatively-matched explanation — and the next figures **demonstrate the fix**:
+a device layout (or `--halo-multiplier`) that restores the ghost zone restores the power.
 
-### Pixel-window deconvolution recovers the converged resolutions
+### Switching slab → pencil restores convergence
 
-![Raw vs pixel-window-deconvolved C_ell over theory, for 2048 and 2560; green band = ±2% target](assets/fig03-deconvolution.svg)
+The halo scales as `box/2pₓ` along the **sharded** axis, so re-running 2560³ and 3072³ as a **2-D pencil**
+(`--pdim 32 4`) instead of a **1-D slab** (`--pdim 128 1` / `256 1`) splits each axis fewer ways and
+**enlarges the ghost zone** — 7.8 → 31.2 Mpc/h (2560³) and 3.9 → 15.6 Mpc/h (3072³) — at the *same* mesh
+and GPU count. The recovered power, per shell vs comoving distance:
 
-A separate, orthogonal correction. The painted-map `anafast` carries the HEALPix pixel window, so the
-**raw** ratio (grey) rolls off toward ~0.5 by `ℓ = 2 nside` — power that no mesh refinement recovers.
-`--pixel-window-deconvolution` divides out `pixwin(nside)²` and **restores it**: the deconvolved
-2048³ (the converged resolution) recovers the high-ℓ roll-off and tracks the continuous theory at
-`≈ 0.85–0.95` across the band — flat in ℓ, but offset a few percent low (the same plateau as fig02,
-below the green `±2 %` target). Deconvolution fixes the *pixel-window* roll-off; the residual is the
-separate **theory-side offset** discussed above (the halofit-Limber model over-predicting for thin
-shells, confirmed by the CosmoGrid comparison — not a window effect), and is independent of the halo
-issue.
+![m2560 slab vs pencil: measured/theory vs distance](assets/fig04-slab-vs-pencil-2560.svg)
+![m3072 slab vs pencil: measured/theory vs distance](assets/fig05-slab-vs-pencil-3072.svg)
 
-### The maps show no localised artifact
+For both meshes the **pencil (large halo) sits well above the starved slab** and climbs into the ±5 % band
+on the outer shells — recovering the power the slab lost, most strongly where the deficit was worst (and
+the small scales improve too, from a cleaner force on the boundary particles). Repeating the convergence
+diagnostic with 2560³/3072³ as pencils:
 
-![delta maps for shell 9: flat gnomonic patch (top) and orthographic globe (bottom), all 5 resolutions](assets/fig04-maps.svg)
+![Convergence restored with the pencil decomposition](assets/fig06-convergence-pencil.svg)
 
-Shell 9 `δ` for all five resolutions on a shared `log₁₀(1+δ)` scale, in two views — top row a flat
-gnomonic patch (~26°), bottom row the full-sky orthographic globe (one hemisphere). 512³ is
-visibly smoother (coarse force mesh); the higher meshes show no boundary stripes, holes, or grid
-pattern. The halo-starvation loss is **diffuse**, not a localised defect — consistent with the
-`pₓ = 256` domain boundaries projecting ~0.5° apart on this shell (too dense to see), and with the
-broadband nature of the deficit.
+the anti-convergence is **gone** — every resolution now reaches the converged plateau (left), because the
+pencil halos clear the displacement band (right). So the pencil decomposition is the **demonstrated fix**:
+at fixed mesh and GPU count, a layout with a larger ghost zone removes the starvation. (Equivalently, raise
+`--halo-multiplier`; the sizing rule below sets the target.)
+
+### The maps
+
+Shell 9 `δ` for all five **slab** resolutions on a shared `log₁₀(1+δ)` scale — flat gnomonic patch,
+orthographic globe, full-sky mollview:
+
+![delta maps, shell 9, all 5 slab resolutions](assets/fig07-maps-slabs.svg)
+
+By eye the loss is **diffuse**, not a localised defect — 512³ is visibly smoother (coarse force mesh) and
+the higher meshes show no boundary stripes, holes, or grid pattern (the `pₓ = 256` domain boundaries
+project ~0.5° apart, too dense to see). Putting the starved slabs next to their pencils makes the
+broadband loss visible on close inspection:
+
+![delta maps, m2560/m3072 slab vs pencil](assets/fig08-maps-slab-pencil.svg)
+
+slab and pencil share the same cosmic-web texture, but the starved slabs are subtly **less contrasted at
+small scales** — the missing power, made visible — while the pencil maps are sharper and the more
+converged. There is still no gross artifact: the starvation is a broadband amplitude loss, consistent with
+the spectra.
 
 ## The runs
 
@@ -119,7 +154,7 @@ Fixed: `--sim-mode pm`, BullFrog (`bf`), `--nb-steps 50`, `--paint-order cic`, `
 (Ω_c 0.2589, Ω_b 0.0486, h 0.6774, σ₈ 0.8159, n_s 0.9667), `--seed 0`, **float64**
 (`--enable-x64`), `--halo-multiplier 0.5`.
 
-| mesh | GPUs (`pₓ`) | nodes | physical halo `box/2pₓ` | measured/theory, `ℓ∈[30,300]` |
+| mesh | GPUs (`pₓ`) | nodes | physical halo `box/2pₓ` | measured/theory, `ℓ∈[270,330]` |
 |------|--:|--:|--:|--:|
 | 512³  | 4   | 1  | 250 Mpc/h | ~0.71 (coarse-mesh limited) |
 | 1024³ | 8   | 2  | 125 Mpc/h | **≈ 0.88 (converged)** |

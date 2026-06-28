@@ -285,7 +285,6 @@ def make_figure(cosmo, nz_list, rows, nz_vals, shells, sets):
         Line2D([0], [0], color="k", ls=":", lw=1, label=f"per-bin n(z) end ({int(THRESH_FRAC * 100)}% of peak)"),
     ]
     ax2.legend(handles=leg, frameon=False, loc="upper right")
-    fig.suptitle("Experiment 06 — DES Y3 depth, box geometry and CosmoGrid shell selection", y=0.995)
     savefig(ASSETS / "exp06-geometry", fig)
 
 
@@ -308,8 +307,7 @@ def make_mask_figure():
         cmap="viridis",
         cbar=False,
         bgcolor=(0.0,) * 4,
-        title=f"Big-quadrant visibility footprint — orientation only (illustrative R_min)\n"
-        f"observer {OBS_QUAD} — the Exp 08 corner geometry (a centred cap, not X/Y-reflected)",
+        title="",
     )
     savefig(ASSETS / "exp06-mask", fig)
 

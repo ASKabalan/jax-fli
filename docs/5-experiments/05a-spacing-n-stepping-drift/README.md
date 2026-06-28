@@ -5,6 +5,26 @@ sharpens the per-shell density `C_ℓ` of a **thick** lightcone — a *drifted* 
 *much finer* undrifted one — while the **Born convergence is essentially unaffected**, because the radial
 line-of-sight projection, not the per-shell redshift assignment, dominates the lensing error.
 
+The runs — nine shell counts × {no drift, drift} = 18 PM sims, each Born-integrated into a single-bin
+convergence map:
+
+| sweep | values |
+|-------|--------|
+| `--nb-shells` | 5, 8, 10, 12, 16, 20, 25, 30, 40 |
+| drift | (none), `--drift-on-lightcone` |
+
+*Fixed across all 18:* `--sim-mode pm`, **2048³** (Exp 01), box `2000³` Mpc/h, BullFrog (`bf`),
+`--nb-steps 50`, growth-factor stepping (`--time-stepping D`), `--paint-order cic` with **no**
+`--deconvolution` (Exp 02), `--scheme ngp` (Exp 03), `--nside 2048`, `--shells-per-file 1`,
+**`--shell-spacing a`**, **`--min-width 5.0`** (deliberately *thick* shells — the point of this
+experiment), CosmoGrid fiducial cosmology, `--seed 0`, **float64**; **64 GPU** (16 nodes × 4, slab
+`--pdim 64 1`). The Born lensing uses a single source bin at `z = 0.35`.
+
+> **Halo (Exp 01 rule).** 2048³ on 64 GPUs gives local `32³ ≤ 512³` and an even halo `int(32·0.5) = 16`;
+> the physical ghost zone `0.5·2000/64 = 15.6 Mpc/h` clears the 3D rms displacement
+> `σ₃D(z=0) = 10.2 Mpc/h`. The drift only repaints existing particles, so the displacement scale (and this
+> check) is unchanged.
+
 **Method.** The simplest lightcone painting freezes every particle in a shell at the shell-centre scale
 factor `a_c`; across a *thick* shell the near edge is over-evolved and the far edge under-evolved. The
 drift instead moves each particle to the scale factor at which it actually crosses the lightcone,
@@ -17,8 +37,8 @@ cancels on the overdensity conversion) — i.e. the 40-shell run.
 
 ## Results
 
-**What the drift does to redshift assignment.** A small local (256³, laptop) run makes the mechanism
-visible: the *same* particles in one thick radial bin, coloured by the redshift each is assigned. A
+**What the drift does to redshift assignment.** A small 256³ run makes the mechanism visible: the
+*same* particles in one thick radial bin, coloured by the redshift each is assigned. A
 10-shell freeze paints discrete redshift **bands**; the drift recovers the smooth true `z(r)`; 40 shells
 only then approach that same smooth gradient. The drift buys with 10 shells what would otherwise take far
 more.
@@ -44,29 +64,14 @@ to `0.01%` at 40 shells). The drift is a density-field tool, not a lensing one.
 ![Born convergence vs number of shells, no-drift vs with-drift](assets/fig03-lensing.svg)
 
 A deeper, three-source-bin tomographic counterpart on a 5 Gpc/h box lives in
-[Experiment 05b](../05b-drift-on-lightcone-3bin/README.md).
-
-## Grid
-
-*Fixed:* `--sim-mode pm`, **2048³** (Exp 01), BullFrog (`bf`), `--nb-steps 50`, `--paint-order cic` with
-**no** force-window `--deconvolution` (Exp 02), `--scheme ngp` (Exp 03), `--nside 2048`,
-`--shells-per-file 1`, `--shell-spacing comoving`, box `2000³` Mpc/h, `--seed 0`, **float64**.
-**64 GPU** (16 nodes × 4, `--pdim 64 1`). Source for Born lensing: a single bin at `z = 0.35`.
-
-| sweep | values |
-|------|------|
-| `--nb-shells` | 5, 8, 10, 12, 16, 20, 25, 30, 40 |
-| drift | (none), `--drift-on-lightcone` |
-
-> **Halo (Exp 01 rule).** 2048³ on 64 GPUs gives local `32³ ≤ 512³` and an even halo `int(32·0.5) = 16`;
-> the physical ghost zone `0.5·2000/64 = 15.6 Mpc/h` clears the 3D rms displacement
-> `σ₃D(z=0) = 10.2 Mpc/h`. The drift only repaints existing particles, so the displacement scale (and this
-> check) is unchanged.
+[Experiment 05b](../05b-spacing-n-stepping-3bin/README.md); the equal-volume and D³-stepping
+variants are [05c](../05c-spacing-n-stepping-equal-vol/README.md) and
+[05d](../05d-spacing-n-stepping-d3/README.md).
 
 ## How to run
 
 The cluster runs (`run.sh`) write per-shell parquet to `results/exp5/` and a `fli-born-rt` lensing map per
-run; their precomputed density and `κ` spectra live under `05-drift-n-shells/` on the
+run; their precomputed density and `κ` spectra live under `05-spacing-n-stepping/` on the
 [`ASKabalan/jax-fli-experiments`](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments) dataset.
 
 ```bash
