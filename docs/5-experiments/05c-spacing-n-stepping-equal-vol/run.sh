@@ -1,4 +1,4 @@
-#!/bin/bash
+  #!/bin/bash
 # Experiment 05c — spacing & stepping: equal-volume shells, 3-bin tomography. ⚠️ WIP
 # Sibling of 05b (same 5 Gpc/h, 2560³, 3-bin Born, BullFrog, 50 steps, float64) but with
 # EQUAL-VOLUME shell spacing instead of scale-factor spacing — isolating the near-shell shot-noise
@@ -13,8 +13,10 @@ SIM_MODE="${SIM_MODE:-DENSITY}"  # DENSITY → run the density-shell sweep; anyt
 # 2560³ @ 128 GPUs (32 nodes, --pdim 128 1): local 20³-slab, halo int(20·0.5)=10 (EVEN), local
 # 20·2560·2560 = 1.31e8 cells ≈ 512³ → fits float64. Ghost zone 0.5·5000/128 = 19.5 Mpc/h clears the
 # end-of-run rms displacement. ngp spherical paint at nside 2048, one parquet per shell (gather OOMs).
-# Only change vs 05b: --shell-spacing equal_vol (the shot-noise lever). --min-width is a guardrail only.
-COMMON="--sim-mode pm --mesh-size 2560 2560 2560 --box-size $BOX5 --solver bf --nb-steps 50 --min-width 5.0 \
+# Only change vs 05b: --shell-spacing equal_vol (the shot-noise lever). --min-width 60 floors the thin
+# outer equal-volume shells (hybrid: equal-vol inner, >=60 Mpc/h outer); fits the whole sweep (r_max=2500,
+# so 40*60<2500), a no-op for nb-shells<=12 and floors the razor-thin far shells for nb-shells>=16.
+COMMON="--sim-mode pm --mesh-size 2560 2560 2560 --box-size $BOX5 --solver bf --nb-steps 50 --min-width 60.0 \
 --paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --shell-spacing equal_vol --time-stepping D --halo-multiplier 0.5 \
 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
