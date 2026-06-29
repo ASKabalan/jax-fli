@@ -310,7 +310,8 @@ def _load_lightcone(args: Namespace, *, sharding=None):
         else:
             cat = Catalog.from_dataset(row, sharding=sharding)
             fld = cat.field[0]
-        fields.append(fld)
+        # Stripping name for stacking
+        fields.append(fld.replace(name=args.name))
         cosmo = cat.cosmology[0]
 
     if not fields:
