@@ -3,28 +3,27 @@
 **Goal.** Two questions in one sweep. (1) **Step budget** — how few PM integration steps give a
 converged per-shell spherical `C_ℓ`, for each variant: the smallest `--nb-steps` at which the
 lightcone maps stop changing, which fixes the cheapest accurate production run. (2) **Solver
-comparison** — how the five solver/stepping variants converge relative to one another: BullFrog run three
-ways (`bfa`, scale-factor `a`; `bfd`, growth-factor `D`; `bfd3`, uniform in `D³`), `dkd` (DriftKickDrift)
+comparison** — how the four solver/stepping variants converge relative to one another: BullFrog run two
+ways (`bfa`, scale-factor `a`; `bfd`, growth-factor `D`), `dkd` (DriftKickDrift)
 and `kdk` (DoubleKickDrift) — including whether BullFrog's stepping choice matters. (This experiment merges the former
 `04-solver-comparison` and `04b-step-convergence`, which were the same solver × step-count sweep; the
 **speed** half — wall-time per step — lives in [Experiment 11](../11-scaling/README.md).)
 
-The runs — five solver/stepping variants × five step counts (25 sims):
+The runs — four solver/stepping variants × five step counts (20 sims):
 
 | run | integrator (`--solver`) | `--time-stepping` | `--nb-steps` |
 |-----|-------------------------|-------------------|--------------|
 | `bfa` | BullFrog (`bf`) | `a` (scale factor) | 10, 20, 30, 40, 50 |
 | `bfd` | BullFrog (`bf`) | `D` (growth factor) | 10, 20, 30, 40, 50 |
-| `bfd3` ⚠️ | BullFrog (`bf`) | `D3` (uniform in D³) | 10, 20, 30, 40, 50 |
 | `dkd` | DriftKickDrift | `a` | 10, 20, 30, 40, 50 |
 | `kdk` | DoubleKickDrift | `a` | 10, 20, 30, 40, 50 |
 
-*Fixed across all 25:* `--sim-mode pm`, **2048³** (Exp 01: resolution-converged, halo-safe for float64),
+*Fixed across all 20:* `--sim-mode pm`, **2048³** (Exp 01: resolution-converged, halo-safe for float64),
 box `2000³` Mpc/h, `--paint-order cic` with **no** force-window `--deconvolution` (Exp 02), `--scheme ngp`
 (Exp 03), `--nside 2048`, `--shells-per-file 1`, `--nb-shells 10`, `--shell-spacing a`, CosmoGrid fiducial
 cosmology (Ω_c 0.2589, Ω_b 0.0486, h 0.6774, σ₈ 0.8159, n_s 0.9667), `--seed 0`, **float64**; **64 GPU**
-(16 nodes × 4, slab `--pdim 64 1`). BullFrog is run **three** ways — `bfa` in the scale factor `a`, `bfd`
-in the growth factor `D`, and `bfd3` uniform in `D³` — while `dkd`/`kdk` step in `a`.
+(16 nodes × 4, slab `--pdim 64 1`). BullFrog is run **two** ways — `bfa` in the scale factor `a` and `bfd`
+in the growth factor `D` — while `dkd`/`kdk` step in `a`.
 
 > **Halo (Exp 01 rule).** 2048³ on 64 GPUs gives local mesh `32³ ≤ 512³` (fits a float64 H100) and an
 > **even** halo `int(32·0.5) = 16` (an odd halo crashes jaxpm `slice_unpad`). The physical ghost zone
@@ -32,7 +31,7 @@ in the growth factor `D`, and `bfd3` uniform in `D³` — while `dkd`/`kdk` step
 > `1.53×` margin — the resolution-converged rung of [Exp 01](../01-resolution-convergence/README.md).
 
 **Method.** Hold everything fixed (resolution, box, painting, shells, seed, float64) and sweep
-`--nb-steps ∈ {10, 20, 30, 40, 50}` for all five variants. For each (variant, steps) we paint the
+`--nb-steps ∈ {10, 20, 30, 40, 50}` for all four variants. For each (variant, steps) we paint the
 spherical lightcone and measure the per-shell `C_ℓ`; convergence is the `C_ℓ` ratio against the **same
 variant's** 50-step run. (The originally-planned 5 and 6-step runs are dropped — with 10 lightcone shells
 the step count must exceed the shell count, so they fail to integrate; convergence is already clear from
@@ -79,15 +78,6 @@ Limber breakdown), where the residuals are largest. **BullFrog's stepping choice
 variable is not a lever, and the modest 20–30-step budget holds for every variant.
 
 ![20 vs 30 steps, four variants, near/mid/far](assets/fig09-solvers-near-mid-far.svg)
-
-**D³ stepping (`bfd3`) — ⚠️ pending.** A fifth variant runs BullFrog with the new `--time-stepping D3`
-schedule (uniform in `D³`, the `D^{N+1}` rule that concentrates steps at late times; `N=2` for BullFrog).
-The above `bfa`/`bfd` result shows the *scale-factor vs growth-factor* choice is not a lever here; `bfd3`
-extends that test to ask whether the **denser-at-late-times** `D³` schedule changes the per-shell step
-convergence. Note that a *raw* uniform-`D³` schedule starting from a small `a₀` spends a very large first
-step (see [notebook 08-Advanced-PM](../../2-advanced-usage/08-Advanced-PM.ipynb)), so the interesting
-comparison is at the low end of the step sweep. Its figures are added once the run lands and is published
-to `04-step-size/density_spectra/spectra_bfd3_s*.parquet`.
 
 ## How to run
 

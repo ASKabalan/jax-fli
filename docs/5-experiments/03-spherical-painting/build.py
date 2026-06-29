@@ -70,17 +70,73 @@ C_UD = "tab:blue"  # paint@2048 -> ud_grade -> 1024
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
+SPEC_NGP_1024 = "03-spherical-painting/spectra/spectra_exp3_ngp_native1024.parquet"
+SPEC_BILINEAR_1024 = "03-spherical-painting/spectra/spectra_exp3_bilinear_native1024.parquet"
+SPEC_RBF08_1024 = "03-spherical-painting/spectra/spectra_exp3_rbf08_native1024.parquet"
+SPEC_RBF15_1024 = "03-spherical-painting/spectra/spectra_exp3_rbf15_native1024.parquet"
 
-def _load(path):
-    return Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{path}", split="train"))
+SPEC_NGP_2048 = "03-spherical-painting/spectra/spectra_exp3_ngp_native2048.parquet"
+SPEC_BILINEAR_2048 = "03-spherical-painting/spectra/spectra_exp3_bilinear_native2048.parquet"
+SPEC_RBF08_2048 = "03-spherical-painting/spectra/spectra_exp3_rbf08_native2048.parquet"
+SPEC_RBF15_2048 = "03-spherical-painting/spectra/spectra_exp3_rbf15_native2048.parquet"
 
+DENS_NGP_NEAR = "03-spherical-painting/density/exp3_ngp_native2048/shell_0002.parquet"
+DENS_NGP_FAR = "03-spherical-painting/density/exp3_ngp_native2048/shell_0008.parquet"
+DENS_RBF08_NEAR = "03-spherical-painting/density/exp3_rbf08_native2048/shell_0002.parquet"
+DENS_RBF08_FAR = "03-spherical-painting/density/exp3_rbf08_native2048/shell_0008.parquet"
+DENS_RBF15_NEAR = "03-spherical-painting/density/exp3_rbf15_native2048/shell_0002.parquet"
+DENS_RBF15_FAR = "03-spherical-painting/density/exp3_rbf15_native2048/shell_0008.parquet"
 
 # -----------------------------------------------------------------------------
 # Measured spectra: every scheme painted natively at nside 1024 and at nside 2048.
 # -----------------------------------------------------------------------------
-spec1024 = {s: _load(f"{SPEC}/spectra_exp3_{s}_native1024.parquet").field[0] for s in SCHEMES}
-spec2048 = {s: _load(f"{SPEC}/spectra_exp3_{s}_native2048.parquet").field[0] for s in SCHEMES}
-cosmo = _load(f"{SPEC}/spectra_exp3_ngp_native1024.parquet").cosmology[0]
+spec_ngp_1024_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_NGP_1024}", split="train"))
+spec_bilinear_1024_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_BILINEAR_1024}", split="train")
+)
+spec_rbf08_1024_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_RBF08_1024}", split="train")
+)
+spec_rbf15_1024_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_RBF15_1024}", split="train")
+)
+
+spec_ngp_2048_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_NGP_2048}", split="train"))
+spec_bilinear_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_BILINEAR_2048}", split="train")
+)
+spec_rbf08_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_RBF08_2048}", split="train")
+)
+spec_rbf15_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{SPEC_RBF15_2048}", split="train")
+)
+
+dens_ngp_near_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_NGP_NEAR}", split="train"))
+dens_ngp_far_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_NGP_FAR}", split="train"))
+dens_rbf08_near_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{DENS_RBF08_NEAR}", split="train")
+)
+dens_rbf08_far_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_RBF08_FAR}", split="train"))
+dens_rbf15_near_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{DENS_RBF15_NEAR}", split="train")
+)
+dens_rbf15_far_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_RBF15_FAR}", split="train"))
+
+cosmo = spec_ngp_1024_cat.cosmology[0]
+
+spec1024 = {
+    "ngp": spec_ngp_1024_cat.field[0],
+    "bilinear": spec_bilinear_1024_cat.field[0],
+    "rbf08": spec_rbf08_1024_cat.field[0],
+    "rbf15": spec_rbf15_1024_cat.field[0],
+}
+spec2048 = {
+    "ngp": spec_ngp_2048_cat.field[0],
+    "bilinear": spec_bilinear_2048_cat.field[0],
+    "rbf08": spec_rbf08_2048_cat.field[0],
+    "rbf15": spec_rbf15_2048_cat.field[0],
+}
 
 LMAX = int(spec1024["ngp"].wavenumber.max())
 ell_full = np.asarray(spec1024["ngp"].wavenumber)
@@ -89,11 +145,30 @@ n_shells = np.asarray(spec1024["ngp"].array).shape[0]
 
 # paint@2048 -> ud_grade -> 1024 spectra for the near/far shells (overdensity, same lmax grid).
 ud_b = {}  # (scheme, shell_idx) -> binned bandpowers (n_bins,)
-for s in UD_SCHEMES:
-    for sh, tag in [(NEAR, "0002"), (FAR, "0008")]:
-        d = _load(f"{DENS}/exp3_{s}_native2048/shell_{tag}.parquet").field[0]
-        cl = d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX)
-        ud_b[(s, sh)] = np.asarray(cl.bin(nlb=NLB, lmin=2).array)
+d = dens_ngp_near_cat.field[0]
+ud_b[("ngp", NEAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
+d = dens_ngp_far_cat.field[0]
+ud_b[("ngp", FAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
+d = dens_rbf08_near_cat.field[0]
+ud_b[("rbf08", NEAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
+d = dens_rbf08_far_cat.field[0]
+ud_b[("rbf08", FAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
+d = dens_rbf15_near_cat.field[0]
+ud_b[("rbf15", NEAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
+d = dens_rbf15_far_cat.field[0]
+ud_b[("rbf15", FAR)] = np.asarray(
+    d.ud_sample(1024).to(jfli.units.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX).bin(nlb=NLB, lmin=2).array
+)
 
 # -----------------------------------------------------------------------------
 # Theory (comoving-volume Limber number counts) on each pixel-window footing. The ud_grade map is a

@@ -66,72 +66,56 @@ STEP7_STYLES = {20: "-", 30: "--"}  # the comparison fig distinguishes the two s
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
+BFA_S10_SPEC = "04-step-size/density_spectra/spectra_bfa_s10.parquet"
+BFA_S20_SPEC = "04-step-size/density_spectra/spectra_bfa_s20.parquet"
+BFA_S30_SPEC = "04-step-size/density_spectra/spectra_bfa_s30.parquet"
+BFA_S40_SPEC = "04-step-size/density_spectra/spectra_bfa_s40.parquet"
+BFA_S50_SPEC = "04-step-size/density_spectra/spectra_bfa_s50.parquet"
+
+BFD_S10_SPEC = "04-step-size/density_spectra/spectra_bfd_s10.parquet"
+BFD_S20_SPEC = "04-step-size/density_spectra/spectra_bfd_s20.parquet"
+BFD_S30_SPEC = "04-step-size/density_spectra/spectra_bfd_s30.parquet"
+BFD_S40_SPEC = "04-step-size/density_spectra/spectra_bfd_s40.parquet"
+BFD_S50_SPEC = "04-step-size/density_spectra/spectra_bfd_s50.parquet"
+
+DKD_S10_SPEC = "04-step-size/density_spectra/spectra_dkd_s10.parquet"
+DKD_S20_SPEC = "04-step-size/density_spectra/spectra_dkd_s20.parquet"
+DKD_S30_SPEC = "04-step-size/density_spectra/spectra_dkd_s30.parquet"
+DKD_S40_SPEC = "04-step-size/density_spectra/spectra_dkd_s40.parquet"
+DKD_S50_SPEC = "04-step-size/density_spectra/spectra_dkd_s50.parquet"
+
+KDK_S10_SPEC = "04-step-size/density_spectra/spectra_kdk_s10.parquet"
+KDK_S20_SPEC = "04-step-size/density_spectra/spectra_kdk_s20.parquet"
+KDK_S30_SPEC = "04-step-size/density_spectra/spectra_kdk_s30.parquet"
+KDK_S40_SPEC = "04-step-size/density_spectra/spectra_kdk_s40.parquet"
+KDK_S50_SPEC = "04-step-size/density_spectra/spectra_kdk_s50.parquet"
+
 # -----------------------------------------------------------------------------
 # Explicit per-file loads — every HF parquet (4 solver/stepping variants × 5 step counts) on its own line.
 # -----------------------------------------------------------------------------
-bfa_s10_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfa_s10.parquet", split="train")
-)
-bfa_s20_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfa_s20.parquet", split="train")
-)
-bfa_s30_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfa_s30.parquet", split="train")
-)
-bfa_s40_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfa_s40.parquet", split="train")
-)
-bfa_s50_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfa_s50.parquet", split="train")
-)
+bfa_s10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFA_S10_SPEC}", split="train"))
+bfa_s20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFA_S20_SPEC}", split="train"))
+bfa_s30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFA_S30_SPEC}", split="train"))
+bfa_s40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFA_S40_SPEC}", split="train"))
+bfa_s50_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFA_S50_SPEC}", split="train"))
 
-bfd_s10_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfd_s10.parquet", split="train")
-)
-bfd_s20_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfd_s20.parquet", split="train")
-)
-bfd_s30_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfd_s30.parquet", split="train")
-)
-bfd_s40_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfd_s40.parquet", split="train")
-)
-bfd_s50_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_bfd_s50.parquet", split="train")
-)
+bfd_s10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFD_S10_SPEC}", split="train"))
+bfd_s20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFD_S20_SPEC}", split="train"))
+bfd_s30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFD_S30_SPEC}", split="train"))
+bfd_s40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFD_S40_SPEC}", split="train"))
+bfd_s50_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{BFD_S50_SPEC}", split="train"))
 
-dkd_s10_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_dkd_s10.parquet", split="train")
-)
-dkd_s20_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_dkd_s20.parquet", split="train")
-)
-dkd_s30_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_dkd_s30.parquet", split="train")
-)
-dkd_s40_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_dkd_s40.parquet", split="train")
-)
-dkd_s50_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_dkd_s50.parquet", split="train")
-)
+dkd_s10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DKD_S10_SPEC}", split="train"))
+dkd_s20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DKD_S20_SPEC}", split="train"))
+dkd_s30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DKD_S30_SPEC}", split="train"))
+dkd_s40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DKD_S40_SPEC}", split="train"))
+dkd_s50_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DKD_S50_SPEC}", split="train"))
 
-kdk_s10_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_kdk_s10.parquet", split="train")
-)
-kdk_s20_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_kdk_s20.parquet", split="train")
-)
-kdk_s30_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_kdk_s30.parquet", split="train")
-)
-kdk_s40_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_kdk_s40.parquet", split="train")
-)
-kdk_s50_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/04-step-size/density_spectra/spectra_kdk_s50.parquet", split="train")
-)
+kdk_s10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KDK_S10_SPEC}", split="train"))
+kdk_s20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KDK_S20_SPEC}", split="train"))
+kdk_s30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KDK_S30_SPEC}", split="train"))
+kdk_s40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KDK_S40_SPEC}", split="train"))
+kdk_s50_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KDK_S50_SPEC}", split="train"))
 
 cosmo = bfa_s50_cat.cosmology[0]  # one fiducial cosmology shared by every run
 

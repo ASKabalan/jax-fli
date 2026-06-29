@@ -30,9 +30,11 @@ Lead with the science. **Never open the README with run instructions or CLI invo
 The recommended order:
 
 1. **Goal** — what the experiment establishes and why it matters.
-2. **Method** — how it works, plus any novelty vs prior work.
+2. **Method** — how it works (when applicable).
 3. **Results** — each figure *embedded*, with a paragraph explaining what it shows.
 4. **How to run** — the command(s) / script(s). This section is **LAST**.
+
+In goal, I also want in the Goal section a table of the runs with their parameters
 
 [`09-gradient-validation/README.md`](09-gradient-validation/README.md) is the reference for content
 quality and ordering.

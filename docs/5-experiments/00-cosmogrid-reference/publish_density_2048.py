@@ -260,8 +260,7 @@ def main() -> None:
         type=float,
         default=1.6,
         dest="max_z",
-        help="keep shells with lower_z <= MAX_Z (DES Y3 source depth ~1.45, see exp 06; passed to "
-        "load_cosmogrid_lc(max_redshift=...)). Default 1.6.",
+        help="keep shells with lower_z <= MAX_Z (DES Y3 source depth ~1.45, see exp 06; passed to load_cosmogrid_lc(max_redshift=...)). Default 1.6.",
     )
     ap.add_argument(
         "--publish",
@@ -328,8 +327,7 @@ def main() -> None:
     _save_card(api, meta, body)
     print(f"   done. {len(shell_paths)} shells published as ONE config {DENSITY_CONFIG} (glob {glob}).")
     print(
-        f"   Load: stream + concatenate — "
-        f"load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) (see README)."
+        f"   Load: stream + concatenate — load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) (see README)."
     )
 
 

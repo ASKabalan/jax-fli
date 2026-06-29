@@ -1,6 +1,6 @@
 #!/bin/bash
 # Experiment 05a — spacing & stepping: drift on the lightcone vs none (thick shells; density-shell C_ℓ).
-# Single point source, 2 Gpc/h, 2560³, float64. The deeper 3-bin counterparts are 05b/05c/05d.
+# Single point source, 2 Gpc/h, 2560³, float64. The deeper 3-bin counterparts are 05b/05c.
 source "$(dirname "$0")/../_launch_common.sh"
 
 echo "### Exp 05a — drift on the lightcone  (MODE=$MODE)"

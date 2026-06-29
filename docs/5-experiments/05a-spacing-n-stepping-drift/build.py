@@ -51,159 +51,75 @@ LMAX = 1500  # the published spectra stop at ell 1500
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
+DRIFT_10_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_10.parquet"
+NODRIFT_10_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_10.parquet"
+NODRIFT_40_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_40.parquet"
+
+DRIFT_5_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_5.parquet"
+DRIFT_8_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_8.parquet"
+DRIFT_10_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_10.parquet"
+DRIFT_12_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_12.parquet"
+DRIFT_16_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_16.parquet"
+DRIFT_20_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_20.parquet"
+DRIFT_25_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_25.parquet"
+DRIFT_30_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_30.parquet"
+DRIFT_40_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_40.parquet"
+
+NODRIFT_5_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_5.parquet"
+NODRIFT_8_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_8.parquet"
+NODRIFT_10_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_10.parquet"
+NODRIFT_12_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_12.parquet"
+NODRIFT_16_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_16.parquet"
+NODRIFT_20_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_20.parquet"
+NODRIFT_25_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_25.parquet"
+NODRIFT_30_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_30.parquet"
+NODRIFT_40_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_40.parquet"
+
 # -----------------------------------------------------------------------------
 # Density spectra: the 10-shell drift / no-drift runs (fig02 lines) + the 40-shell no-drift run (its
 # shell geometry tells fig02 which thin shells to sum for the reference). Kappa spectra: the full
 # shell-count sweep, drift and no-drift (fig03). Every HF parquet used is on its own line.
 # -----------------------------------------------------------------------------
-drift_10_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_10.parquet",
-        split="train",
-    )
-)
-nodrift_10_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_10.parquet",
-        split="train",
-    )
-)
-nodrift_40_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_40.parquet",
-        split="train",
-    )
-)
+drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_10_SPECTRA}", split="train"))
+nodrift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_10_SPECTRA}", split="train"))
+nodrift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_40_SPECTRA}", split="train"))
 
-kappa_drift_5_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_5.parquet",
-        split="train",
-    )
-)
-kappa_drift_8_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_8.parquet",
-        split="train",
-    )
-)
-kappa_drift_10_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_10.parquet",
-        split="train",
-    )
-)
-kappa_drift_12_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_12.parquet",
-        split="train",
-    )
-)
-kappa_drift_16_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_16.parquet",
-        split="train",
-    )
-)
-kappa_drift_20_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_20.parquet",
-        split="train",
-    )
-)
-kappa_drift_25_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_25.parquet",
-        split="train",
-    )
-)
-kappa_drift_30_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_30.parquet",
-        split="train",
-    )
-)
-kappa_drift_40_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_40.parquet",
-        split="train",
-    )
-)
+kappa_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_5_KAPPA}", split="train"))
+kappa_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_8_KAPPA}", split="train"))
+kappa_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_10_KAPPA}", split="train"))
+kappa_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_12_KAPPA}", split="train"))
+kappa_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_16_KAPPA}", split="train"))
+kappa_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_20_KAPPA}", split="train"))
+kappa_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_25_KAPPA}", split="train"))
+kappa_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_30_KAPPA}", split="train"))
+kappa_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_40_KAPPA}", split="train"))
 
 kappa_nodrift_5_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_5.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_5_KAPPA}", split="train")
 )
 kappa_nodrift_8_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_8.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_8_KAPPA}", split="train")
 )
 kappa_nodrift_10_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_10.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_10_KAPPA}", split="train")
 )
 kappa_nodrift_12_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_12.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_12_KAPPA}", split="train")
 )
 kappa_nodrift_16_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_16.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_16_KAPPA}", split="train")
 )
 kappa_nodrift_20_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_20.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_20_KAPPA}", split="train")
 )
 kappa_nodrift_25_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_25.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_25_KAPPA}", split="train")
 )
 kappa_nodrift_30_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_30.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_30_KAPPA}", split="train")
 )
 kappa_nodrift_40_cat = Catalog.from_dataset(
-    load_dataset(
-        "parquet",
-        data_files=f"{root}/05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_40.parquet",
-        split="train",
-    )
+    load_dataset("parquet", data_files=f"{root}/{NODRIFT_40_KAPPA}", split="train")
 )
 
 cosmo = drift_10_cat.cosmology[0]  # one fiducial cosmology shared by every run

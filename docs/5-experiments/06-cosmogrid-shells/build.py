@@ -83,10 +83,6 @@ GEOMS = ("fullsky", "quadrant")
 DECOMPS = ("slab", "pencil")
 
 
-def variant(nbin, geom, dec):
-    return f"{nbin}bin_{geom}_{dec}"
-
-
 # Style / palette ------------------------------------------------------------------------------
 NBIN_COLOR = {2: "tab:blue", 3: "tab:green"}
 GEOMKEY_COLOR = {
@@ -101,26 +97,138 @@ C_TH = "0.35"  # Limber theory
 
 root = Path(snapshot_download(REPO, repo_type="dataset", local_files_only=True))
 
+SPEC_2BIN_FULLSKY_SLAB_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_2bin_fullsky_slab_2048.parquet"
+SPEC_2BIN_FULLSKY_PENCIL_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_2bin_fullsky_pencil_2048.parquet"
+SPEC_2BIN_QUADRANT_SLAB_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_2bin_quadrant_slab_2048.parquet"
+SPEC_2BIN_QUADRANT_PENCIL_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_2bin_quadrant_pencil_2048.parquet"
+SPEC_3BIN_FULLSKY_SLAB_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_3bin_fullsky_slab_2048.parquet"
+SPEC_3BIN_FULLSKY_PENCIL_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_3bin_fullsky_pencil_2048.parquet"
+SPEC_3BIN_QUADRANT_SLAB_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_3bin_quadrant_slab_2048.parquet"
+SPEC_3BIN_QUADRANT_PENCIL_2048 = "06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_3bin_quadrant_pencil_2048.parquet"
 
-def _load(path):
-    return Catalog.from_dataset(load_dataset("parquet", data_files=str(root / path), split="train"))
+SPEC_2BIN_FULLSKY_SLAB_512 = "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_2bin_fullsky_slab_density_512.parquet"
+SPEC_2BIN_FULLSKY_PENCIL_512 = (
+    "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_2bin_fullsky_pencil_density_512.parquet"
+)
+SPEC_2BIN_QUADRANT_SLAB_512 = "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_2bin_quadrant_slab_density_512.parquet"
+SPEC_2BIN_QUADRANT_PENCIL_512 = (
+    "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_2bin_quadrant_pencil_density_512.parquet"
+)
+SPEC_3BIN_FULLSKY_SLAB_512 = "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_3bin_fullsky_slab_density_512.parquet"
+SPEC_3BIN_FULLSKY_PENCIL_512 = (
+    "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_3bin_fullsky_pencil_density_512.parquet"
+)
+SPEC_3BIN_QUADRANT_SLAB_512 = "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_3bin_quadrant_slab_density_512.parquet"
+SPEC_3BIN_QUADRANT_PENCIL_512 = (
+    "06-cosmogrid-shells/spectra_512/spectra_cosmogrid_3bin_quadrant_pencil_density_512.parquet"
+)
 
+MAP_2BIN_FULLSKY_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_2bin_fullsky_slab_density_512.parquet"
+MAP_2BIN_QUADRANT_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_2bin_quadrant_slab_density_512.parquet"
+MAP_3BIN_FULLSKY_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_3bin_fullsky_slab_density_512.parquet"
+MAP_3BIN_QUADRANT_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_3bin_quadrant_slab_density_512.parquet"
 
-def spec_path(nbin, geom, dec, nside):
-    if nside == NSIDE_HI:
-        return f"06-cosmogrid-shells/spectra_2048/spectra_cosmogrid_{variant(nbin, geom, dec)}_2048.parquet"
-    return f"06-cosmogrid-shells/spectra_512/spectra_cosmogrid_{variant(nbin, geom, dec)}_density_512.parquet"
-
-
-def map_path(nbin, geom, dec):
-    return f"06-cosmogrid-shells/density_512/cosmogrid_{variant(nbin, geom, dec)}_density_512.parquet"
-
-
-CG_SPEC = {
-    NSIDE_HI: "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside2048.parquet",
-    NSIDE_LO: "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside512.parquet",
-}
+CG_SPEC_2048 = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside2048.parquet"
+CG_SPEC_512 = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside512.parquet"
 CG_MAP = "00-cosmogrid/density/cosmogrid_density_nside512.parquet"
+
+# -----------------------------------------------------------------------------
+# Explicit per-file loads — every HF parquet on its own line.
+# -----------------------------------------------------------------------------
+spec_2bin_fs_slab_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_FULLSKY_SLAB_2048), split="train")
+)
+spec_2bin_fs_pencil_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_FULLSKY_PENCIL_2048), split="train")
+)
+spec_2bin_q_slab_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_QUADRANT_SLAB_2048), split="train")
+)
+spec_2bin_q_pencil_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_QUADRANT_PENCIL_2048), split="train")
+)
+spec_3bin_fs_slab_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_FULLSKY_SLAB_2048), split="train")
+)
+spec_3bin_fs_pencil_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_FULLSKY_PENCIL_2048), split="train")
+)
+spec_3bin_q_slab_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_QUADRANT_SLAB_2048), split="train")
+)
+spec_3bin_q_pencil_2048_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_QUADRANT_PENCIL_2048), split="train")
+)
+
+spec_2bin_fs_slab_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_FULLSKY_SLAB_512), split="train")
+)
+spec_2bin_fs_pencil_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_FULLSKY_PENCIL_512), split="train")
+)
+spec_2bin_q_slab_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_QUADRANT_SLAB_512), split="train")
+)
+spec_2bin_q_pencil_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_2BIN_QUADRANT_PENCIL_512), split="train")
+)
+spec_3bin_fs_slab_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_FULLSKY_SLAB_512), split="train")
+)
+spec_3bin_fs_pencil_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_FULLSKY_PENCIL_512), split="train")
+)
+spec_3bin_q_slab_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_QUADRANT_SLAB_512), split="train")
+)
+spec_3bin_q_pencil_512_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / SPEC_3BIN_QUADRANT_PENCIL_512), split="train")
+)
+
+map_2bin_fs_slab_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / MAP_2BIN_FULLSKY_SLAB), split="train")
+)
+map_2bin_q_slab_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / MAP_2BIN_QUADRANT_SLAB), split="train")
+)
+map_3bin_fs_slab_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / MAP_3BIN_FULLSKY_SLAB), split="train")
+)
+map_3bin_q_slab_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=str(root / MAP_3BIN_QUADRANT_SLAB), split="train")
+)
+
+cg_hi_cat = Catalog.from_dataset(load_dataset("parquet", data_files=str(root / CG_SPEC_2048), split="train"))
+cg_lo_cat = Catalog.from_dataset(load_dataset("parquet", data_files=str(root / CG_SPEC_512), split="train"))
+cg_od_cat = Catalog.from_dataset(load_dataset("parquet", data_files=str(root / CG_MAP), split="train"))
+
+cosmo = spec_2bin_fs_slab_2048_cat.cosmology[0]
+
+sim_spec_hi = {
+    (2, "fullsky", "slab"): spec_2bin_fs_slab_2048_cat.field[0],
+    (2, "fullsky", "pencil"): spec_2bin_fs_pencil_2048_cat.field[0],
+    (2, "quadrant", "slab"): spec_2bin_q_slab_2048_cat.field[0],
+    (2, "quadrant", "pencil"): spec_2bin_q_pencil_2048_cat.field[0],
+    (3, "fullsky", "slab"): spec_3bin_fs_slab_2048_cat.field[0],
+    (3, "fullsky", "pencil"): spec_3bin_fs_pencil_2048_cat.field[0],
+    (3, "quadrant", "slab"): spec_3bin_q_slab_2048_cat.field[0],
+    (3, "quadrant", "pencil"): spec_3bin_q_pencil_2048_cat.field[0],
+}
+sim_spec_lo = {
+    (2, "fullsky", "slab"): spec_2bin_fs_slab_512_cat.field[0],
+    (2, "fullsky", "pencil"): spec_2bin_fs_pencil_512_cat.field[0],
+    (2, "quadrant", "slab"): spec_2bin_q_slab_512_cat.field[0],
+    (2, "quadrant", "pencil"): spec_2bin_q_pencil_512_cat.field[0],
+    (3, "fullsky", "slab"): spec_3bin_fs_slab_512_cat.field[0],
+    (3, "fullsky", "pencil"): spec_3bin_fs_pencil_512_cat.field[0],
+    (3, "quadrant", "slab"): spec_3bin_q_slab_512_cat.field[0],
+    (3, "quadrant", "pencil"): spec_3bin_q_pencil_512_cat.field[0],
+}
+od_fs = {2: map_2bin_fs_slab_cat.field[0], 3: map_3bin_fs_slab_cat.field[0]}
+od_q = {2: map_2bin_q_slab_cat.field[0], 3: map_3bin_q_slab_cat.field[0]}
+cg_hi = cg_hi_cat.field[0]
+cg_lo = cg_lo_cat.field[0]
+cg_od = cg_od_cat.field[0]
 
 
 # Spectra helpers ------------------------------------------------------------------------------
@@ -524,28 +632,12 @@ def fig10_starlet_maps(od_fs, cg_od, nscales=5):
 def main():
     set_style()
 
-    # spectra: all 8 variants at both nsides + CosmoGrid
-    sim_spec_hi = {
-        (nb, g, d): _load(spec_path(nb, g, d, NSIDE_HI)).field[0] for nb in NBINS for g in GEOMS for d in DECOMPS
-    }
-    sim_spec_lo = {
-        (nb, g, d): _load(spec_path(nb, g, d, NSIDE_LO)).field[0] for nb in NBINS for g in GEOMS for d in DECOMPS
-    }
-    cg_hi = _load(CG_SPEC[NSIDE_HI]).field[0]
-    cg_lo = _load(CG_SPEC[NSIDE_LO]).field[0]
-    cosmo = _load(spec_path(2, "fullsky", "slab", NSIDE_HI)).cosmology[0]
-
     sim_fs_hi = {nb: sim_spec_hi[(nb, "fullsky", "slab")] for nb in NBINS}
     sim_fs_lo = {nb: sim_spec_lo[(nb, "fullsky", "slab")] for nb in NBINS}
 
     fig01_spectra(sim_fs_hi, cg_hi, cosmo)
     fig02_band_vs_distance(sim_spec_hi, cg_hi)
     fig03_nside512(sim_fs_lo, cg_lo)
-
-    # maps + higher-order: nside-512 single-file lightcones -> overdensity
-    od_fs = {nb: _load(map_path(nb, "fullsky", "slab")).field[0] for nb in NBINS}
-    od_q = {nb: _load(map_path(nb, "quadrant", "slab")).field[0] for nb in NBINS}
-    cg_od = _load(CG_MAP).field[0]
 
     fig04_maps_fullsky(od_fs, cg_od)
     fig05_maps_quadrant(od_q)
