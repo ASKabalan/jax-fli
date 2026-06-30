@@ -197,7 +197,7 @@ def _resolve_args_log_path(payload: list[str]) -> Path | None:
     with a matching stem (``m512.parquet`` -> ``m512.args.log``) so runs sharing
     a directory don't clobber each other; otherwise the value is treated as a
     directory and ``<dir>/args.log`` is used. Returns ``None`` if no output-like
-    flag is present (e.g. ``fli-summary-stats``).
+    flag is present.
     """
     for key in _OUTPUT_KEYS:
         if key not in payload:
@@ -310,6 +310,8 @@ def main() -> None:
     cmd = list(resolved_payload) + [
         "--nodes",
         str(args.nodes),
+        "--gpus-per-node",
+        str(args.gpus_per_node),
         "--pdim",
         str(args.pdim[0]),
         str(args.pdim[1]),

@@ -295,7 +295,6 @@ class FlatShearField(FlatDensity):
         """
         if self.unit == unit:
             return self
-
         new_array = convert_units(
             array=self.array,
             origin=self.unit,
@@ -385,7 +384,6 @@ class SphericalShearField(SphericalDensity):
         """
         if self.unit == unit:
             return self
-
         new_array = convert_units(
             array=self.array,
             origin=self.unit,
@@ -412,6 +410,7 @@ class SphericalShearField(SphericalDensity):
 
         # NOTE: this inverse transform could mirror get_shear's distributed sharding (the inverse of
         # the shear sharding logic in _src/lensing/_sharding.py). Deferred — not yet wired here.
+        # Because in my forward model I never go from shear to convergence, I haven't needed it yet. The single-device path is correct.
         kappa = shear2kappa_spherical(self.array, lmax=lmax, method=method, iter=iter)
         return SphericalKappaField.FromDensityMetadata(
             array=kappa,
@@ -463,38 +462,27 @@ class SphericalShearField(SphericalDensity):
           binned (coupled) pseudo. The MCM is built once from ``mask`` and reused across the batch
           (or pass a precomputed ``mcm``).
         """
-        from ..summary_statistics.decouple import anafast_masked, compute_mcm
+        from ..summary_statistics import angular_cl_spherical_batched
         from ..summary_statistics.power_spec import PowerSpectrum
 
         data = self.array
         npix = data.shape[-1]
-        _lmax = lmax if lmax is not None else 3 * self.nside - 1
         single = data.ndim == 2
-        flat = data.reshape((-1, 2, npix))
+        flat = data.reshape((-1, 2, npix))  # flatten any leading dims to a single batch axis
 
-        _mcm = mcm
-        if mask is not None and _mcm is None:
-            _mcm = compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=True, method=method)
-
-        def _one(g):
-            return anafast_masked(
-                g,
-                mask=mask,
-                lmax=_lmax,
-                method=method,
-                pol=True,
-                purify_e=purify_e,
-                purify_b=purify_b,
-                mcm=_mcm,
-                nlb=nlb,
-            )[1]
-
-        cls = jax.vmap(_one)(flat)  # (B, 3, n)
-        if mask is not None:
-            assert _mcm is not None
-            ell = _mcm.ell_eff
-        else:
-            ell = jnp.arange(_lmax + 1) * 1.0
+        # angular_cl_spherical_batched owns the per-map loop, the MCM build (once), and the
+        # healpy/jax backend branching (the old jax.vmap broke for method="healpy").
+        ell, cls = angular_cl_spherical_batched(
+            flat,
+            lmax=lmax,
+            method=method,
+            mask=mask,
+            pol=True,
+            purify_e=purify_e,
+            purify_b=purify_b,
+            mcm=mcm,
+            nlb=nlb,
+        )  # cls: (B, 3, n)
         array = cls[0] if single else cls
         return PowerSpectrum(
             name=self.name,

@@ -10,6 +10,8 @@ import jax.numpy as jnp
 import jax_healpy as jhp
 from jax.image import resize
 
+from ..data.masks import build_observer_visibility_mask
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
@@ -24,8 +26,7 @@ from ..summary_statistics import (
     PeakCounts,
     PowerSpectrum,
     angular_cl_flat,
-    angular_cl_spherical,
-    compute_mcm,
+    angular_cl_spherical_batched,
     cross_angular_cl_spherical,
     deconvolve_spherical,
     pdf_spherical,
@@ -33,7 +34,6 @@ from ..summary_statistics import (
     starlet_coefficients_spherical,
 )
 from ..summary_statistics.binned import resolve_bin_edges
-from ..summary_statistics.decouple import anafast_masked
 from .units import DensityUnit, convert_units
 
 
@@ -66,14 +66,6 @@ class FlatDensity(AbstractField):
                 raise ValueError(
                     f"Array spatial shape {spatial_shape} does not match flatsky_npix {self.flatsky_npix}."
                 )
-
-    def apply_sharding(self) -> FlatDensity:
-        """Shard the flat-sky map: ``P([None,] "x", "y")`` (first spatial dim→M, second→N).
-
-        Uses the canonical layout in ``field_sharding`` directly. Flat-sky convergence/shear inherit
-        this image layout — the flat Kaiser-Squires path is a plain ``vmap`` FFT, not bins-sharded.
-        """
-        return super().apply_sharding()
 
     def __getitem__(self, key) -> FlatDensity:
         if self.array.ndim < 3:
@@ -138,6 +130,7 @@ class FlatDensity(AbstractField):
             volume_element=volume_element,
             field_sharding=self.field_sharding,
             normalization=normalization,
+            mask=None,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -565,15 +558,6 @@ class SphericalDensity(AbstractField):
                         f"HEALPix npix {npix} for nside {self.nside}."
                     )
 
-    def apply_sharding(self) -> SphericalDensity:
-        """Shard the HEALPix map: ``P([None,] "x")`` (NPIX→M; the N axis is unused for a bare density).
-
-        Uses the canonical layout in ``field_sharding`` directly — ``get_sharding_for_shape`` trims the
-        3-D ``P("x","y")`` to ``P("x")`` for the 1-D npix axis. The convergence/shear subclasses
-        override this to add the BINS/N axis.
-        """
-        return super().apply_sharding()
-
     def __getitem__(self, key) -> SphericalDensity:
         if self.array.ndim < 2:
             warn(
@@ -592,6 +576,7 @@ class SphericalDensity(AbstractField):
         h: float | None = None,
         mean_density: float | None = None,
         normalization: str = "global",
+        supersample: int = 4,
     ) -> SphericalDensity:
         """
         Convert the spherical (HEALPix) map to a different density unit.
@@ -622,6 +607,12 @@ class SphericalDensity(AbstractField):
         if self.unit == unit:
             return self
 
+        if self.nside >= 1024 and supersample > 2:
+            warn("""
+            High-resolution HEALPix maps (nside >= 1024) with supersample > 2 may be slow to convert.
+            and might cause memory issues. consider using a lower supersample value for converting SphericalDensity fields.
+            """)
+
         if self.comoving_centers is None or self.density_width is None:
             raise ValueError("comoving_centers and density_width metadata are required for unit conversion.")
 
@@ -630,6 +621,17 @@ class SphericalDensity(AbstractField):
         npix = jhp.nside2npix(self.nside)
         pixel_solid_angle = 4 * jnp.pi / npix  # steradians per pixel
         shell_volume_per_pixel = pixel_solid_angle * (R_max**3 - R_min**3) / 3.0
+
+        # Off-center observers see only a partial sky: average ρ̄ over the visible footprint
+        # when forming the overdensity (mask is unused by the other unit conversions). The
+        # builder returns the scalar 1 for a center observer -> treat as no mask (plain mean).
+        vis = build_observer_visibility_mask(
+            self.observer_position,
+            self.nside,
+            apodization_scale_deg=None,
+            supersample=supersample,
+        )
+        mask = None if jnp.ndim(vis) == 0 else vis
 
         new_array = convert_units(
             array=self.array,
@@ -643,6 +645,7 @@ class SphericalDensity(AbstractField):
             volume_element=shell_volume_per_pixel,
             field_sharding=self.field_sharding,
             normalization=normalization,
+            mask=mask,
         )
 
         return self.replace(array=new_array, unit=unit)
@@ -862,90 +865,30 @@ class SphericalDensity(AbstractField):
         ``method`` selects the SHT backend and defaults to ``"jax"`` (jittable/differentiable);
         ``"healpy"`` runs healpy's C ``anafast`` and requires concrete (non-traced) arrays.
         """
-        if mask is not None:
-            _lmax = lmax if lmax is not None else 3 * self.nside - 1
-            _method = method if method in ("jax", "jax_cuda") else "jax"
-            _mcm = mcm if mcm is not None else compute_mcm(mask, lmax=_lmax, nlb=nlb, pol=False, method=_method)
-            d1 = self.array
-            d2 = mesh2.array if mesh2 is not None else None
-            single = d1.ndim == 1
-            flat1 = d1.reshape((-1, d1.shape[-1]))
-            if d2 is None:
-                cls = jax.vmap(
-                    lambda m: anafast_masked(m, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb)[1]
-                )(flat1)
-            else:
-                flat2 = d2.reshape((-1, d2.shape[-1]))
-                cls = jax.vmap(
-                    lambda m1, m2: anafast_masked(
-                        m1, m2, mask=mask, lmax=_lmax, method=_method, pol=False, mcm=_mcm, nlb=nlb
-                    )[1]
-                )(flat1, flat2)
-            return PowerSpectrum(
-                name=self.name,
-                wavenumber=_mcm.ell_eff,
-                array=cls[0] if single else cls,
-                n_components=1,
-                mesh_size=self.mesh_size,
-                box_size=self.box_size,
-                comoving_centers=self.comoving_centers,
-                density_width=self.density_width,
-                z_sources=self.z_sources,
-                scale_factors=self.scale_factors,
-                nside=self.nside,
-                status=FieldStatus.SPECTRA,
-                unit=SpectralUnit.ANGULAR_CL,
-            )
-
-        def _compute(pair):
-            m1, m2 = pair
-            return angular_cl_spherical(m1, m2, lmax=lmax, method=method)
-
         data1 = self.array
         data2 = mesh2.array if mesh2 is not None else None
-
-        if data1.ndim == 1:
-            data1 = data1[None, ...]
-            data2 = data2[None, ...] if data2 is not None else None
-        elif data1.ndim != 2:
+        if data1.ndim not in (1, 2):
             raise ValueError("SphericalDensity.angular_cl expects array shape (npix) or (B,npix)")
-
-        if method == "healpy":
-            spectras = []
-            ell = None
-            for i in range(data1.shape[0]):
-                map1 = data1[i]
-                map2 = data2[i] if data2 is not None else None
-                ell, spectra = angular_cl_spherical(map1, map2, lmax=lmax, method=method)
-                spectras.append(spectra)
-            assert ell is not None, "ell should have been set in loop"
-            spectra = jnp.stack(spectras, axis=0)
-            spectra = spectra if self.array.ndim == 2 else spectra[0]
-            return PowerSpectrum(
-                name=self.name,
-                wavenumber=ell,
-                array=spectra,
-                mesh_size=self.mesh_size,
-                box_size=self.box_size,
-                comoving_centers=self.comoving_centers,
-                density_width=self.density_width,
-                z_sources=self.z_sources,
-                scale_factors=self.scale_factors,
-                nside=self.nside,
-                status=FieldStatus.SPECTRA,
-                unit=SpectralUnit.ANGULAR_CL,
-            )
-
         if data2 is not None and data2.shape != data1.shape:
             raise ValueError("mesh2 must match shape for cross Cl")
 
-        ell_stack, spectra_stack = jax.lax.map(_compute, (data1, data2), batch_size=batch_size)
-        wavenumber = ell_stack[0]
-        spectra = spectra_stack if self.array.ndim == 2 else spectra_stack[0]
+        wavenumber, spectra = angular_cl_spherical_batched(
+            data1,
+            data2,
+            lmax=lmax,
+            method=method,
+            mask=mask,
+            purify_e=purify_e,
+            purify_b=purify_b,
+            mcm=mcm,
+            nlb=nlb,
+            batch_size=batch_size,
+        )
         return PowerSpectrum(
             name=self.name,
             wavenumber=wavenumber,
             array=spectra,
+            n_components=1,
             mesh_size=self.mesh_size,
             box_size=self.box_size,
             comoving_centers=self.comoving_centers,
@@ -963,6 +906,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "healpy",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute all cross-angular power spectra for batched HEALPix maps.
 
@@ -970,17 +916,22 @@ class SphericalDensity(AbstractField):
         corresponding to all unique pairs (i,j) where i <= j, in upper triangular order:
         (0,0), (0,1), ..., (0,B-1), (1,1), (1,2), ..., (B-1,B-1)
 
-        This method uses healpy's anafast function with pol=False, which efficiently
-        computes all cross-spectra in a single call.
+        With ``mask=None`` this uses healpy's ``anafast`` (full ``0..lmax`` grid). With an
+        apodized ``mask`` (or a precomputed ``mcm``) every pair is masked and **decoupled**
+        into bandpowers (``wavenumber`` = effective bandpower multipoles, ``nlb`` multipoles
+        per band); the MCM is built once from ``mask`` and reused across all pairs.
 
         Parameters
         ----------
         lmax : int, optional
             Maximum multipole moment. Defaults to 3*nside-1.
         method : str, default="healpy"
-            Must be "healpy". JAX method is not supported for cross-spectra.
+            SHT backend ("healpy" or "jax"). "jax" is supported on the masked path.
         batch_size : int, optional
-            Not used for healpy method. Included for API consistency.
+            Not used for the all-pairs paths. Included for API consistency.
+        mask, mcm, nlb
+            Optional masking arguments. With an apodized ``mask`` the cross-spectra are
+            returned as mask-decoupled bandpowers, reusing a precomputed ``mcm`` if given.
 
         Returns
         -------
@@ -1023,7 +974,7 @@ class SphericalDensity(AbstractField):
             )
 
         # Call the power module function
-        ell, angular_cls = cross_angular_cl_spherical(data, lmax=lmax, method=method)
+        ell, angular_cls = cross_angular_cl_spherical(data, lmax=lmax, method=method, mask=mask, mcm=mcm, nlb=nlb)
 
         return PowerSpectrum(
             name=self.name,
@@ -1047,6 +998,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "jax",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute angular transfer function sqrt(Cl_other / Cl_self).
 
@@ -1060,6 +1014,10 @@ class SphericalDensity(AbstractField):
             Method for computing power spectrum ("jax" or "healpy").
         batch_size : int, optional
             Batch size for lax.map processing.
+        mask, mcm, nlb
+            Optional masking arguments forwarded to :meth:`angular_cl`. With an apodized
+            ``mask`` both spectra are computed as mask-decoupled bandpowers (``nlb`` per band),
+            reusing a precomputed mode-coupling matrix ``mcm`` if given.
 
         Returns
         -------
@@ -1070,11 +1028,17 @@ class SphericalDensity(AbstractField):
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_other = other.angular_cl(
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         transfer_ratio = (cl_other.array / cl_self.array) ** 0.5
         name = "transfer" if self.name is None else self.name + "_transfer"
@@ -1100,6 +1064,9 @@ class SphericalDensity(AbstractField):
         lmax: int | None = None,
         method: str = "jax",
         batch_size: int | None = None,
+        mask=None,
+        mcm=None,
+        nlb: int = 16,
     ) -> PowerSpectrum:
         """Compute angular coherence Cl_cross / sqrt(Cl_self * Cl_other).
 
@@ -1113,6 +1080,10 @@ class SphericalDensity(AbstractField):
             Method for computing power spectrum ("jax" or "healpy").
         batch_size : int, optional
             Batch size for lax.map processing.
+        mask, mcm, nlb
+            Optional masking arguments forwarded to :meth:`angular_cl`. With an apodized
+            ``mask`` the auto and cross spectra are computed as mask-decoupled bandpowers
+            (``nlb`` per band), reusing a precomputed mode-coupling matrix ``mcm`` if given.
 
         Returns
         -------
@@ -1123,17 +1094,26 @@ class SphericalDensity(AbstractField):
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_other = other.angular_cl(
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         cl_cross = self.angular_cl(
             other,
             lmax=lmax,
             method=method,
             batch_size=batch_size,
+            mask=mask,
+            mcm=mcm,
+            nlb=nlb,
         )
         coherence_ratio = cl_cross.array / (cl_self.array * cl_other.array) ** 0.5
         name = "coherence" if self.name is None else self.name + "_coherence"

@@ -26,6 +26,10 @@ launch  32  4  128  1  00:45:00 -- $COMMON --mesh-size 2560 2560 2560 \
   --output "$RESULTS/exp1/m2560.parquet" --name "$NAME"    #  20   10   (was 256/64: odd halo 5)
 launch  64  4  256  1  00:45:00 -- $COMMON --mesh-size 3072 3072 3072 \
   --output "$RESULTS/exp1/m3072.parquet" --name "$NAME"    #  12    6
+launch  32  4  32  4  00:45:00 -- $COMMON --mesh-size 2560 2560 2560 \
+  --output "$RESULTS/exp1/m2560_pencils.parquet" --name "$NAME"    #  20   10   (was 256/64: odd halo 5)
+launch  64  4  64  4  00:45:00 -- $COMMON --mesh-size 3072 3072 3072 \
+  --output "$RESULTS/exp1/m3072_pencils.parquet" --name "$NAME"    #  12    6
 launch 112  4  448  1  00:45:00 -- $COMMON --mesh-size 3584 3584 3584 \
   --output "$RESULTS/exp1/m3584.parquet" --name "$NAME"    #   8    4   (was 256/64: odd halo 7 + 728³ padded)
 launch 128  4  512  1  00:45:00 -- $COMMON --mesh-size 4096 4096 4096 \

@@ -1,49 +1,55 @@
 #!/bin/bash
-# Experiment 11 — throughput, strong & weak scaling (--perf gives time + per-device memory).
-# Run in BOTH float32 and float64. Strong-scaling grids start at the smallest GPU count that fits in
-# float64 (≈645³/GPU). Weak scaling fixes 512³/GPU: global = (512·PX, 512·PY, 512).
+# Experiment 11 — PM throughput: strong & weak scaling on SLAB (N,1) decompositions, BullFrog only.
+# Run in BOTH float32 and float64 (`--perf` gives wall-time + per-device memory). Only the PM stage is
+# benchmarked here (no separate LPT-only / lensing-only timing) — PM includes its lightcone painting.
+#
+# Slab (N,1): px = #GPUs, py = 1, local mesh = (M/px, M, M). The ghost-zone halo int((M/px)*0.5) must be
+# EVEN (an odd halo crashes jaxpm slice_unpad) — at halo_multiplier 0.5 that means (M/px) % 4 == 0, so a
+# 1024³ slab tops out at 256 GPUs (512 → local 2, halo 1). Each (precision, mesh) ladder also starts at the
+# smallest GPU count whose local volume fits the per-GPU ceiling (~512³ in float64, ~2·512³ in float32);
+# below-ceiling rungs are skipped and logged, so "4 → 512 GPUs" is the envelope, not every rung.
 source "$(dirname "$0")/../_launch_common.sh"
 
-echo "### Exp 11 — throughput, strong & weak scaling  (MODE=$MODE)"
+echo "### Exp 11 — PM strong & weak scaling, slab (N,1)  (MODE=$MODE)"
 
-PERF="--solver bf --nb-steps 50 --paint-order tsc --deconvolution --scheme ngp \
---perf --iterations 5 --seed $SEED $COSMO"
-NB_SHELLS="${NB_SHELLS:-10}"   # lightcone shells (box/2 / N ≥ min_width 50 Mpc/h)
+# Fixed forward-model knobs (PM + lightcone painting to nside 1024, 10 shells). bf, 50 steps.
+PERF="--sim-mode pm --solver bf --nb-steps 50 --paint-order tsc --deconvolution --scheme ngp \
+--nside 1024 --nb-shells 10 --perf --iterations 5 --seed $SEED $COSMO"
 
-# Run every config in both precisions: f32 (no flag) and f64 (--enable-x64).
+F64_CEIL=134217728   # 512³ cells/GPU — float64 ceiling on an 80 GB H100 (645³ OOMs, see Exp 01)
+F32_CEIL=268435456   # 2·512³ — float32 holds twice the cells per GPU
+
+GPUS="4 8 16 32 64 128 256 512"
+
 for pc in "f32:" "f64:--enable-x64"; do
   IFS=: read -r ptag pflag <<<"$pc"
+  ceil=$F32_CEIL; [ "$ptag" = "f64" ] && ceil=$F64_CEIL
 
-  # (a) per-stage cost — 1024³ on 4 GPU
-  for SIM in lpt pm lensing; do
-    case "$SIM" in
-      lpt)     extra="" ;;
-      pm)      extra="--nside 512 --nb-shells $NB_SHELLS" ;;
-      lensing) extra="--nside 512 --nb-shells $NB_SHELLS --nz-shear s3" ;;
-    esac
-    launch 1 4 2 2 00:30:00 -- --sim-mode "$SIM" --mesh-size 1024 1024 1024 --box-size $BOX2 \
-      $PERF $extra $pflag \
-      --output "$RESULTS/exp11/stage_${SIM}_${ptag}.parquet" --name "exp11_${SIM}_${ptag}_s%seed%"
+  # (a) strong scaling — fixed grid, grow GPUs (slab (N,1))
+  for M in 1024 2048; do
+    for g in $GPUS; do
+      px=$g; py=1; nodes=$(( g / 4 ))
+      (( M % px != 0 )) && continue                       # X must shard evenly across the slab
+      local_x=$(( M / px ))
+      if (( local_x % 4 != 0 )); then
+        echo "### SKIP strong M${M} g${g} ${ptag}: halo int(${local_x}*0.5) is odd"; continue
+      fi
+      cells=$(( local_x * M * M ))
+      if (( cells > ceil )); then
+        echo "### SKIP strong M${M} g${g} ${ptag}: local ${local_x}x${M}x${M}=${cells} > ${ptag} ceiling ${ceil}"; continue
+      fi
+      launch "$nodes" 4 "$px" "$py" 00:30:00 -- $PERF $pflag --mesh-size $M $M $M --box-size $BOX2 \
+        --output "$RESULTS/exp11/strong_M${M}_g${g}_${ptag}.parquet" \
+        --name "exp11_strong_M${M}_g${g}_${ptag}_s%seed%"
+    done
   done
 
-  # (b) strong scaling — fixed grid, grow GPUs.   nodes gpn px py mesh
-  for t in "1 4 2 2 1024" "2 4 2 4 1024" "4 4 4 4 1024" "8 4 4 8 1024" "16 4 8 8 1024" \
-           "8 4 4 8 2048" "16 4 8 8 2048" "32 4 8 16 2048" "64 4 16 16 2048"; do
-    set -- $t; nodes=$1 gpn=$2 px=$3 py=$4 M=$5
-    launch "$nodes" "$gpn" "$px" "$py" 00:30:00 -- --sim-mode pm --mesh-size $M $M $M \
-      --box-size $BOX2 $PERF --nside 512 --nb-shells $NB_SHELLS $pflag \
-      --output "$RESULTS/exp11/strong_M${M}_n${nodes}g${gpn}_${ptag}.parquet" \
-      --name "exp11_strong_M${M}_N${nodes}x${gpn}_${ptag}_s%seed%"
-  done
-
-  # (c) weak scaling — fixed 512³/GPU.   nodes gpn px py gx gy gz
-  for t in "1 4 2 2 1024 1024 512" "2 4 2 4 1024 2048 512" "4 4 4 4 2048 2048 512" \
-           "8 4 4 8 2048 4096 512" "16 4 8 8 4096 4096 512" "32 4 8 16 4096 8192 512" \
-           "64 4 16 16 8192 8192 512"; do
-    set -- $t; nodes=$1 gpn=$2 px=$3 py=$4 gx=$5 gy=$6 gz=$7
-    launch "$nodes" "$gpn" "$px" "$py" 00:30:00 -- --sim-mode pm --mesh-size $gx $gy $gz \
-      --box-size $BOX2 $PERF --nside 512 --nb-shells $NB_SHELLS $pflag \
-      --output "$RESULTS/exp11/weak_${px}x${py}_${ptag}.parquet" \
-      --name "exp11_weak_${px}x${py}_${ptag}_s%seed%"
+  # (b) weak scaling — fixed 256³/GPU (slab): global = (256·px, 256, 256), local 256³, halo 128 (always even)
+  for g in $GPUS; do
+    px=$g; py=1; nodes=$(( g / 4 ))
+    gx=$(( 256 * px ))
+    launch "$nodes" 4 "$px" "$py" 00:30:00 -- $PERF $pflag --mesh-size $gx 256 256 --box-size $BOX2 \
+      --output "$RESULTS/exp11/weak_g${g}_${ptag}.parquet" \
+      --name "exp11_weak_g${g}_${ptag}_s%seed%"
   done
 done

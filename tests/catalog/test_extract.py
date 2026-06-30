@@ -89,7 +89,7 @@ def _build_singlechain_dir(tmp_path: Path) -> Path:
 def test_extract_cosmo_shape(tmp_path):
     """Cosmo dict has shape (n_chains, n_samples) for multi-chain layout."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS)
 
     assert isinstance(result, CatalogExtract)
     assert result.mean_field is None
@@ -109,7 +109,7 @@ def test_extract_cosmo_shape(tmp_path):
 def test_extract_field_statistic_shapes(tmp_path):
     """mean_field and std_field have shape (n_chains, X, Y, Z) with float64 dtype."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     mean_field = result.mean_field
     std_field = result.std_field
@@ -128,7 +128,7 @@ def test_extract_field_statistic_shapes(tmp_path):
 def test_extract_field_statistic_false_gives_none(tmp_path):
     """When field_statistic=False, mean_field and std_field are None."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=False)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=False)
 
     assert result.mean_field is None
     assert result.std_field is None
@@ -143,7 +143,7 @@ def test_extract_power_statistic_shapes(tmp_path):
     result = extract_catalog(
         "test_run",
         cosmo_keys=COSMO_KEYS,
-        path=str(root),
+        patterns=[str(root)],
         truth=truth,
         field_statistic=True,
         power_statistic=True,
@@ -160,13 +160,13 @@ def test_extract_power_statistic_requires_true_ic(tmp_path):
     """extract_catalog raises ValueError when power_statistic=True but true_ic=None."""
     root = _build_multichain_dir(tmp_path)
     with pytest.raises(ValueError, match="power_statistic=True requires 'truth' to be provided."):
-        extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, power_statistic=True)
+        extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, power_statistic=True)
 
 
 def test_extract_singlechain_layout(tmp_path):
     """Single-chain layout (path/samples/*.parquet) returns cosmo with shape (1, n_samples)."""
     root = _build_singlechain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     for key in COSMO_KEYS:
         assert result.cosmo[key].shape == (1, N_SAMPLES_PER_CHAIN), f"cosmo['{key}'].shape = {result.cosmo[key].shape}"
@@ -181,7 +181,7 @@ def test_extract_singlechain_layout(tmp_path):
 def test_extract_field_metadata_preserved(tmp_path):
     """mean_field carries the correct mesh_size and box_size metadata."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     mean_field = result.mean_field
     assert mean_field is not None
@@ -192,7 +192,7 @@ def test_extract_field_metadata_preserved(tmp_path):
 def test_catalog_extract_getitem_integer(tmp_path):
     """Integer index returns a 1-chain CatalogExtract with 2-D cosmo arrays."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS)
 
     chain0 = result[0]
     assert chain0.n_chains == 1
@@ -203,13 +203,40 @@ def test_catalog_extract_getitem_integer(tmp_path):
 def test_catalog_extract_getitem_slice(tmp_path):
     """Slice index preserves 2-D shape on cosmo and field arrays."""
     root = _build_multichain_dir(tmp_path)
-    result = extract_catalog("test_run", path=str(root), cosmo_keys=COSMO_KEYS, field_statistic=True)
+    result = extract_catalog("test_run", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=True)
 
     sub = result[0:1]
     assert sub.mean_field is not None
     assert sub.n_chains == 1
     assert sub.cosmo["Omega_c"].shape == (1, N_SAMPLES_PER_CHAIN)
     assert sub.mean_field.array.shape == (1, *MESH_SIZE)
+
+
+def test_extract_one_pattern_per_chain(tmp_path):
+    """Each pattern is ONE chain: explicit per-chain globs equal the auto-detected root, while a single
+    pooled glob collapses both chains into one — the per-chain contract a flat add_source_args swap
+    would have silently broken."""
+    root = _build_multichain_dir(tmp_path)
+    chain_globs = [str(tmp_path / f"chain_{i}" / "samples" / "*.parquet") for i in range(N_CHAINS)]
+
+    by_pattern = extract_catalog("multi", patterns=chain_globs, cosmo_keys=COSMO_KEYS, field_statistic=True)
+    by_root = extract_catalog("root", patterns=[str(root)], cosmo_keys=COSMO_KEYS, field_statistic=True)
+
+    # One pattern per chain reproduces the auto-detected root layout exactly.
+    assert by_pattern.mean_field is not None and by_root.mean_field is not None
+    for key in COSMO_KEYS:
+        assert by_pattern.cosmo[key].shape == (N_CHAINS, N_SAMPLES_PER_CHAIN)
+    assert by_pattern.mean_field.array.shape == (N_CHAINS, *MESH_SIZE)
+    np.testing.assert_allclose(by_pattern.mean_field.array, by_root.mean_field.array)
+
+    # A single pooled glob mixes both chains into ONE -> shape (1, 2*N) and a different mean field.
+    pooled_glob = str(tmp_path / "*" / "samples" / "*.parquet")
+    pooled = extract_catalog("pooled", patterns=[pooled_glob], cosmo_keys=COSMO_KEYS, field_statistic=True)
+    assert pooled.mean_field is not None
+    assert pooled.cosmo["Omega_c"].shape == (1, N_CHAINS * N_SAMPLES_PER_CHAIN)
+    assert pooled.mean_field.array.shape == (1, *MESH_SIZE)
+    # The pooled mean (over all 8 samples) differs from either per-chain mean — proves chains stay separate.
+    assert not np.allclose(pooled.mean_field.array[0], by_pattern.mean_field.array[0])
 
 
 def test_requires_datasets_without_library(monkeypatch):

@@ -8,12 +8,12 @@ import jax
 
 from jax_fli.io.catalog import Catalog
 from jax_fli.io.extract import extract_catalog
-from jax_fli.scripts._common import _build_sharding
+from jax_fli.scripts._common import _build_sharding, _resolve_chain_sources
 
 
 def parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for fli-extract."""
-    from jax_fli.scripts.parser import add_common_args, add_distributed_args
+    from jax_fli.scripts.parser import add_common_args, add_distributed_args, add_source_args
 
     p = argparse.ArgumentParser(
         prog="fli-extract",
@@ -21,20 +21,12 @@ def parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # Source (mutually exclusive: local path or HF Hub)
-    source = p.add_mutually_exclusive_group(required=True)
-    source.add_argument("--path", type=str, metavar="PATH", help="Local root dir containing chain_N/samples/*.parquet.")
-    source.add_argument(
-        "--repo-id", type=str, metavar="REPO_ID", help="HuggingFace Hub repository ID (e.g. 'user/repo')."
-    )
+    # Source: the generic add_source_args builder in multi-pattern mode — local --input glob(s)/dir(s)
+    # XOR HuggingFace --repo + --data-files glob(s). Each pattern is ONE MCMC chain (so per-chain
+    # statistics stay separate); a single local --input root dir auto-expands its chain_N/ subdirs.
+    add_source_args(p, multi=True)
 
-    p.add_argument(
-        "--config",
-        nargs="+",
-        metavar="NAME",
-        help="HF Hub dataset config names, one per chain (required with --repo-id).",
-    )
-    p.add_argument("--set-name", type=str, required=True, metavar="NAME", help="Name label for the CatalogExtract.")
+    p.add_argument("--name", type=str, required=True, metavar="NAME", help="Name label for the CatalogExtract.")
     p.add_argument("--output", type=str, required=True, metavar="PATH", help="Output parquet file path.")
     p.add_argument(
         "--cosmo-keys",
@@ -65,11 +57,14 @@ def main() -> None:
 
     jax.config.update("jax_enable_x64", args.enable_x64)
 
-    if args.repo_id is not None and args.config is None:
-        p.error("--config is required when --repo-id is set.")
-
+    if args.input is None and args.repo is None:
+        p.error("a source is required: --input (local glob[s]/dir) or --repo + --data-files (HuggingFace).")
+    if args.repo is not None and not args.data_files:
+        p.error("--data-files is required when --repo is set (one glob per chain).")
     if args.power_statistic and args.truth is None:
         p.error("--truth is required when --power-statistic is set.")
+
+    repo, patterns = _resolve_chain_sources(args)
 
     sharding = _build_sharding(args)
 
@@ -79,10 +74,9 @@ def main() -> None:
 
     ce = extract_catalog(
         cosmo_keys=args.cosmo_keys,
-        set_name=args.set_name,
-        path=args.path,
-        repo_id=args.repo_id,
-        config=args.config,
+        set_name=args.name,
+        patterns=patterns,
+        repo=repo,
         truth=truth,
         field_statistic=args.field_statistic,
         power_statistic=args.power_statistic,

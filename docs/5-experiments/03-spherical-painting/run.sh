@@ -8,16 +8,16 @@ echo "### Exp 03 — spherical painting + pixel-window  (MODE=$MODE)"
 
 NB_SHELLS="${NB_SHELLS:-10}"   # lightcone shells (box/2 / N ≥ min_width 50 Mpc/h)
 COMMON="--sim-mode pm --mesh-size 2048 2048 2048 --box-size $BOX2 --solver bf --nb-steps 50 \
---paint-order tsc --deconvolution --nb-shells $NB_SHELLS --shell-spacing comoving --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
+--paint-order cic --nb-shells $NB_SHELLS --shells-per-file 1  --shell-spacing a --time-stepping D --halo-multiplier 0.5 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
 emit3() { # $1=scheme  $2=kernel-width-pixels ("" if none)  $3=nside  $4=paint-flag  $5=tag
   local kw=""; [ -n "$2" ] && kw="--kernel-width-pixels $2"
-  launch 8 4 8 4 02:00:00 -- $COMMON --nside "$3" $4 --scheme "$1" $kw \
+  launch 16 4 64 1 00:40:00 -- $COMMON --nside "$3" $4 --scheme "$1" $kw \
     --output "$RESULTS/exp3/$5.parquet" --name "$5_M%mesh_size%_s%seed%"
 }
 
 for cfg in "ngp::" "bilinear::" "rbf_neighbor:0.8:rbf08" "rbf_neighbor:1.5:rbf15"; do
   IFS=: read -r scheme kw tag <<<"$cfg"; tag="${tag:-$scheme}"
   emit3 "$scheme" "$kw" 1024 ""                   "exp3_${tag}_native1024"
-  emit3 "$scheme" "$kw" 2048 ""                   "exp3_${tag}_paint2048"
+  emit3 "$scheme" "$kw" 2048 ""                   "exp3_${tag}_native2048"
 done

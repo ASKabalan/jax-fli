@@ -12,7 +12,7 @@ Everything runs in **float64 on GPU** at a small **16³** mesh, where the finite
 and a full accuracy + memory sweep is fast. Memory is the XLA scratch buffer (`temp_size_in_bytes`) of the
 compiled gradient; at 16³ it is a few MB, so the figures show the **scaling trend** — `reverse` flat,
 `checkpointed` growing with what it stores — not production magnitudes. The multi-GB production-scale trade at
-64³ is [Experiment 10](../10-memory-checkpoints/README.md).
+64³ is [Experiment 12](../12-scaling-gradient/README.md).
 
 `jax-fli` offers two adjoints:
 
@@ -27,7 +27,7 @@ from jax_fli import nbody
 result = nbody(
     cosmo, dx, p, solver=solver, nb_shells=4,
     adjoint="checkpointed",   # or "reverse" for the O(1)-memory backsolve, or None for forward-mode AD
-    checkpoints=10,           # checkpoints the outer scan over SAVED SHELLS   (memory control, see Exp 10)
+    checkpoints=10,           # checkpoints the outer scan over SAVED SHELLS   (memory control, see Exp 12)
     step_checkpoints=6,       # checkpoints the inner INTEGRATION-STEP loop within each shell
 )
 ```
@@ -50,7 +50,7 @@ We check two things about the two adjoints — `reverse` and `checkpointed`:
    - **number of saved lightcone shells** → [§ Number of saved shells](#number-of-saved-shells).
 
 The wall-time and peak-memory side of "cost" at **production resolution** is quantified in
-[Experiment 10](../10-memory-checkpoints/README.md); here we settle accuracy and show how the adjoint
+[Experiment 12](../12-scaling-gradient/README.md); here we settle accuracy and show how the adjoint
 *temp* (scratch) memory scales.
 
 ## Method
@@ -100,7 +100,7 @@ reverse/checkpointed gradient (`jax.jit(jax.grad(...)).lower(x).compile().memory
 `[n_stored, …, 3]` particle buffers), so `temp` tracks the memory that distinguishes the two adjoints. On GPU
 this buffer fully captures the FFT scratch (verified: `reverse` temp scales with the mesh, 6.95× from 16³→32³),
 but cuFFT is leaner in absolute terms than a CPU run — so the **absolute MB are backend-specific and small at
-16³** (single-digit MB). Read the figures for the *scaling trend*; Experiment 10 has the production magnitudes.
+16³** (single-digit MB). Read the figures for the *scaling trend*; Experiment 12 has the production magnitudes.
 
 **Configs.** **float64 on GPU**, **16³** mesh (`nside=16`, box 1000 Mpc/h). **Accuracy** (fig01):
 DoubleKickDrift + BullFrog, single spherical output and a 4-shell lightcone. **Memory** sweeps (fig02–04):
@@ -218,7 +218,7 @@ step-checkpoints (flat at 2.2 MB), **O(nb_shells)** in the saved shells with a t
 is the **lean** adjoint. `checkpointed` trades memory for recompute: it ties reverse at 1 checkpoint and
 climbs to ~9× (20.6 MB) by 50, the realistic regime. These 16³ numbers are a few MB and backend-specific (XLA
 temp on GPU; cuFFT is leaner than a CPU run) — read them for the **trend**. The multi-GB production-scale
-trade is [Experiment 10](../10-memory-checkpoints/README.md).
+trade is [Experiment 12](../12-scaling-gradient/README.md).
 
 ## How to run
 

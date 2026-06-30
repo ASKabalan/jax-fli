@@ -4,15 +4,17 @@ All functions are pure argparse — no jax_fli imports. Each builder owns **one*
 entry scripts compose only the groups they actually consume:
 
 * runtime               — ``add_common_args`` (``--enable-x64``)
-* distributed           — ``add_distributed_args`` (``--pdim`` / ``--nodes``)
+* distributed           — ``add_distributed_args`` (``--pdim`` / ``--nodes`` / ``--gpus-per-node``)
 * cosmology             — ``add_cosmo_args``
 * simulation geometry   — ``add_simulation_settings_args`` (box/mesh/halo/observer/seed)
                           + ``add_output_target_args`` (nside / density / flat-sky + painting)
 * integration           — ``add_integration_settings_args`` (physics, shell timing)
 * lensing               — ``add_lensing_args``
+* source                — ``add_source_args`` (local glob or HuggingFace repo; ``prefix=`` for a 2nd
+                          source, ``multi=`` for one-pattern-per-chain; used by born/dorian/infer/extract)
+* lensing post-proc     — ``add_lensing_postproc_args`` (output/nside/normalization for fli-born-rt / fli-dorian-rt)
 * priors / inference    — ``add_prior_args`` / ``add_infer_args``
 * forward-model         — ``add_forward_model_args`` (likelihood mask / sigma / lightcone)
-* summary statistics    — ``add_summary_stats_*`` (used by fli-summary-stats)
 
 ``--sim-mode`` is **not** here: it belongs to fli-simulate alone and is defined inline there.
 """
@@ -36,7 +38,7 @@ def add_common_args(p):
 
 
 def add_distributed_args(p):
-    """Process-grid dimensions (pdim) and node count — single-device defaults."""
+    """Process-grid dimensions (pdim), node count, and GPUs-per-node — single-device defaults."""
     g = p.add_argument_group("distributed")
     g.add_argument(
         "--pdim",
@@ -47,6 +49,14 @@ def add_distributed_args(p):
         help="Process mesh dimensions (default: 1 1 = single device)",
     )
     g.add_argument("--nodes", type=int, default=1, help="Number of nodes (default: 1)")
+    g.add_argument(
+        "--gpus-per-node",
+        type=int,
+        default=None,
+        dest="gpus_per_node",
+        help="GPUs per node (intra-node NVLink slice width) for the hybrid device mesh on "
+        "non-uniform interconnects. Default: None (falls back to $SLURM_GPUS_ON_NODE).",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -118,13 +128,6 @@ def add_simulation_settings_args(p):
         metavar=("OX", "OY", "OZ"),
         help="Observer position in box coordinates (default: 0.5 0.5 0.5)",
     )
-    g.add_argument(
-        "--apodization-scale-deg",
-        type=float,
-        default=1.0,
-        dest="apodization_scale_deg",
-        help="C2 apodization scale (deg) for the off-center observer visibility mask (default: 1.0)",
-    )
     g.add_argument("--seed", type=int, default=0, help="Random seed (default: 0)")
 
 
@@ -187,9 +190,8 @@ def add_output_target_args(p):
         "--pixel-window-deconvolution",
         action="store_true",
         dest="pixel_window_deconvolution",
-        help="Deconvolve the HEALPix painting window (a_lm level) from the spherical map after "
-        "painting; distinct from the force --deconvolution. Requires --scheme ngp|rbf_neighbor "
-        "(default: False)",
+        help="Deconvolve the HEALPix pixel window (a_lm level) from spherical maps after painting "
+        "(requires --scheme ngp or rbf_neighbor; default: False).",
     )
 
 
@@ -326,12 +328,91 @@ def add_lensing_args(p):
     g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
     g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
     g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
+
+
+def add_source_args(p, *, prefix="", multi=False):
+    """Generic catalog source: a local parquet glob OR a HuggingFace dataset repo.
+
+    Shared by the post-processing scripts (``fli-born-rt`` / ``fli-dorian-rt``) and the inference and
+    extraction entry points. The source is EITHER ``--input`` (a local file/glob) OR ``--repo`` +
+    ``--data-files`` (a glob of parquet files inside a HuggingFace dataset repo); ``--input`` and
+    ``--repo`` are mutually exclusive (enforced by argparse) and consumed by ``scripts._common``
+    (``_load_lightcone`` / ``_resolve_source`` / ``_resolve_chain_sources``).
+
+    ``prefix`` renames the flags so one parser can carry two independent sources: the default ``""``
+    yields ``--input`` / ``--repo`` / ``--data-files`` (dests ``input`` / ``repo`` / ``data_files``);
+    ``prefix="ic"`` yields ``--ic-input`` / ``--ic-repo`` / ``--ic-data-files`` (dests ``ic_input`` /
+    ``ic_repo`` / ``ic_data_files``), used by ``fli-infer`` for its optional initial-condition source
+    alongside the unprefixed observable source.
+
+    ``multi`` makes ``--input`` and ``--data-files`` accept several patterns (``nargs="+"``); each
+    pattern is a *separate* source — used by ``fli-extract`` where one pattern maps to one MCMC chain.
+    The single-source consumers (born / dorian / infer) keep ``multi=False``.
+
+    The Streamlit UI mirrors this builder in
+    ``jax-fli-result/app/components/source_form.py::render_source_form`` (same ``prefix`` / ``multi``).
+    """
+    dash = f"{prefix}-" if prefix else ""
+    under = f"{prefix}_" if prefix else ""
+    nargs = "+" if multi else None
+    repeat = " Repeatable — each pattern is one chain." if multi else ""
+
+    g = p.add_argument_group(f"{prefix} source".strip())
+    src = g.add_mutually_exclusive_group()
+    src.add_argument(
+        f"--{dash}input",
+        dest=f"{under}input",
+        default=None,
+        nargs=nargs,
+        metavar="FILE_OR_GLOB",
+        help=f"Local parquet file(s): a path or glob (e.g. 'results/*.parquet').{repeat} "
+        f"Mutually exclusive with --{dash}repo/--{dash}data-files.",
+    )
+    src.add_argument(
+        f"--{dash}repo",
+        dest=f"{under}repo",
+        default=None,
+        metavar="REPO_ID",
+        help=f"HuggingFace dataset repo id (e.g. ASKabalan/jax-fli-experiments). Use with --{dash}data-files.",
+    )
     g.add_argument(
-        "--lensing-output",
-        choices=["convergence", "shear", "reduced_shear"],
-        default="convergence",
-        dest="lensing_output",
-        help="Lensing observable emitted by the model: convergence, shear, or reduced_shear (default: convergence)",
+        f"--{dash}data-files",
+        dest=f"{under}data_files",
+        default=None,
+        nargs=nargs,
+        metavar="GLOB",
+        help=f"Glob of parquet files within --{dash}repo (e.g. '01-resolution/density/*.parquet').{repeat}",
+    )
+
+
+def add_lensing_postproc_args(p):
+    """Output + density→κ knobs for the post-processing lensing scripts (fli-born-rt / fli-dorian-rt).
+
+    ``--nside`` ud_grade-downsamples the stacked density lightcone before lensing; ``--normalization``
+    selects the density→δ overdensity normalization passed to ``jfli.born`` / ``jfli.raytrace``. The
+    density source itself is the separate ``add_source_args`` group.
+    """
+    g = p.add_argument_group("lensing post-processing")
+    g.add_argument(
+        "--output",
+        "-o",
+        default=".",
+        metavar="DIR",
+        help="Output directory (default: .)",
+    )
+    g.add_argument(
+        "--nside",
+        type=int,
+        default=None,
+        help="Downsample the density lightcone to this HEALPix nside before lensing (default: native).",
+    )
+    g.add_argument(
+        "--normalization",
+        choices=["global", "per_plane"],
+        default="global",
+        help="Overdensity normalization for the density→δ conversion, used by BOTH fli-born-rt and "
+        "fli-dorian-rt (passed as normalization= to jfli.born / jfli.raytrace): 'global' divides by one "
+        "mean across all shells, 'per_plane' normalizes each shell independently (default: global).",
     )
 
 
@@ -392,22 +473,28 @@ def add_prior_args(p):
     )
 
 
-def add_infer_args(p):
+def add_infer_args(p, *, with_initial_condition=True):
     """Sampling configuration shared between fli-infer and launcher/infer.
 
     Does NOT include path args (--observable, --path) — those differ between
     the entry script (full paths, required) and the launcher (constructed from
     --observable-dir / --output-dir / --chain-index).
+
+    ``with_initial_condition`` controls the single-path ``--initial-condition`` flag: it stays on for
+    ``fli-samples`` (the default), but ``fli-infer`` passes ``False`` and instead takes its optional IC
+    through a prefixed ``add_source_args(p, prefix="ic")`` source (local glob or HF repo), mirroring
+    its observable source.
     """
     g = p.add_argument_group("inference")
-    g.add_argument(
-        "--initial-condition",
-        type=str,
-        default=None,
-        metavar="PATH",
-        dest="initial_condition",
-        help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
-    )
+    if with_initial_condition:
+        g.add_argument(
+            "--initial-condition",
+            type=str,
+            default=None,
+            metavar="PATH",
+            dest="initial_condition",
+            help="Parquet Catalog with IC DensityField for initialization or fixing IC.",
+        )
     g.add_argument(
         "--init-cosmo",
         action="store_true",
@@ -431,9 +518,36 @@ def add_infer_args(p):
         help="Gradient strategy for NUTS (default: checkpointed)",
     )
     g.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")
-    g.add_argument("--sampler", choices=["NUTS", "HMC", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    g.add_argument("--sampler", choices=["NUTS", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
+    # NUTS tuning
     g.add_argument(
-        "--backend", choices=["numpyro", "blackjax"], default="numpyro", help="Sampling backend (default: numpyro)"
+        "--max-num-doublings",
+        type=int,
+        default=10,
+        dest="max_num_doublings",
+        help="NUTS leapfrog trajectory doubling depth (default: 10)",
+    )
+    g.add_argument(
+        "--target-accept",
+        type=float,
+        default=0.8,
+        dest="target_accept",
+        help="NUTS window-adaptation target acceptance rate (default: 0.8)",
+    )
+    # MCLMC tuning
+    g.add_argument(
+        "--mclmc-desired-energy-var",
+        type=float,
+        default=1e-3,
+        dest="mclmc_desired_energy_var",
+        help="MCLMC desired energy variance for L/step_size tuning (default: 1e-3)",
+    )
+    g.add_argument(
+        "--mclmc-init-step-size-scale",
+        type=float,
+        default=1e-4,
+        dest="mclmc_init_step_size_scale",
+        help="MCLMC initial step size = sqrt(total_dim) * scale (default: 1e-4)",
     )
     g.add_argument("--no-progress-bar", action="store_true", dest="no_progress_bar", help="Suppress tqdm progress bars")
 
@@ -443,10 +557,20 @@ def add_forward_model_args(p):
 
     These map onto Configurations fields used by the survey-mask-aware likelihood: a footprint
     mask, the inflated sigma on pixels outside it, and whether to record the lightcone.
-    ``--lensing-output`` lives in the lensing group and ``--apodization-scale-deg`` in the
-    simulation-settings group (both shared with fli-simulate).
+    ``--lensing-output`` (convergence vs shear) lives here because shear is a forward-model
+    concern only — the simulation / ray-tracing scripts (fli-simulate / fli-born-rt /
+    fli-dorian-rt) emit density or convergence, never shear. ``--apodization-scale-deg`` is in
+    the simulation-settings group (shared with fli-simulate).
     """
     g = p.add_argument_group("forward model")
+    g.add_argument(
+        "--lensing-output",
+        choices=["convergence", "shear", "reduced_shear"],
+        default="convergence",
+        dest="lensing_output",
+        help="Observable the forward model produces: convergence (kappa) or spin-2 shear / "
+        "reduced_shear via Kaiser-Squires (default: convergence).",
+    )
     g.add_argument(
         "--mask",
         type=str,
@@ -468,184 +592,17 @@ def add_forward_model_args(p):
         dest="log_lightcone",
         help="Record the lightcone as a deterministic site in the trace (default: False)",
     )
-
-
-# ---------------------------------------------------------------------------
-# Summary-statistics argument groups (used by fli-summary-stats)
-# ---------------------------------------------------------------------------
-
-
-def add_summary_stats_scan_args(p):
-    """Folder scan and filter arguments for fli-summary-stats."""
-    g = p.add_argument_group("scan")
-    g.add_argument(
-        "folder",
-        help="Folder to scan for parquet files",
-    )
-    g.add_argument(
-        "-r",
-        "--regex",
-        default=r".*\.parquet$",
-        dest="regex",
-        metavar="PATTERN",
-        help="Regex pattern to match parquet filenames (default: all .parquet files)",
-    )
-    g.add_argument(
-        "-R",
-        "--recursive",
-        action="store_true",
-        help="Recurse into subdirectories (default: False)",
-    )
-    g.add_argument(
-        "--force-regen",
-        action="store_true",
-        help="Force regeneration even if output files already exist (default: False)",
-    )
-    g.add_argument(
-        "--normalization",
-        choices=["global", "per_plane"],
-        default="global",
-        dest="normalization",
-        help="Overdensity normalization: 'global' divides by array mean, "
-        "'per_plane' normalises each shell independently (default: global)",
-    )
-
-
-def add_summary_stats_flat_args(p):
-    """Flat-sky angular-Cl arguments for fli-summary-stats.
-
-    Note: field_size and pixel_size are read from the stored field metadata.
-    """
-    g = p.add_argument_group("flat-sky spectra")
-    g.add_argument(
-        "--ell-edges",
-        type=float,
-        nargs="+",
-        default=None,
-        dest="ell_edges",
-        metavar="E",
-        help="Ell bin edges for flat-sky angular Cl (default: auto)",
-    )
-
-
-def add_summary_stats_spherical_args(p):
-    """Spherical (HEALPix) angular-Cl arguments for fli-summary-stats."""
-    g = p.add_argument_group("spherical spectra")
-    g.add_argument(
-        "--lmax",
-        type=int,
-        default=None,
-        help="Maximum multipole lmax for spherical Cl (default: 3*nside-1)",
-    )
-    g.add_argument(
-        "--method",
-        choices=["healpy", "jax"],
-        default="healpy",
-        help="SHT method for spherical Cl computation (default: healpy)",
-    )
-
-
-def add_summary_stats_density_args(p):
-    """3D density P(k) arguments for fli-summary-stats."""
-    g = p.add_argument_group("3D P(k)")
-    g.add_argument(
-        "--kedges",
-        type=float,
-        nargs="+",
-        default=None,
-        metavar="K",
-        help="k bin edges for P(k) (default: auto)",
-    )
-    g.add_argument(
-        "--kmax",
-        type=float,
-        default=None,
-        help="Maximum k for P(k) (default: Nyquist frequency based on mesh size)",
-    )
-    g.add_argument(
-        "--dk",
-        type=float,
-        default=None,
-        help="k bin width for P(k) (default: auto based on box size and kmax)",
-    )
-    g.add_argument(
-        "--multipoles",
-        type=int,
-        nargs="+",
-        default=[0],
-        metavar="L",
-        help="Multipole moments to compute (default: 0 = monopole only)",
-    )
-    g.add_argument(
-        "--los",
-        type=float,
-        nargs=3,
-        default=[0.0, 0.0, 1.0],
-        metavar=("LX", "LY", "LZ"),
-        help="Line-of-sight direction for multipole decomposition (default: 0 0 1)",
-    )
-    g.add_argument(
-        "--compensate-order",
-        type=str,
-        default=None,
-        choices=["ngp", "cic", "tsc", "pcs"],
-        dest="compensate_order",
-        help="Deconvolve the mass-assignment window of this order from P(k) (default: off)",
-    )
-    g.add_argument(
-        "--shotnoise-order",
-        type=str,
-        default=None,
-        choices=["ngp", "cic", "tsc", "pcs"],
-        dest="shotnoise_order",
-        help="Subtract aliased shot noise for this assignment order "
-        "(nbar = prod(mesh)/prod(box); auto-spectrum only) (default: off)",
-    )
-
-
-def add_summary_stats_mask_args(p):
-    """HEALPix mask + apodization for spherical summary statistics.
-
-    The mask restricts the observed footprint before computing spherical statistics.
-    ``infer_from_observer_position`` builds the apodized visibility mask from the field's stored
-    observer position (a no-op for a centered observer); ``des_y3`` loads the DES Y3 footprint;
-    ``none`` disables masking; or pass a path to a HEALPix map (.npy/.npz/.fits). The mask is
-    apodized with a C2 window of ``--apodization-scale-deg``.
-    """
-    g = p.add_argument_group("mask")
-    g.add_argument(
-        "--mask",
-        type=str,
-        default="infer_from_observer_position",
-        metavar="MASK",
-        help="Footprint for spherical stats: 'infer_from_observer_position' (default), 'none', "
-        "'des_y3', or a path to a HEALPix map (.npy/.npz/.fits).",
-    )
     g.add_argument(
         "--apodization-scale-deg",
         type=float,
         default=1.0,
         dest="apodization_scale_deg",
-        help="C2 apodization scale (deg) applied to the mask (default: 1.0)",
+        help="C2 apodization scale (deg) for the off-center observer visibility mask (default: 1.0)",
     )
     g.add_argument(
-        "--observer-position",
-        type=float,
-        nargs=3,
-        default=None,
-        metavar=("OX", "OY", "OZ"),
-        dest="observer_position",
-        help="Override observer position (box coords) for the inferred mask (default: read from the field metadata).",
-    )
-
-
-def add_summary_stats_common_args(p):
-    """Common arguments shared across all fli-summary-stats field types."""
-    g = p.add_argument_group("common")
-    g.add_argument(
-        "--batch-size",
-        type=int,
-        default=None,
-        dest="batch_size",
-        help="Batch size for jax.lax.map (default: None = no batching)",
+        "--map2alm-method",
+        choices=["jax", "jax_cuda"],
+        default="jax",
+        dest="map2alm_method",
+        help="Method for map to alm conversion (default: jax)",
     )

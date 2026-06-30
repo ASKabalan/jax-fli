@@ -63,7 +63,6 @@ def _build_painting(args: Namespace):
                 paint_nside=args.paint_nside,
                 kernel_width_arcmin=getattr(args, "kernel_width_arcmin", None),
                 kernel_width_pixels=getattr(args, "kernel_width_pixels", None),
-                pixel_window_deconvolution=getattr(args, "pixel_window_deconvolution", False),
             ),
             nside,
             None,
@@ -169,14 +168,37 @@ def _build_solver(args: Namespace, painting):
 
 
 def _save_result(result, cosmo, args: Namespace, output: str | None = None) -> None:
-    """Save result to parquet (process 0 only)."""
+    """Save result to parquet (process 0 only).
+
+    With ``--shells-per-file N`` (N >= 1) on a batched, multi-shell result, ``out_path`` is treated
+    as a *directory* and the lightcone is streamed N shells at a time into ``shell_{i:04d}.parquet``,
+    so only N shells are all-gathered to host RAM at once. This avoids the host OOM of gathering the
+    whole nside-2048 lightcone (e.g. 46 shells x ~402 MB at float64) onto every task. The per-chunk
+    write reuses the field ``__getitem__`` slice (array + per-shell metadata) and the loop runs in
+    lockstep on every rank, so each ``to_parquet`` stays a synchronized collective.
+
+    Otherwise (flag unset, or a non-batched single field), the whole result is written to one parquet.
+    """
     out_path = output if output is not None else args.output
-    parent_folder = os.path.dirname(out_path)
-    if parent_folder:
-        os.makedirs(parent_folder, exist_ok=True)
     name = getattr(args, "name", None)
     if name is not None:
         result = result.replace(name=name)
+
+    shells_per_file = int(getattr(args, "shells_per_file", 0) or 0)
+    if shells_per_file >= 1 and result.is_batched():
+        os.makedirs(out_path, exist_ok=True)
+        n_shells = int(result.array.shape[0])
+        for i in range(0, n_shells, shells_per_file):
+            chunk = result[i : i + shells_per_file]
+            chunk_path = os.path.join(out_path, f"shell_{i:04d}.parquet")
+            jfli.io.Catalog(field=chunk, cosmology=cosmo).to_parquet(chunk_path)
+        if jax.process_index() == 0:
+            print(f"Saved {n_shells} shells (chunks of {shells_per_file}) to {out_path}/")
+        return
+
+    parent_folder = os.path.dirname(out_path)
+    if parent_folder:
+        os.makedirs(parent_folder, exist_ok=True)
     catalog = jfli.io.Catalog(field=result, cosmology=cosmo)
     catalog.to_parquet(out_path)
     print(f"Saved to {out_path}")
@@ -237,6 +259,16 @@ def parser() -> ArgumentParser:
         metavar="N",
         help="Number of timed iterations for --perf (default: 5)",
     )
+    p.add_argument(
+        "--shells-per-file",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Stream a multi-shell lightcone to disk N shells per parquet file (default: 0 = one "
+        "single file). When N>=1, --output is treated as a directory and one shell_NNNN.parquet is "
+        "written per N-shell chunk, gathering only N shells to host RAM at a time (avoids OOM at "
+        "large nside / many shells).",
+    )
 
     return p
 
@@ -273,16 +305,6 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
     if interp == "onion" and nside is None:
         parser.error("--interp onion requires --nside")
 
-    # --pixel-window-deconvolution: spherical only, needs a closed-form window scheme
-    if getattr(args, "pixel_window_deconvolution", False):
-        if nside is None:
-            parser.error("--pixel-window-deconvolution requires --nside (spherical painting)")
-        if args.scheme not in ("ngp", "rbf_neighbor"):
-            parser.error(
-                "--pixel-window-deconvolution requires --scheme ngp or rbf_neighbor "
-                "(bilinear has no closed-form HEALPix pixel window)"
-            )
-
     # --grad: valid spec, pm/lensing only, and reverse adjoint requires uniform a-stepping
     try:
         compute_grad, grad_adjoint, _ = _parse_grad(getattr(args, "grad", "none"))
@@ -294,17 +316,12 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
         if grad_adjoint == "reverse":
             if getattr(args, "time_stepping", "a") != "a":
                 parser.error("--grad reverse requires --time-stepping a (the reverse adjoint assumes uniform a-steps)")
-            # The reverse (reversible backsolve) adjoint is validated for saved-snapshot
-            # lightcones (Exp 09: reverse == checkpointed == finite differences to machine
-            # precision through the volumetric/spherical snapshot path) after the off-grid
-            # boundary-step fix in pm/integrate.py (_boundary_t_prev). It is NOT yet validated
-            # for the drift-on-lightcone interpolators (DriftInterp/OnionTiler/TelephotoInterp),
-            # whose paint/rewind reversibility is untested — use --grad checkpoint with those.
-            if getattr(args, "interp", "none") != "none":
+            if getattr(args, "interp", "none") in ("onion", "telephoto"):
                 parser.error(
-                    "--grad reverse is not yet validated with --interp != none (drift-on-lightcone "
-                    "interpolators). Use --interp none (saved snapshots / --nb-shells / --ts are "
-                    "supported) or --grad checkpoint / checkpointed_<N>."
+                    "--grad reverse is not yet validated with --interp onion/telephoto (the onion / "
+                    "telephoto tilers). Use --interp none — optionally with --drift-on-lightcone, which "
+                    "keeps interp='none' (a DriftInterp) and leaves the reverse adjoint valid — or "
+                    "--grad checkpoint / checkpointed_<N>."
                 )
 
 
@@ -377,7 +394,6 @@ def run_lpt(
         "dealiased",
         "exact_growth",
         "n_integrate",
-        "lensing_output",
         "adjoint",
         "checkpoints",
         "compute_grad",
@@ -403,8 +419,6 @@ def run_simulations(
     min_z=0.01,
     max_z=1.5,
     n_integrate=32,
-    lensing_output="convergence",
-    visibility_mask=None,
     adjoint="checkpointed",
     checkpoints=None,
     compute_grad=False,
@@ -443,18 +457,10 @@ def run_simulations(
         if sim_type == "pm":
             return lightcone
 
-        # Run lensing (Born). The lensing-output switch and the apodized visibility-mask multiply
-        # live INSIDE the jitted forward model so the Kaiser-Squires transform is compiled and
-        # profiled with the simulation under --perf, identical to the full-field forward model:
-        # for shear / reduced_shear the kappa map is apodized before KS; convergence is untouched.
+        # Run lensing (Born) -> convergence. Shear is a forward-model concern only (fli-infer);
+        # fli-simulate emits density (pm) or convergence (born), never shear.
         if sim_type == "born":
-            kappa = jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
-            if lensing_output == "convergence":
-                return kappa
-            ks_input = kappa
-            if visibility_mask is not None:
-                ks_input = kappa.replace(array=kappa.array * visibility_mask)
-            return ks_input.get_shear(reduced_shear=lensing_output == "reduced_shear")
+            return jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
         raise ValueError(f"Unknown sim_type: {sim_type}")
 
     if not compute_grad:
@@ -524,14 +530,6 @@ def main() -> None:
     nb_shells = args.nb_shells
     shell_spacing = getattr(args, "shell_spacing", "comoving")
 
-    # Apodized observer visibility mask (spherical + off-center observer; None otherwise). Applied
-    # to the kappa map before Kaiser-Squires inside run_simulations, identical to the forward model.
-    visibility_mask = None
-    if args.nside is not None:
-        visibility_mask = jfli.data.build_observer_visibility_mask(
-            tuple(args.observer_position), args.paint_nside or args.nside, args.apodization_scale_deg
-        )
-
     if sim_type == "lpt":
         # LPT mode: pass geometry params directly to lpt()
         # For lpt: if nb_shells is set, don't pass ts (they're mutually exclusive)
@@ -572,8 +570,6 @@ def main() -> None:
             "min_z": getattr(args, "min_z", 0.01),
             "max_z": getattr(args, "max_z", 1.5),
             "n_integrate": getattr(args, "n_integrate", 32),
-            "lensing_output": getattr(args, "lensing_output", "convergence"),
-            "visibility_mask": visibility_mask,
             "adjoint": grad_adjoint,
             "checkpoints": grad_checkpoints,
             "compute_grad": compute_grad,
@@ -592,7 +588,7 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 21, 22, 23)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)
@@ -624,9 +620,12 @@ def main() -> None:
         output_dir = f"{os.path.dirname(args.output)}/" if args.output else ""
         report_file = f"{output_dir}/perf_{sim_type}.csv"
         nb_steps = getattr(args, "nb_steps", "")
-        func_name = f"{sim_type}{nb_steps}"
+        name = getattr(args, "name", "")
+        func_name = f"{sim_type}{nb_steps}_{name}"
         timer.report(report_file, function=func_name, extra_info=extra_info, **metadata)
         print(f"Performance report saved to {report_file}")
+        # Keep the last timed result and fall through to the save below, so one --perf run yields BOTH
+        # the perf CSV and the parquet output(s) (per-shell when --shells-per-file is set).
     else:
         result = jax.block_until_ready(run_fn(cosmo, initial_field, **run_kwargs))
 

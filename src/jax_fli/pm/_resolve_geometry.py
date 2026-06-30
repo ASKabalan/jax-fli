@@ -22,10 +22,35 @@ def _generate_edges_comoving(n, r_max):
     return jnp.linspace(0.0, r_max, n + 1)
 
 
-def _generate_edges_equal_vol(n, r_max):
-    """Edges uniform in volume (r^3)."""
-    r3_edges = jnp.linspace(0.0, r_max**3, n + 1)
-    return r3_edges ** (1.0 / 3.0)
+def _generate_edges_equal_vol(n, r_max, min_width=0.0):
+    """Edges uniform in volume (r^3), with the outer shells floored to ``min_width``.
+
+    Pure equal-volume places edges at ``r_i = r_max (i/n)**(1/3)``, so the
+    outermost shells become arbitrarily thin.  When ``min_width`` binds, the
+    outer shells are widened to ``min_width`` (greedily, from the far edge
+    inward) and the remaining inner volume is re-partitioned equal-volume over
+    the shells that are left.  Once an outer shell's natural width clears
+    ``min_width``, every (fatter) inner shell clears it too, so the rest are laid
+    down as one pure equal-volume partition.  With ``min_width`` below the natural
+    outer width this is a no-op and reproduces the pure equal-volume edges.
+    """
+    # Count how many outer shells must be floored, peeling from the far edge.
+    n_floor = 0
+    remaining = float(r_max)
+    while n_floor < n:
+        k = n - n_floor  # shells not yet placed
+        natural = remaining * (1.0 - ((k - 1) / k) ** (1.0 / 3.0))
+        if natural >= min_width:
+            break  # remaining shells are all >= natural >= min_width
+        n_floor += 1
+        remaining -= min_width
+
+    # inner (n - n_floor) shells: equal-volume over [0, remaining];
+    # outer n_floor shells: uniform min_width out to r_max.
+    n_inner = n - n_floor
+    inner_edges = remaining * (jnp.arange(n_inner + 1) / n_inner) ** (1.0 / 3.0) if n_inner > 0 else jnp.zeros(1)
+    outer_edges = remaining + min_width * jnp.arange(1, n_floor + 1)
+    return jnp.concatenate([inner_edges, outer_edges])
 
 
 def _generate_edges_a(cosmo, n, r_max):
@@ -72,10 +97,13 @@ def _check_min_width_static(shell_spacing, n, r_max, min_width):
                 f"Reduce the number of shells/steps or lower min_width."
             )
     elif shell_spacing == "equal_vol":
-        outer_width = r_max * (1.0 - ((n - 1) / n) ** (1.0 / 3.0))
-        if outer_width < min_width - 1e-10:
+        # min_width reshapes the outer shells (hybrid equal-volume), so the only
+        # failure is an outright-infeasible request: N shells of >= min_width
+        # cannot tile [0, r_max].
+        if n * min_width > r_max + 1e-10:
             raise ValueError(
-                f"Minimum shell width {outer_width:.2f} Mpc/h is below min_width={min_width} Mpc/h. "
+                f"Cannot fit {n} equal_vol shells of width >= min_width={min_width} Mpc/h within "
+                f"r_max={r_max:.2f} Mpc/h (need {n * min_width:.2f} Mpc/h). "
                 f"Reduce the number of shells/steps or lower min_width."
             )
 
@@ -411,7 +439,7 @@ def _resolve_nb_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, min_wi
         r_edges = _generate_edges_comoving(nb_shells, max_box_comoving)
     elif shell_spacing == "equal_vol":
         _check_min_width_static("equal_vol", nb_shells, max_box_comoving, min_width)
-        r_edges = _generate_edges_equal_vol(nb_shells, max_box_comoving)
+        r_edges = _generate_edges_equal_vol(nb_shells, max_box_comoving, min_width)
     elif shell_spacing == "a":
         r_edges = _generate_edges_a(cosmo, nb_shells, max_box_comoving)
     elif shell_spacing == "growth":

@@ -24,7 +24,9 @@ def get_desy3_mask(nside: int = 2048) -> np.ndarray:
     return hp.ud_grade(mask_2048 * 1.0, nside).astype(np.uint8)
 
 
-def build_observer_visibility_mask(observer_position, nside, apodization_scale_deg: float = 1.0):
+def build_observer_visibility_mask(
+    observer_position, nside, apodization_scale_deg: float | None = 1.0, supersample: int = 4
+):
     """Apodized observer visibility footprint at ``nside``, or scalar ``1`` for a center observer.
 
     The footprint is the set of sky directions whose ray from ``observer_position`` (normalized
@@ -34,6 +36,10 @@ def build_observer_visibility_mask(observer_position, nside, apodization_scale_d
     returns the scalar ``1`` — an identity multiplier that JIT eliminates, so callers can multiply
     unconditionally without a None check. Shared by the full-field forward model and
     ``fli-simulate`` so the two build the *same* mask.
+
+    ``apodization_scale_deg`` of ``None`` (or any non-positive value) returns the raw binary
+    ``{0, 1}`` footprint instead of an apodized window — used to average ρ̄ over visible pixels
+    when forming a partial-sky overdensity.
     """
     if tuple(float(x) for x in observer_position) == _OBSERVER_CENTER:
         return 1
@@ -45,5 +51,13 @@ def build_observer_visibility_mask(observer_position, nside, apodization_scale_d
 
     from .apodize import apodize
 
-    binary = spherical_visibility_mask(nside, jnp.asarray(observer_position), box_size=1.0)
+    # supersample renders the footprint at nside*supersample then averages down. The default 4
+    # builds an nside*4 grid (8192 for nside 2048 -> ~0.8B pixels -> OOM); callers that only need
+    # the footprint (e.g. the overdensity-mean mask) pass supersample=1 to stay memory-bounded.
+    coverage = spherical_visibility_mask(
+        nside, jnp.asarray(observer_position), box_size=1.0, threshold=0.1, supersample=supersample
+    )
+    binary = (coverage > 0).astype(jnp.uint8)  # keep the rim; a uint8 cast would truncate to coverage==1.0
+    if apodization_scale_deg is None or apodization_scale_deg <= 0:
+        return binary
     return apodize(binary, apodization_scale_deg)

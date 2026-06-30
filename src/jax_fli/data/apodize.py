@@ -17,11 +17,12 @@ __all__ = ["apodize"]
 
 
 def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
-    """Apodize a binary HEALPix mask with a NaMaster-style C2 window (pure JAX).
+    """Apodize a binary HEALPix mask with a NaMaster-style C1/C2 window (pure JAX).
 
-    Reimplements NaMaster's **C2** apodization, ``f = (1 - cos(pi x)) / 2`` with
+    Reimplements NaMaster's **C1/C2** apodization with
     ``x = sqrt((1 - cos d) / (1 - cos theta*))`` where ``d`` is the great-circle distance to the
-    nearest masked pixel (capped at ``theta* = aposize_deg``). The distance is obtained by a
+    nearest masked pixel (capped at ``theta* = aposize_deg``): C2 is ``f = (1 - cos(pi x)) / 2``,
+    C1 is ``f = x - sin(2 pi x) / (2 pi)``. The distance is obtained by a
     HEALPix **grassfire** (iterated ``min`` over true neighbour separations), so the whole thing
     is ``jnp`` + ``lax.scan`` and therefore **differentiable** w.r.t. the input mask.
 
@@ -33,7 +34,9 @@ def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
         Apodization scale ``theta*`` in degrees. Treated as a static config (sets the number of
         grassfire iterations), so keep it concrete under ``jit``.
     apotype : str, default="C2"
-        Apodization window. Only ``"C2"`` is implemented.
+        Apodization window: ``"C2"`` (``f = (1 - cos(pi x)) / 2``) or ``"C1"``
+        (``f = x - sin(2 pi x) / (2 pi)``). Both vanish with their first derivative at the
+        boundary (NaMaster parity), which spin-2 E/B purification requires.
 
     Returns
     -------
@@ -47,8 +50,8 @@ def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
     with ``npix`` (~10 GB at ``nside=2048`` in float64); apodize at a coarser ``nside`` if memory is
     tight.
     """
-    if apotype != "C2":
-        raise NotImplementedError(f"apotype={apotype!r} not implemented; only 'C2' is supported.")
+    if apotype not in ("C1", "C2"):
+        raise NotImplementedError(f"apotype={apotype!r} not implemented; only 'C1' and 'C2' are supported.")
 
     binary = jnp.asarray(binary_mask)
     if binary.ndim != 1:
@@ -76,4 +79,5 @@ def apodize(binary_mask, aposize_deg: float = 1.0, *, apotype: str = "C2"):
     dist, _ = jax.lax.scan(lambda d, _: (jnp.minimum(d, (d[nb] + sep).min(0)), None), dist, None, length=niter)
     d = jnp.clip(dist, 0.0, theta_star)
     x = jnp.clip(jnp.sqrt((1 - jnp.cos(d)) / (1 - jnp.cos(theta_star))), 0.0, 1.0)
-    return jnp.where(binary <= 0, 0.0, (1 - jnp.cos(jnp.pi * x)) / 2)
+    window = x - jnp.sin(2 * jnp.pi * x) / (2 * jnp.pi) if apotype == "C1" else (1 - jnp.cos(jnp.pi * x)) / 2
+    return jnp.where(binary <= 0, 0.0, window)

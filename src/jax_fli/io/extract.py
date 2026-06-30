@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
@@ -16,7 +17,7 @@ from jax.experimental.multihost_utils import process_allgather
 from ..fields import DensityField
 from .catalog import Catalog
 
-__all__ = ["extract_catalog", "requires_datasets", "CatalogExtract"]
+__all__ = ["extract_catalog", "extract_cosmo_catalog", "requires_datasets", "CatalogExtract"]
 
 _Param = ParamSpec("_Param")
 _Return = TypeVar("_Return")
@@ -460,9 +461,8 @@ class CatalogExtract(eqx.Module):
 def extract_catalog(
     set_name: str,
     cosmo_keys: list[str] | tuple[str, ...],
-    path: str | None = None,
-    repo_id: str | None = None,
-    config: str | list[str] | None = None,
+    patterns: list[str] | tuple[str, ...] | None = None,
+    repo: str | None = None,
     truth: Catalog | None = None,
     field_statistic: bool = False,
     power_statistic: bool = False,
@@ -481,16 +481,17 @@ def extract_catalog(
         Cosmological parameter names to collect (e.g. ``["Omega_c", "sigma8"]``).
     set_name : str
         Name for the returned :class:`CatalogExtract`.
-    path : str, optional
-        Root directory.  Must contain either ``samples/`` (single chain) or
-        ``chain_N/samples/`` subdirectories (multi-chain).
-        Mutually exclusive with ``repo_id``.
-    repo_id : str, optional
-        HuggingFace Hub repository ID (e.g. ``"user/repo"``).
-        Mutually exclusive with ``path``.
-    config : str or list of str, optional
-        HF Hub dataset config name(s), one per chain.  A single string is
-        auto-wrapped into a one-element list.  Required when ``repo_id`` is set.
+    patterns : list of str
+        Per-chain parquet sources — **one pattern == one MCMC chain**, each streamed
+        and accumulated independently (a single pooled glob would mix chains and
+        compute a different, wrong statistic). A local pattern is a parquet glob or a
+        root directory holding ``samples/`` (single chain) or ``chain_N/samples/``
+        subdirectories (auto-expanded via :func:`_detect_chains`). With ``repo``, each
+        pattern is a glob of parquet files inside the HF dataset repo.
+    repo : str, optional
+        HuggingFace Hub dataset repository ID (e.g. ``"user/repo"``). When set, each
+        entry of ``patterns`` is resolved as ``data_files`` inside this repo; when
+        ``None`` (default) the patterns are local globs/directories.
     truth : Catalog, optional
         Truth Catalog. ``truth.field[0]`` is used as the reference IC for
         transfer/coherence spectra; ``truth.cosmology[0]`` is stored in
@@ -511,8 +512,8 @@ def extract_catalog(
         Typed container with attributes ``cosmo``, ``truth_cosmo``, ``true_ic``,
         ``mean_field``, ``std_field``, and ``power_spectra``.
     """
-    if (path is None) == (repo_id is None):
-        raise ValueError("Exactly one of 'path' or 'repo_id' must be provided.")
+    if not patterns:
+        raise ValueError("'patterns' must be a non-empty list of per-chain parquet sources.")
     if power_statistic and truth is None:
         raise ValueError("power_statistic=True requires 'truth' to be provided.")
 
@@ -526,24 +527,33 @@ def extract_catalog(
         _cosmo_param_keys = ["Omega_c", "Omega_b", "h", "n_s", "sigma8", "w0", "wa", "Omega_k", "Omega_nu"]
         truth_cosmo = {k: float(getattr(truth.cosmology[0], k)) for k in _cosmo_param_keys}
 
-    # --- Build per-chain streaming datasets ---
-    if repo_id is not None:
-        if config is None:
-            raise ValueError("'config' must be provided when 'repo_id' is set.")
-        configs: list[str] = [config] if isinstance(config, str) else list(config)
-        n_chains = len(configs)
-        chain_streams = [
-            hf_datasets.load_dataset(repo_id, name=cfg, streaming=True, split="train").with_format("numpy")
-            for cfg in configs
-        ]
-    else:
-        assert path is not None
-        chain_globs = _detect_chains(Path(path))
-        n_chains = len(chain_globs)
+    # --- Build per-chain streaming datasets: ONE pattern == ONE chain ---
+    # Each chain is streamed and accumulated independently; patterns must never be pooled into a
+    # single load_dataset call (that would mix chains and corrupt the per-chain statistics).
+    if repo is not None:
+        # Resolve the pre-warmed HF cache offline (never hits the network; raises if the cache is
+        # cold), then read each chain as local parquet so it works with no internet.
+        from huggingface_hub import snapshot_download
+
+        root = snapshot_download(repo, repo_type="dataset", local_files_only=True)
+        chain_globs = [f"{root}/{glob}" for glob in patterns]
         chain_streams = [
             hf_datasets.load_dataset("parquet", data_files=glob, split="train", streaming=True).with_format("numpy")
             for glob in chain_globs
         ]
+    else:
+        # Local: a pattern is a parquet glob, or a directory expanded to per-chain globs.
+        chain_globs = []
+        for pat in patterns:
+            if os.path.isdir(pat):
+                chain_globs.extend(_detect_chains(Path(pat)))
+            else:
+                chain_globs.append(pat)
+        chain_streams = [
+            hf_datasets.load_dataset("parquet", data_files=glob, split="train", streaming=True).with_format("numpy")
+            for glob in chain_globs
+        ]
+    n_chains = len(chain_streams)
 
     cosmo_lists: dict[str, list[list[float]]] = {key: [[] for _ in range(n_chains)] for key in cosmo_keys}
     chain_field_stats: list[_RunningStats | None] = [None] * n_chains
@@ -626,3 +636,76 @@ def extract_catalog(
         std_field=result_std_field,
         power_spectra=result_power_spectra,
     )
+
+
+def extract_cosmo_catalog(
+    set_name: str,
+    cosmo_keys: list[str] | tuple[str, ...],
+    patterns: list[str] | tuple[str, ...],
+    truth: Any = None,
+) -> CatalogExtract:
+    """Build a :class:`CatalogExtract` from cosmo-only ``npz`` outputs (power-spectrum / 2PCF runs).
+
+    The power-spectrum model has no initial-condition field, so :func:`sample2catalog` saves the
+    sampled cosmology as ``cosmo_{batch}.npz`` rather than a parquet Catalog (which
+    :func:`extract_catalog` reads). This loader collects those files into the
+    ``(n_chains, n_samples)`` cosmo arrays consumed by :func:`~jax_fli.infer.analyze` and
+    :func:`~jax_fli.infer.plot_posterior`.
+
+    Parameters
+    ----------
+    set_name : str
+        Name for the returned :class:`CatalogExtract`.
+    cosmo_keys : list or tuple of str
+        Cosmological parameter names to collect (e.g. ``["Omega_c", "sigma8"]``).
+    patterns : list or tuple of str
+        Per-chain sources — **one entry == one chain**. Each entry is a directory searched
+        recursively for ``cosmo_*.npz`` (batches concatenated in index order), or a direct
+        glob of such files. Chains must have equal sample counts.
+    truth : jax_cosmo.Cosmology, optional
+        Truth cosmology; its standard parameters are stored (flattened) in
+        ``CatalogExtract.truth_cosmo`` for posterior truth markers.
+
+    Returns
+    -------
+    CatalogExtract
+        With ``cosmo[key]`` of shape ``(n_chains, n_samples)``; field/power attributes are ``None``.
+    """
+    import glob as _glob
+
+    if not patterns:
+        raise ValueError("'patterns' must be a non-empty list of per-chain cosmo-npz sources.")
+
+    def _batch_index(p: str):
+        stem = os.path.splitext(os.path.basename(p))[0]
+        digits = stem.split("_")[-1]
+        return int(digits) if digits.isdigit() else stem
+
+    cosmo_lists: dict[str, list[list[float]]] = {key: [] for key in cosmo_keys}
+    for pat in patterns:
+        files = (
+            _glob.glob(os.path.join(pat, "**", "cosmo_*.npz"), recursive=True)
+            if os.path.isdir(pat)
+            else _glob.glob(pat)
+        )
+        if not files:
+            raise FileNotFoundError(f"No cosmo_*.npz files found for chain pattern '{pat}'.")
+        files = sorted(files, key=_batch_index)
+        per_key: dict[str, list] = {key: [] for key in cosmo_keys}
+        for f in files:
+            with np.load(f) as data:
+                for key in cosmo_keys:
+                    if key not in data:
+                        raise KeyError(f"'{key}' not found in {f}; available keys: {list(data.keys())}")
+                    per_key[key].append(np.atleast_1d(np.asarray(data[key], dtype=np.float64)))
+        for key in cosmo_keys:
+            cosmo_lists[key].append(np.concatenate(per_key[key]).tolist())
+
+    cosmo_dict = {key: jnp.asarray(cosmo_lists[key]) for key in cosmo_keys}
+
+    truth_cosmo = None
+    if truth is not None:
+        _cosmo_param_keys = ["Omega_c", "Omega_b", "h", "n_s", "sigma8", "w0", "wa", "Omega_k", "Omega_nu"]
+        truth_cosmo = {k: float(getattr(truth, k)) for k in _cosmo_param_keys if hasattr(truth, k)}
+
+    return CatalogExtract(name=set_name, cosmo=cosmo_dict, truth_cosmo=truth_cosmo)

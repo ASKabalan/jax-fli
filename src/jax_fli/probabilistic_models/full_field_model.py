@@ -105,8 +105,8 @@ def full_field_probmodel(
 
         # Optional survey footprint mask (e.g. DES Y3) at the model nside: inflate the
         # per-pixel sigma on unobserved pixels (mask == 0) so they don't constrain the fit.
-        # (Sites stay named ``kappa_*`` for sample-extraction compatibility even when the
-        # observable is shear / reduced shear.)
+        # Sites are named ``observable_*`` because the observable may be convergence, shear,
+        # or reduced shear (selected by ``config.lensing_output``).
         mask = None if config.mask is None else jnp.asarray(config.mask)
 
         observed_maps = []
@@ -120,9 +120,11 @@ def full_field_probmodel(
                     # spherical shear is (2, npix) per bin: insert the spin-2 component axis
                     m = mask[None, :]
                 scale = jnp.where(m > 0, sigma_obs, config.sigma_unobserved)
-            observed_maps.append(numpyro.sample(f"kappa_{idx}", DistributedNormal(loc=observable_map, scale=scale)))
+            observed_maps.append(
+                numpyro.sample(f"observable_{idx}", DistributedNormal(loc=observable_map, scale=scale))
+            )
 
-        numpyro.deterministic("kappa_meta_data", observable.to_metadata())
+        numpyro.deterministic("observable_meta_data", observable.to_metadata())
 
         return observed_maps
 

@@ -1,62 +1,57 @@
-# Experiment 11 — Performance: throughput, strong & weak scaling ⚠️ WIP
+# Experiment 11 — PM performance: strong & weak scaling ⚠️ WIP
 
-**Goal.** Characterize the distributed performance of the forward model: (a) the per-stage cost
-breakdown, (b) **strong scaling** (fixed grid, more GPUs → speedup + parallel efficiency), and
-(c) **weak scaling** (fixed work per GPU → flat wall-time = ideal). Every run captures **wall-time
-*and* per-device memory** from `fli-simulate --perf` (XLA `memory_analysis`: argument / output /
-temp-scratch bytes), and is run in **both float32 and float64** — the precision/perf/memory trade-off
-is the point.
+**Goal.** Characterize the distributed performance of the **PM forward model** (N-body + lightcone
+painting) under a **slab `(N, 1)`** decomposition: **strong scaling** (fixed grid, more GPUs → speedup +
+parallel efficiency) and **weak scaling** (fixed work per GPU → flat wall-time = ideal). Every run captures
+**wall-time *and* per-device memory** from `fli-simulate --perf` (XLA `memory_analysis`: argument / output /
+temp-scratch bytes), in **both float32 and float64** — the precision/perf/memory trade-off is the point.
+Only the PM stage is timed here (the LPT-only and lensing-only stage breakdown is dropped); correctness and
+the gradient cost live in [Exp 12](../12-scaling-gradient/README.md).
 
 **Status.** ⚠️ Not yet run.
 
 *Fixed:* `--sim-mode pm`, BullFrog (`bf`), `--nb-steps 50`, `--paint-order tsc --deconvolution`,
-`--scheme ngp`, `--perf --iterations 5`, box `2000³` Mpc/h, `--seed 0`. GPUs = nodes×4,
-balanced-pencil `--pdim`. **float64 ceiling ≈ 645³/GPU** on 80 GB (production 4096³/256-GPU run);
-each strong-scaling grid starts at the smallest GPU count that fits in double. Each config below runs
-**×2** (float32 + float64).
+`--scheme ngp`, lightcone `--nside 1024 --nb-shells 10`, `--perf --iterations 5`, box `2000³` Mpc/h,
+`--seed 0`. **Slab `(N, 1)`**: `px = #GPUs`, `py = 1`, `nodes = GPUs/4`, local mesh `(M/px, M, M)`.
 
-## (a) Per-stage cost — 3 configs (1024³, 4 GPU `--pdim 2 2`)
+### Slab constraints (which rungs actually run)
 
-| # | sim-mode |
-|--:|------|
-| 1 | `lpt` |
-| 2 | `pm --nside 512 --nb-shells 10` |
-| 3 | `lensing --nside 512 --nb-shells 10 --nz-shear s3` |
+Two hard limits prune the nominal "4 → 512 GPUs" envelope per `(precision, mesh)`:
 
-## (b) Strong scaling — fixed grid, grow GPUs
+1. **Even halo.** The ghost zone `halo = int((M/px)·0.5)` must be **even** — an odd halo crashes jaxpm
+   `slice_unpad`. At `halo_multiplier 0.5` that means `(M/px) % 4 == 0`, so a **1024³ slab tops out at 256
+   GPUs** (512 → local 2, halo 1, skipped).
+2. **Per-GPU memory ceiling.** Each ladder starts at the smallest GPU count whose local volume fits:
+   **≈512³ cells/GPU in float64** (645³ OOMs, see [Exp 01](../01-resolution-convergence/README.md)),
+   **≈2·512³ in float32**. Below-ceiling rungs are skipped and logged by `run.sh`.
 
-| # | grid | GPUs | nodes×4 | `--pdim` | f64 per-GPU |
-|--:|------|--:|--:|------|------|
-| 4 | 1024³ | 4   | 1  | `2 2`   | 645³ (ceiling) |
-| 5 | 1024³ | 8   | 2  | `2 4`   | 512³ |
-| 6 | 1024³ | 16  | 4  | `4 4`   | 406³ |
-| 7 | 1024³ | 32  | 8  | `4 8`   | 323³ |
-| 8 | 1024³ | 64  | 16 | `8 8`   | 256³ |
-| 9 | 2048³ | 32  | 8  | `4 8`   | 645³ (ceiling) |
-| 10 | 2048³ | 64  | 16 | `8 8`   | 512³ |
-| 11 | 2048³ | 128 | 32 | `8 16`  | 406³ |
-| 12 | 2048³ | 256 | 64 | `16 16` | 323³ |
+## (a) Strong scaling — fixed grid, grow GPUs (slab `N × 1`)
 
-## (c) Weak scaling — fixed 512³ per GPU, `global = (512·PX, 512·PY, 512)`
+| grid | float32 GPUs | float64 GPUs |
+|------|------|------|
+| 1024³ | 4, 8, 16, 32, 64, 128, 256 | 8, 16, 32, 64, 128, 256 |
+| 2048³ | 32, 64, 128, 256, 512 | 64, 128, 256, 512 |
 
-| # | GPUs | nodes×4 | `--pdim` | global `--mesh-size` |
-|--:|--:|--:|------|------|
-| 13 | 4   | 1  | `2 2`   | `1024 1024 512` |
-| 14 | 8   | 2  | `2 4`   | `1024 2048 512` |
-| 15 | 16  | 4  | `4 4`   | `2048 2048 512` |
-| 16 | 32  | 8  | `4 8`   | `2048 4096 512` |
-| 17 | 64  | 16 | `8 8`   | `4096 4096 512` |
-| 18 | 128 | 32 | `8 16`  | `4096 8192 512` |
-| 19 | 256 | 64 | `16 16` | `8192 8192 512` |
+(1024³ stops at 256 GPUs — odd halo at 512. 2048³ float64 starts at 64 GPUs — `local 32³` at the ≈512³ ceiling.)
 
-Scaling grids are anisotropic by construction (the 2D decomposition shards X, Y; Z = per-GPU depth) —
-these are perf/memory benchmarks, not science runs. **19 configs × 2 precisions ≈ 38 runs.**
+## (b) Weak scaling — fixed 256³/GPU (slab `N × 1`)
+
+`global --mesh-size = (256·px, 256, 256)`; local mesh `256³`, halo `128` (even at every rung), so all eight
+GPU counts run in both precisions.
+
+| GPUs | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 |
+|------|---|---|----|----|----|-----|-----|-----|
+| `--mesh-size` | `1024 256 256` | `2048 256 256` | `4096 256 256` | `8192 256 256` | `16384 256 256` | `32768 256 256` | `65536 256 256` | `131072 256 256` |
+
+The weak grids are anisotropic by construction (the slab shards only X; Y, Z are per-GPU depth) — these are
+perf/memory benchmarks, not science runs. **≈22 strong + 16 weak ≈ 38 runs.**
 
 ## Run
 
 ```bash
-MODE=dryrun bash run.sh
-bash run.sh
+MODE=dryrun bash run.sh    # print the resolved fli-launcher commands + the skipped rungs (submit nothing)
+bash run.sh                # submit to SLURM
 ```
 
-Writes `perf_<mode>.csv` rows (wall-time + memory) under `results/exp11/`.
+Writes `perf_pm.csv` rows (wall-time + memory) under `results/exp11/`. The shared
+[`../_launch_common.sh`](../_launch_common.sh) skips any rung whose `--output` already exists.

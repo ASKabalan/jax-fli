@@ -7,9 +7,11 @@ re-exports from here for backward compatibility.
 """
 
 from .binned import BinnedStatistic
+from .binning import bin_bandpowers, linear_edges, log_edges
 from .compute import (
     angular_cl_flat,
     angular_cl_spherical,
+    angular_cl_spherical_batched,
     coherence,
     cross_angular_cl_spherical,
     deconvolve_spherical,
@@ -21,7 +23,7 @@ from .pdf import PDF, pdf_spherical
 from .peak_counts import PeakCounts, peak_counts_spherical
 from .power_spec import PowerSpectrum
 from .starlet import require_cosmostat, starlet_coefficients_spherical
-from .theory import compute_theory_cl, compute_theory_cl_for_density, tophat_z
+from .theory import comoving_tophat, compute_theory_cl, compute_theory_cl_for_density, tophat_z
 
 __all__ = [
     # ---- two-point ----
@@ -31,11 +33,16 @@ __all__ = [
     "coherence",
     "angular_cl_flat",
     "angular_cl_spherical",
+    "angular_cl_spherical_batched",
     "cross_angular_cl_spherical",
     "deconvolve_spherical",
     "anafast_masked",
     "compute_mcm",
     "MCM",
+    "comoving_tophat",
+    "bin_bandpowers",
+    "linear_edges",
+    "log_edges",
     "compute_theory_cl",
     "compute_theory_cl_for_density",
     "tophat_z",

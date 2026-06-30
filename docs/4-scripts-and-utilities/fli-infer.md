@@ -7,15 +7,29 @@ most expensive — and most information-rich — inference mode.
 ## Usage
 
 ```bash
-fli-infer --observable kappa.parquet --path chains/ \
+# Local observable parquet; optional warm-start IC from another parquet.
+fli-infer --input kappa.parquet --path chains/ \
+          --ic-input ic.parquet \
           --num-warmup 200 --num-samples 500 --sampler NUTS --checkpoints 10
+
+# Observable streamed from a HuggingFace dataset repo.
+fli-infer --repo user/repo --data-files 'obs/kappa.parquet' --path chains/ \
+          --num-warmup 200 --num-samples 500
 ```
 
 ## Arguments
 
+The observable uses the shared `add_source_args` interface (local `--input` **XOR** HuggingFace
+`--repo` + `--data-files`, same as [`fli-born-rt`](fli-born-rt.md)). It must be a **single-row**
+catalog whose field type matches `--lensing-output`: a convergence (κ) field for `convergence`, or a
+shear field for `shear` / `reduced_shear`. The optional initial condition uses the parallel **prefixed**
+source `--ic-input` / `--ic-repo` / `--ic-data-files` and must be a single-row `DensityField`; it fixes
+the IC (when `ic` is not in `--sample`) or warm-starts a sampled IC.
+
 | Flag | Meaning |
 |------|---------|
-| `--observable` | observed κ-map catalog to condition on |
+| `--input` / `--repo` + `--data-files` | single-row observable source (κ or shear, per `--lensing-output`) |
+| `--ic-input` / `--ic-repo` + `--ic-data-files` | optional single-row `DensityField` initial condition |
 | `--path` | output directory for the MCMC chains |
 | `--num-warmup` / `--num-samples` | sampler iterations |
 | `--sampler {NUTS,HMC,MCLMC}` | inference kernel |

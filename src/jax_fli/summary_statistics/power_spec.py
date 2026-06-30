@@ -7,12 +7,14 @@ import equinox as eqx
 import jax
 import jax.core
 import jax.numpy as jnp
+import numpy as np
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
 from .._src.base._core import AbstractField
+from .._src.base._enums import SpectralUnit
 from .._src.fields._plotting import generate_titles
 
 __all__ = ["PowerSpectrum"]
@@ -320,21 +322,39 @@ class PowerSpectrum(AbstractField):
     def stack(cls, power_spectra: Sequence[PowerSpectrum]) -> PowerSpectrum:
         """Stack multiple PowerSpectrum objects along a new leading axis.
 
-        All wavenumber grids must match (allclose). Arrays are concatenated
-        along batch axis (introducing a leading dimension if needed).
-        Metadata is copied from the first element.
+        All wavenumber grids must match and all names must agree. Arrays are stacked
+        along a new leading batch axis. The per-entry dynamic metadata
+        (``scale_factors``, ``comoving_centers``, ``z_sources``, ``density_width``) is
+        stacked along the same axis so it stays aligned with the batch — element ``i``
+        of the result keeps element ``i``'s metadata. ``wavenumber`` is shared (kept as
+        the first element's 1-D grid) and static metadata is taken from the first
+        element. This mirrors :meth:`AbstractField.stack` (``jax.tree.map(jnp.stack)``),
+        which ``PowerSpectrum`` cannot use directly only because ``wavenumber`` must
+        stay 1-D rather than being stacked.
         """
         # Make sure that all wavenumber grids match and they have the same name
-        ref_k = power_spectra[0].wavenumber
-        name = power_spectra[0].name
+        ref = power_spectra[0]
+        ref_k = ref.wavenumber
+        name = ref.name
         for spec in power_spectra[1:]:
-            if spec.shape != power_spectra[0].shape:
+            if spec.shape != ref.shape:
                 raise ValueError("All PowerSpectrum instances must share the same shape to be stacked.")
             if spec.name != name:
                 raise ValueError("All PowerSpectrum instances must share the same name to be stacked.")
 
         stacked_array = jnp.stack([spec.array for spec in power_spectra], axis=0)
-        ref = power_spectra[0]
+
+        def _stack_meta(attr: str):
+            """Stack a per-entry dynamic metadata field along the new batch axis.
+
+            Returns None if it is absent (None) on any entry, so partially-populated
+            metadata is not silently fabricated.
+            """
+            values = [getattr(spec, attr) for spec in power_spectra]
+            if any(v is None for v in values):
+                return None
+            return jnp.stack([jnp.asarray(v) for v in values], axis=0)
+
         return cls(
             wavenumber=ref_k,
             array=stacked_array,
@@ -342,13 +362,89 @@ class PowerSpectrum(AbstractField):
             name=name,
             mesh_size=ref.mesh_size,
             box_size=ref.box_size,
-            comoving_centers=ref.comoving_centers,
-            density_width=ref.density_width,
-            z_sources=ref.z_sources,
-            scale_factors=ref.scale_factors,
+            comoving_centers=_stack_meta("comoving_centers"),
+            density_width=_stack_meta("density_width"),
+            z_sources=_stack_meta("z_sources"),
+            scale_factors=_stack_meta("scale_factors"),
             nside=ref.nside,
             flatsky_npix=ref.flatsky_npix,
             field_size=ref.field_size,
             status=ref.status,
             unit=ref.unit,
+        )
+
+    # ---- Bandpower binning ----------------------------------------------
+    def bin(
+        self,
+        *,
+        nlb: int | None = None,
+        edges: Sequence[float] | jax.Array | None = None,
+        wavenumbers: Sequence[float] | jax.Array | None = None,
+        nbins: int | None = None,
+        lmin: float | None = None,
+        weight: str = "modes",
+    ) -> PowerSpectrum:
+        """Collapse the spectrum into (mode-weighted) bandpowers along the ℓ/k axis.
+
+        Provide **exactly one** of:
+
+        * ``nlb``   – linear bands of ``nlb`` consecutive multipoles.
+        * ``edges`` (alias ``wavenumbers``) – explicit bin edges; bin ``i`` spans
+          ``[edges[i], edges[i+1])``.
+        * ``nbins`` – ``nbins`` log-spaced (geomspace) integer bin edges.
+
+        ``weight`` is ``"modes"`` (``w = 2ℓ+1``, the mode count — the default) or
+        ``"uniform"``. ``lmin`` overrides the low edge for the ``nlb`` / ``nbins`` builders;
+        it defaults to ``2`` for an angular spectrum (skips the monopole/dipole) and to the
+        first wavenumber otherwise. ``nlb`` / ``nbins`` build *integer-multipole* edges (for
+        angular spectra); to bin an arbitrary grid (e.g. P(k)) pass explicit ``edges``.
+
+        Returns a new :class:`PowerSpectrum` whose ``wavenumber`` is the weighted effective
+        multipole per bin and whose ``array`` is the weighted-mean spectra (leading batch and
+        component axes preserved). Use it to put two spectra of different native resolution
+        onto a common grid before a ratio.
+
+        Eager only: the surviving-bin count is data-dependent, so this is **not**
+        ``jit``-traceable — it is a plotting / comparison convenience, not a forward-model op.
+        """
+        from .binning import bin_bandpowers, linear_edges, log_edges
+
+        if wavenumbers is not None:
+            if edges is not None:
+                raise ValueError("Pass edges= or its alias wavenumbers=, not both.")
+            edges = wavenumbers
+        if sum(x is not None for x in (nlb, edges, nbins)) != 1:
+            raise ValueError("Provide exactly one of nlb=, edges= (or wavenumbers=), or nbins=.")
+        if self.wavenumber is None:
+            raise ValueError("PowerSpectrum has no wavenumber grid to bin.")
+
+        k = np.asarray(self.wavenumber, dtype=float)
+        if lmin is None:
+            lmin = 2.0 if self.unit == SpectralUnit.ANGULAR_CL else float(k[0])
+        lmax = float(k[-1])
+
+        if nlb is not None:
+            _edges = linear_edges(nlb, lmin, lmax)
+        elif nbins is not None:
+            _edges = log_edges(nbins, lmin, lmax)
+        else:
+            _edges = np.asarray(edges, dtype=float)
+
+        leff, binned, _nmodes = bin_bandpowers(self.wavenumber, self.array, edges=_edges, weight=weight)
+        return PowerSpectrum(
+            wavenumber=leff,
+            array=binned,
+            n_components=self.n_components,
+            name=self.name,
+            scale_factors=self.scale_factors,
+            mesh_size=self.mesh_size,
+            box_size=self.box_size,
+            comoving_centers=self.comoving_centers,
+            density_width=self.density_width,
+            z_sources=self.z_sources,
+            nside=self.nside,
+            flatsky_npix=self.flatsky_npix,
+            field_size=self.field_size,
+            status=self.status,
+            unit=self.unit,
         )
