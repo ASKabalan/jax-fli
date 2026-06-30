@@ -48,7 +48,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics"
 ]
 dependencies = [
-  "jax>=0.10.0",
+  "jax>=0.10.1",
   "equinox",
   "jaxtyping",
   "jaxpm",
@@ -76,7 +76,7 @@ catalog = [
   "huggingface_hub>=0.20",
   "h5py"
 ]
-cuda = ["jax[cuda]>=0.10.2"]
+cuda = ["jax[cuda]>=0.10.1"]
 examples = [
   "ipython",
   "ipykernel",
