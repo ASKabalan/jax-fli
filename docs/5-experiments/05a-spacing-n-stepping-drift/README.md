@@ -64,9 +64,8 @@ to `0.01%` at 40 shells). The drift is a density-field tool, not a lensing one.
 ![Born convergence vs number of shells, no-drift vs with-drift](assets/fig03-lensing.svg)
 
 A deeper, three-source-bin tomographic counterpart on a 5 Gpc/h box lives in
-[Experiment 05b](../05b-spacing-n-stepping-3bin/README.md); the equal-volume and D³-stepping
-variants are [05c](../05c-spacing-n-stepping-equal-vol/README.md) and
-[05d](../05d-spacing-n-stepping-d3/README.md).
+[Experiment 05b](../05b-spacing-n-stepping-3bin/README.md); the equal-volume variant is
+[05c](../05c-spacing-n-stepping-equal-vol/README.md).
 
 ## How to run
 

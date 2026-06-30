@@ -39,8 +39,6 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
   5 Gpc/h, 2560³, three-source-bin tomographic counterpart of 05a (scale-factor spacing).
 - **05c — [Spacing & stepping: equal-volume, 3-bin](05c-spacing-n-stepping-equal-vol/README.md)** ⚠️ — 05b with
   **equal-volume** shells (the near-shell shot-noise lever) instead of scale-factor spacing.
-- **05d — [Spacing & stepping: D³ stepping, 3-bin](05d-spacing-n-stepping-d3/README.md)** ⚠️ — 05b/05c with
-  **uniform-D³** time stepping (more steps at late times), over both equal-volume and scale-factor spacing.
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ⚠️ — per-shell density `C_ℓ` +
   cross-correlation vs the CosmoGrid shells (needs the CosmoGrid shell edges).
 - **07 — [Born lensing vs CosmoGrid](07-born-lensing/README.md)** ⚠️ — convergence `C_ℓ` +

@@ -67,55 +67,54 @@ LPLOT = 2 * NSIDE  # trust boundary: beyond ell = 2*nside the maps are pixel-noi
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
+SPEC_512 = "01-resolution/spectra/spectra_m512.parquet"
+SPEC_1024 = "01-resolution/spectra/spectra_m1024.parquet"
+SPEC_2048 = "01-resolution/spectra/spectra_m2048.parquet"
+SPEC_2560 = "01-resolution/spectra/spectra_m2560.parquet"
+SPEC_3072 = "01-resolution/spectra/spectra_m3072.parquet"
+
+SPEC_2560_PENCIL = "01-resolution/spectra/spectra_m2560_pencils.parquet"
+SPEC_3072_PENCIL = "01-resolution/spectra/spectra_m3072_pencils.parquet"
+
+DENS_512 = "01-resolution/density/m512.parquet"
+DENS_1024 = "01-resolution/density/m1024.parquet"
+DENS_2048 = "01-resolution/density/m2048.parquet"
+DENS_2560 = "01-resolution/density/m2560.parquet"
+DENS_3072 = "01-resolution/density/m3072.parquet"
+
+DENS_2560_PENCIL = "01-resolution/density/m2560_pencils.parquet"
+DENS_3072_PENCIL = "01-resolution/density/m3072_pencils.parquet"
+
 # -----------------------------------------------------------------------------
 # Explicit per-file loads — every HF parquet used is visible on its own line. Slab angular spectra and
 # the precomputed pencil spectra (fig01–06), slab + pencil density maps (fig07/fig08 + the pencil halo).
 # -----------------------------------------------------------------------------
-spec_512_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m512.parquet", split="train")
-)
-spec_1024_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m1024.parquet", split="train")
-)
-spec_2048_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2048.parquet", split="train")
-)
-spec_2560_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2560.parquet", split="train")
-)
-spec_3072_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m3072.parquet", split="train")
-)
+spec_512_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_512}", split="train"))
+spec_1024_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_1024}", split="train"))
+spec_2048_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_2048}", split="train"))
+spec_2560_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_2560}", split="train"))
+spec_3072_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{SPEC_3072}", split="train"))
 
 spec_2560_pencil_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m2560_pencils.parquet", split="train")
+    load_dataset("parquet", data_files=f"{root}/{SPEC_2560_PENCIL}", split="train")
 )
 spec_3072_pencil_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/spectra/spectra_m3072_pencils.parquet", split="train")
+    load_dataset("parquet", data_files=f"{root}/{SPEC_3072_PENCIL}", split="train")
 )
 
-dens_512_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m512.parquet", split="train")
-)
-dens_1024_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m1024.parquet", split="train")
-)
-dens_2048_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2048.parquet", split="train")
-)
-dens_2560_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2560.parquet", split="train")
-)
-dens_3072_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m3072.parquet", split="train")
-)
+dens_512_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_512}", split="train"))
+dens_1024_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_1024}", split="train"))
+dens_2048_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_2048}", split="train"))
+dens_2560_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_2560}", split="train"))
+dens_3072_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENS_3072}", split="train"))
 
 dens_2560_pencil_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m2560_pencils.parquet", split="train")
+    load_dataset("parquet", data_files=f"{root}/{DENS_2560_PENCIL}", split="train")
 )
 dens_3072_pencil_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/01-resolution/density/m3072_pencils.parquet", split="train")
+    load_dataset("parquet", data_files=f"{root}/{DENS_3072_PENCIL}", split="train")
 )
+
 
 cosmo = spec_512_cat.cosmology[0]  # one fiducial cosmology shared by every run
 
