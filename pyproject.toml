@@ -4,10 +4,10 @@ requires = ["hatchling", "hatch-vcs"]
 
 [dependency-groups]
 dev = [
-  "prek==0.3.9",
-  "pyright==1.1.406",
-  "ruff==0.13.0",
-  "toml-sort==0.23.1"
+  "prek==0.4.5",
+  "pyright==1.1.410",
+  "ruff==0.15.18",
+  "toml-sort==0.24.4"
 ]
 docs = [
   "sphinx"
@@ -48,7 +48,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics"
 ]
 dependencies = [
-  "jax>=0.10.0",
+  "jax>=0.10.1",
   "equinox",
   "jaxtyping",
   "jaxpm",
@@ -76,7 +76,7 @@ catalog = [
   "huggingface_hub>=0.20",
   "h5py"
 ]
-cuda = ["jax[cuda]>=0.10.0"]
+cuda = ["jax[cuda]>=0.10.1"]
 examples = [
   "ipython",
   "ipykernel",
