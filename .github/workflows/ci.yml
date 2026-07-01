@@ -93,3 +93,25 @@ jobs:
           JAX_PLATFORM_NAME: cpu
           XLA_PYTHON_CLIENT_PREALLOCATE: "false"
         run: uv run --no-sync pytest -m scripts
+
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          python-version: "3.12"
+
+      # Docs build never installs jax_fli itself (no autodoc, notebooks ship pre-executed
+      # outputs) — just the docs group, matching .readthedocs.yaml.
+      - name: Install docs environment
+        run: uv sync --locked --only-group docs --no-install-project
+
+      - name: Build docs with Sphinx
+        run: uv run --no-sync sphinx-build -b html docs docs/_build/html

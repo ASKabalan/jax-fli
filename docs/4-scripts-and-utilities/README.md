@@ -28,3 +28,16 @@ Most scripts reuse the argument groups defined in `jax_fli.scripts.parser`:
 
 The defaults are deliberately small (`--mesh-size 64 64 64`, `--box-size 200 200 200`) so a bare
 invocation runs anywhere.
+
+```{toctree}
+:hidden:
+
+fli-simulate
+fli-born-rt
+fli-dorian-rt
+fli-samples
+fli-infer
+fli-2pcf
+fli-extract
+fli-launcher
+```

@@ -24,4 +24,4 @@ fli-samples --model full_field --num-samples 100 --path samples/ --batch-id 0
 
 Plus the shared **cosmology**, **simulation**, **integration** and **prior** groups. The
 inference tutorials that consume these samples live under
-[Sampling & inference](../3-sampling-and-inference/) (coming soon).
+[Sampling & inference](../3-sampling-and-inference/README.md) (coming soon).

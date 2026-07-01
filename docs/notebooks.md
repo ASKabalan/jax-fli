@@ -36,13 +36,13 @@ notebook on a GPU / cluster to reproduce the full-resolution figures.
 
 ## Sampling & inference
 
-_In preparation_ — see [Sampling & inference](3-sampling-and-inference/). The command-line
+_In preparation_ — see [Sampling & inference](3-sampling-and-inference/README.md). The command-line
 inference tools already exist; see below.
 
 ## Scripts & utilities
 
 Command-line entry points for batch / HPC runs — one page per script under
-[Scripts & utilities](4-scripts-and-utilities/).
+[Scripts & utilities](4-scripts-and-utilities/README.md).
 
 ## Experiments
 
