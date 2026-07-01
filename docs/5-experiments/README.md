@@ -21,8 +21,8 @@ MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
 [Experiment 09](09-gradient-validation/README.md)** — the gradient correctness / stability check runs
 **locally** (CPU, small mesh) and ships its own Python scripts instead of a `run.sh`.
 
-You can also check the results stored on the HuggingFace Hub [LINK IT]
-Using the dashboard [LINK THE SPACES]
+You can also check the results stored on the [HuggingFace Hub](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments),
+or explore them interactively using the [Results Explorer dashboard](https://askabalan-jax-fli-results.hf.space/).
 
 ## Simulation accuracy (0–7)
 
