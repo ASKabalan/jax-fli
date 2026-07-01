@@ -1,10 +1,15 @@
-# jax-fli documentation
+# JAX Field Level Inference
 
-Executable tutorials and reference for **jax-fli** — differentiable cosmological forward modeling
-on JAX. Each notebook is committed with its outputs; to keep the docs runnable on a laptop **most**
-committed outputs are from small-scale **CPU** runs, with production parameters left in the code
-(a few — e.g. *Drift on the Lightcone* — instead commit a full **GPU / cluster** run). Rerun any
-notebook on a GPU / cluster to reproduce the full-resolution figures.
+![jax-fli differentiable forward model: priors on cosmology and initial conditions, evolved through LPT / PM N-body to a light-cone shell, lensed to a convergence map, and compared to the observable](../assets/PIPELINE.png)
+
+**jax-fli** is a JAX toolkit for end-to-end **differentiable** cosmological forward modeling. It chains
+Gaussian initial conditions → Lagrangian Perturbation Theory → Particle-Mesh N-body → light-cone
+painting (3D, flat-sky, HEALPix) → weak-lensing convergence and shear (Born or ray-tracing) → angular
+power spectra, with multi-GPU sharding throughout and probabilistic inference via NumPyro / BlackJAX.
+
+These pages are the tutorials and reference. Each notebook is committed with its outputs and where run on a HPC cluster, so you can reproduce the figures and results by running the notebook on a GPU / cluster. or lower the resolution and running on your laptop.
+
+The documentation is organized into four sections:
 
 ## Introduction & basics
 
@@ -36,8 +41,18 @@ notebook on a GPU / cluster to reproduce the full-resolution figures.
 
 ## Sampling & inference
 
-_In preparation_ — see [Sampling & inference](3-sampling-and-inference/README.md). The command-line
-inference tools already exist; see below.
+12. [Probabilistic Modeling](3-sampling-and-inference/12-Probabilistic-Modeling.ipynb) — the
+    forward-model builder, the `Configurations` dataclass, and NumPyro / BlackJAX wrappers.
+13. [Rosenbrock](3-sampling-and-inference/13-Rosen.ipynb) — an MCMC sanity check on a known target
+    before touching cosmology.
+14. [LPT Lensing Inference](3-sampling-and-inference/14-LPTLensingInference.ipynb) — a small
+    end-to-end Bayesian posterior over cosmology + initial conditions from an LPT lensing map.
+15. [Full-Field Inference](3-sampling-and-inference/15-FullFieldInference.ipynb) — full-field
+    posterior with the PM forward model.
+
+See the [Sampling & inference](3-sampling-and-inference/README.md) index for the
+[configuration options](3-sampling-and-inference/configurations-options.md) and the matching
+command-line entry points.
 
 ## Scripts & utilities
 
@@ -46,11 +61,12 @@ Command-line entry points for batch / HPC runs — one page per script under
 
 ## Experiments
 
-End-to-end reproduction studies, each a self-contained, runnable script that produces
-(initial conditions → LPT/N-body → lightcone → lensing → statistics/inference) on real
-reference data. For the catalogue, conventions, and lifecycle of these studies, start at
-the [experiments index](5-experiments/README.md).
+End-to-end reproduction studies behind the methods paper — each a self-contained, runnable script
+that produces (initial conditions → LPT / N-body → light-cone → lensing → statistics / inference) on
+real reference data. Finished studies cover the CosmoGrid reference maps, resolution /
+mass-assignment / spherical-painting / step convergence, shell spacing and drift on the light-cone,
+CosmoGrid-shell and Born-lensing validation, masked shear on a cut sky, and gradient validation
+through the light-cone; scaling and field-level inference studies are in progress.
 
-- [Experiment 08 — Masked shear](5-experiments/08-masked-shear/README.md) — Kaiser–Squires
-  κ → γ on a cut sky (DES Y3 and observer-visibility masks), masked vs full-sky shear maps and
-  mask-decoupled `EE` spectra, on a CosmoGrid convergence map.
+For the full catalogue, conventions, embedded figures, and lifecycle, start at the
+[experiments index](5-experiments/README.md).

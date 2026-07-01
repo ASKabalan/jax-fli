@@ -193,7 +193,7 @@ def analyze(
         # --------------------------------------------------------------
         # Output 3: ArviZ plots rank plot
         # --------------------------------------------------------------
-        pc_rank = azp.plot_rank(idata, var_names=ce.cosmo_keys)
+        pc_rank = azp.plot_rank(idata, var_names=ce.cosmo_keys)  # noqa : F841
         plt.gcf().suptitle(f"Rank Plots — {safe}")
 
         if outfolder_path:
@@ -205,7 +205,7 @@ def analyze(
         # --------------------------------------------------------------
         # Output 4: ArviZ plots trace plot
         # --------------------------------------------------------------
-        pc_trace = azp.plot_trace(idata, var_names=ce.cosmo_keys)
+        pc_trace = azp.plot_trace(idata, var_names=ce.cosmo_keys)  # noqa : F841
         plt.gcf().suptitle(f"Chain Traces — {safe}")
 
         if outfolder_path:
