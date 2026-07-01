@@ -1,4 +1,4 @@
-# 04 · SPMD basics: how jax-fli shards the pipeline
+# SPMD basics: how jax-fli shards the pipeline
 
 jax-fli runs the whole forward model — initial conditions → N-body → lightcone painting →
 lensing — under JAX's **SPMD** model (single program, multiple data): one program runs on every
