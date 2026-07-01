@@ -73,8 +73,6 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 # Deliberately excludes `cuda` so `tests` (which pulls jax-fli[all]) keeps CI on CPU JAX.
 all = ["jax_fli[catalog, sampling, raytrace, plot, benchmark]"]
-# Streamlit analysis app (app/) — HF Space prep. Add `starlet` too for the wavelet tab.
-app = ["jax_fli[catalog, plot]", "streamlit>=1.30"]
 benchmark = ["jax-hpc-profiler>=0.3.3"]
 catalog = [
   "datasets>=2.0",
