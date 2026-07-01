@@ -1,6 +1,6 @@
 # JAX Field Level Inference
 
-![jax-fli differentiable forward model: priors on cosmology and initial conditions, evolved through LPT / PM N-body to a light-cone shell, lensed to a convergence map, and compared to the observable](../assets/PIPELINE.png)
+![jax-fli differentiable forward model: priors on cosmology and initial conditions, evolved through LPT / PM N-body to a light-cone shell, lensed to a convergence map, and compared to the observable](../assets/PIPELINE.svg)
 
 **jax-fli** is a JAX toolkit for end-to-end **differentiable** cosmological forward modeling. It chains
 Gaussian initial conditions → Lagrangian Perturbation Theory → Particle-Mesh N-body → light-cone

@@ -1,4 +1,4 @@
-# 11 · Multi-host PM and validation against theory
+# Multi-host PM and validation against theory
 
 The single-GPU notebooks scale to **multiple nodes** with no change to the physics code — only
 the device mesh grows. This page shows how to launch the distributed pipeline on a SLURM cluster
