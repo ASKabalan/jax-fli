@@ -65,6 +65,7 @@ interpolation is `DriftInterp` when `drift_on_lightcone=True` else
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `sim_mode` | `str` | `"pm"` | Pipeline depth: `"pm"` (LPT → N-body lightcone) or `"lpt"` (LPT-only lightcone, no N-body). With `"lpt"` the N-body options below are inert. |
 | `nbody_solver` | `str` | `"DoubleKickDrift"` | `"DoubleKickDrift"` / `"DriftKickDrift"` / `"BullFrog"`. |
 | `nb_steps` | `int` | `100` | Number of integration steps (must be ≥ `number_of_shells`). |
 | `t1` | `float` | `1.0` | Final scale factor. |

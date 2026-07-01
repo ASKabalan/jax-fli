@@ -22,6 +22,8 @@ class Configurations:
     field_sharding: Any = None
 
     # N-body / force / painting knobs
+    # Simulation pipeline: "pm" (LPT -> N-body lightcone) | "lpt" (LPT-only lightcone, no N-body)
+    sim_mode: str = "pm"
     # N-body solver: "DoubleKickDrift" | "DriftKickDrift" | "BullFrog"
     nbody_solver: str = "BullFrog"
     t0: float = 0.01

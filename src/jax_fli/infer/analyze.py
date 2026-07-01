@@ -18,12 +18,13 @@ _Return = TypeVar("_Return")
 
 
 def requires_arviz(func: Callable[_Param, _Return]) -> Callable[_Param, _Return]:
-    """Decorator that raises ImportError when 'arviz' is not installed."""
+    """Decorator that raises ImportError when 'arviz' or 'arviz_plots' is not installed."""
     try:
         import warnings
 
         warnings.filterwarnings("ignore", category=FutureWarning, module="arviz")
         import arviz  # noqa: F401
+        import arviz_plots  # noqa: F401
 
         return func
     except ImportError:
@@ -31,7 +32,9 @@ def requires_arviz(func: Callable[_Param, _Return]) -> Callable[_Param, _Return]
 
     @wraps(func)
     def _deferred(*args: _Param.args, **kwargs: _Param.kwargs) -> _Return:
-        raise ImportError("Missing optional dependency 'arviz'. Install with: pip install jax-fli[plot]")
+        raise ImportError(
+            "Missing optional dependency 'arviz' or 'arviz-plots'. Install with: pip install jax-fli[plot] arviz-plots"
+        )
 
     return _deferred
 
@@ -39,14 +42,14 @@ def requires_arviz(func: Callable[_Param, _Return]) -> Callable[_Param, _Return]
 @requires_arviz
 def analyze(
     catalog_extract: list[CatalogExtract] | CatalogExtract,
-    outfolder: str,
+    outfolder: str | None = None,
     outformat: str = "png",
     dpi: int = 300,
     truth: dict | None = None,
 ) -> None:
     """Produce a complete report folder from one or more CatalogExtracts.
 
-    Writes per-model diagnostic outputs to *outfolder*:
+    Writes per-model diagnostic outputs to *outfolder* (or displays them if None):
 
     * ``field_projections_{label}.{fmt}`` — per-chain field projection panels (if ``mean_field`` available)
     * ``power_spectra_{label}.{fmt}``     — transfer function and coherence plots (if ``power_spectra`` available)
@@ -67,19 +70,18 @@ def analyze(
     ----------
     catalog_extract : CatalogExtract or list[CatalogExtract]
         Output(s) from ``extract_catalog()``.
-    outfolder : str
-        Output directory.  Created if absent.
+    outfolder : str | None, optional
+        Output directory. Created if absent. If None, plots are displayed interactively.
     outformat : str, optional
         Image format: ``"png"``, ``"pdf"``, etc.  Default ``"png"``.
     dpi : int, optional
         Resolution for saved figures.  Default 300.
-    labels : dict, optional
-        LaTeX labels per cosmo parameter, e.g. ``{"Omega_c": r"\\Omega_c"}``.
     truth : dict, optional
         True cosmology values (currently unused in diagnostics; pass to
         ``plot_posterior()`` for triangle-plot markers).
     """
     import arviz as az
+    import arviz_plots as azp
     import matplotlib.pyplot as plt
     import tabulate as tb
 
@@ -87,8 +89,10 @@ def analyze(
     if isinstance(catalog_extract, CatalogExtract):
         catalog_extract = [catalog_extract]
 
-    outfolder = Path(outfolder)
-    outfolder.mkdir(parents=True, exist_ok=True)
+    outfolder_path = None
+    if outfolder is not None:
+        outfolder_path = Path(outfolder)
+        outfolder_path.mkdir(parents=True, exist_ok=True)
 
     summary_parts: list[str] = []
 
@@ -140,8 +144,11 @@ def analyze(
                     std_c.project().plot(ax=axes[c, 1])
 
             fig.tight_layout()
-            fig.savefig(outfolder / f"field_projections_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-            plt.close(fig)
+            if outfolder_path:
+                fig.savefig(outfolder_path / f"field_projections_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+                plt.close(fig)
+            else:
+                plt.show()
 
         # --------------------------------------------------------------
         # Output 2: Power spectra
@@ -177,24 +184,35 @@ def analyze(
                 ax_coh.legend(fontsize=8)
 
             fig.tight_layout()
-            fig.savefig(outfolder / f"power_spectra_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-            plt.close(fig)
+            if outfolder_path:
+                fig.savefig(outfolder_path / f"power_spectra_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+                plt.close(fig)
+            else:
+                plt.show()
 
         # --------------------------------------------------------------
-        # Output 3: ArviZ rank plot
+        # Output 3: ArviZ plots rank plot
         # --------------------------------------------------------------
-        pc = az.plot_rank_dist(idata, var_names=ce.cosmo_keys)
-        pc.add_title(f"Rank Plots — {safe}")
-        pc.savefig(outfolder / f"rank_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-        plt.close("all")
+        pc_rank = azp.plot_rank(idata, var_names=ce.cosmo_keys)
+        plt.gcf().suptitle(f"Rank Plots — {safe}")
+
+        if outfolder_path:
+            plt.savefig(outfolder_path / f"rank_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+            plt.close("all")
+        else:
+            plt.show()
 
         # --------------------------------------------------------------
-        # Output 4: ArviZ trace plot
+        # Output 4: ArviZ plots trace plot
         # --------------------------------------------------------------
-        pc = az.plot_trace_dist(idata, var_names=ce.cosmo_keys)
-        pc.add_title(f"Chain Traces — {safe}")
-        pc.savefig(outfolder / f"trace_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
-        plt.close("all")
+        pc_trace = azp.plot_trace(idata, var_names=ce.cosmo_keys)
+        plt.gcf().suptitle(f"Chain Traces — {safe}")
+
+        if outfolder_path:
+            plt.savefig(outfolder_path / f"trace_plot_{safe}.{outformat}", dpi=dpi, bbox_inches="tight")
+            plt.close("all")
+        else:
+            plt.show()
 
         # --------------------------------------------------------------
         # Summary section for this model
@@ -221,10 +239,13 @@ def analyze(
             f"## {safe}\n\n### Aggregate Statistics\n\n{agg_table}\n\n### Per-Chain ESS (bulk)\n\n{ess_table}\n"
         )
 
-    # --- Write combined summary.md ---
-    summary_path = outfolder / "summary.md"
-    with open(summary_path, "w") as f:
-        f.write("# MCMC Summary\n\n")
-        for part in summary_parts:
-            f.write(part)
-            f.write("\n")
+    # --- Write combined summary.md or Output to Console ---
+    if outfolder_path:
+        summary_path = outfolder_path / "summary.md"
+        with open(summary_path, "w") as f:
+            f.write("# MCMC Summary\n\n")
+            for part in summary_parts:
+                f.write(part)
+                f.write("\n")
+    else:
+        print(summary_df)

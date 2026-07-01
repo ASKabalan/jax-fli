@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 from jax.scipy.special import ndtr, ndtri
 from jaxpm.distributed import fft3d, ifft3d, normal_field
-from jaxpm.kernels import fftk, interpolate_power_spectrum
+from jaxpm.kernels import fftk
 from jaxtyping import Key
 from numpyro.distributions import Normal, TransformedDistribution, constraints
 from numpyro.distributions.transforms import AffineTransform, Transform
@@ -50,7 +50,7 @@ class PowerSpectrumTransform(Transform):
             k = jnp.logspace(-4, 1, 256)
             pk = jc.power.linear_matter_power(self.cosmo, k)
 
-            pk_fn = lambda x: interpolate_power_spectrum(x, k, pk, self.field_sharding)
+            pk_fn = lambda x: jnp.interp(x, k, pk)
         else:
             pk_fn = self.pk_fn
 
