@@ -6,10 +6,12 @@ is a single dict lookup with no argument-count branching.
 Compute functions cover all probe types (density, s3, point sources) and all
 field types (spherical density, kappa, flat).
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from math import ceil
-from typing import Any, Callable
+from typing import Any
 
 import matplotlib.gridspec as gridspec
 import matplotlib.lines as mlines
@@ -37,9 +39,7 @@ from .utils import (
 # ---------------------------------------------------------------------------
 
 
-def _grid_coords(
-    n_selected: int, ncols: int
-) -> tuple[list[tuple[int, int]], int, int, tuple[int, int]]:
+def _grid_coords(n_selected: int, ncols: int) -> tuple[list[tuple[int, int]], int, int, tuple[int, int]]:
     """Row-major rectangular layout reserving the top-right cell for the legend.
 
     Returns ``(coords, nrows, ncols, legend_cell)``. ``coords`` is the ``(row, col)``
@@ -98,7 +98,7 @@ def _attach_legend(fig, handles, labels, bands: list[float], anchor=None) -> Non
             alpha = base_alphas[i] if i < len(base_alphas) else 0.1
             patch = mpatches.Patch(facecolor="gray", alpha=alpha, edgecolor="none")
             handles.append(patch)
-            labels.append(f"±{frac*100:.0f}%")
+            labels.append(f"±{frac * 100:.0f}%")
 
     if anchor is not None:
         leg = fig.legend(
@@ -173,9 +173,7 @@ def _build_cl_main_only(
     """Rectangular Cl panels only — no ratio rows."""
     ns = _n_shells(spectra_results)
     height_ratios = [float(layout_params["spec_main_h"])]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -228,9 +226,7 @@ def _build_cl_with_ref_ratio(
         float(layout_params["spec_main_h"]),
         float(layout_params["spec_ratio_h"]),
     ]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -294,9 +290,7 @@ def _build_cl_with_theory_ratio(
         float(layout_params["spec_main_h"]),
         float(layout_params["spec_ratio_h"]),
     ]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -370,9 +364,7 @@ def _build_cl_with_both_ratios(
         float(layout_params["spec_ratio_h"]),
         float(layout_params["spec_ratio_h"]),
     ]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -454,9 +446,7 @@ def _build_cl_ratio_only_ref(
     """Ratio vs reference panels only — no main Cl panel."""
     ns = _n_shells(spectra_results)
     height_ratios = [float(layout_params["spec_ratio_h"])]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -504,9 +494,7 @@ def _build_cl_ratio_only_theory(
     """Ratio vs theory panels only — no main Cl panel."""
     ns = _n_shells(spectra_results)
     height_ratios = [float(layout_params["spec_ratio_h"])]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -554,9 +542,7 @@ def _build_cl_ratio_only_both(
     ns = _n_shells(spectra_results)
     rh = float(layout_params["spec_ratio_h"])
     height_ratios = [rh, rh]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -571,9 +557,7 @@ def _build_cl_ratio_only_both(
         for ci, (lbl, cl) in enumerate(spectra_results[1:], 1):
             color = _PALETTE[ci % len(_PALETTE)]
             cl_s = _cl_slice(cl, i, ns)
-            (cl_s / ref_s).plot(
-                ax=ax_r, logx=True, color=color, legend=False, label=lbl
-            )
+            (cl_s / ref_s).plot(ax=ax_r, logx=True, color=color, legend=False, label=lbl)
         ax_r.set_title(_make_title(title_template, spectra_results[0][1], i))
         ylabel_r = "Ratio\n(vs Ref)" if col == 0 else ""
         _clean_ratio_ax(ax_r, ylabel_r, bands)
@@ -696,9 +680,7 @@ def _observer_visibility_mask(field):
     nside = getattr(field, "nside", None)
     if nside is None:
         return None
-    mask = jfli.data.build_observer_visibility_mask(
-        tuple(field.observer_position), nside, 1.0
-    )
+    mask = jfli.data.build_observer_visibility_mask(tuple(field.observer_position), nside, 1.0)
     return None if np.ndim(mask) == 0 else mask
 
 
@@ -730,13 +712,9 @@ def compute_cls(
             ps = fld  # already an Angular Cl spectrum
         elif ft == "SphericalDensity":
             fld = fld.to(OVERDENSITY, normalization="per_plane")
-            ps = fld.angular_cl(
-                lmax=int(lmax), method="healpy", mask=_observer_visibility_mask(fld)
-            )
+            ps = fld.angular_cl(lmax=int(lmax), method="healpy", mask=_observer_visibility_mask(fld))
         elif ft == "SphericalKappaField":
-            ps = fld.angular_cl(
-                lmax=int(lmax), method="healpy", mask=_observer_visibility_mask(fld)
-            )
+            ps = fld.angular_cl(lmax=int(lmax), method="healpy", mask=_observer_visibility_mask(fld))
         else:
             raise ValueError(f"Unsupported field type for Cl computation: {ft}")
         ells = np.asarray(ps.wavenumber)
@@ -787,6 +765,7 @@ def compute_theory_cl(
     """
     import jax
     import jax_cosmo as jc
+
     import jax_fli as jfli
 
     ENABLE_X64 = jax.config.x64_enabled

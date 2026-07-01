@@ -6,9 +6,11 @@ like the Cl ``PowerSpectrum`` objects, so the grid / legend / ratio helpers from
 ``spherical_analysis_compute`` are reused verbatim.  Unlike Cl there is no theory curve;
 ratios are computed against the reference entry only.
 """
+
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -46,9 +48,7 @@ def compute_binned(
     for entry in active_entries:
         fld = indexed_field(entry)
         if stat_kind == "peak_counts":
-            stat = fld.compute_peak_counts(
-                bins=int(bins), range=rng, normalize=normalize
-            )
+            stat = fld.compute_peak_counts(bins=int(bins), range=rng, normalize=normalize)
         elif stat_kind == "pdf":
             stat = fld.compute_pdf(bins=int(bins), range=rng, density=density)
         else:
@@ -97,15 +97,11 @@ def _ratio_ylim(results) -> tuple[float, float] | None:
     return (max(0.0, lo), hi)
 
 
-def _build_binned_main_only(
-    results, layout_params, title_template, bands, axis_labels, logx, logy
-) -> Figure:
+def _build_binned_main_only(results, layout_params, title_template, bands, axis_labels, logx, logy) -> Figure:
     """Rectangular stat panels only — no ratio rows."""
     ns = _n_shells(results)
     height_ratios = [float(layout_params["spec_main_h"])]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
 
     handles_out, labels_out = [], []
     for i, (row, col) in enumerate(coords):
@@ -145,18 +141,14 @@ def _build_binned_main_only(
     return fig
 
 
-def _build_binned_with_ref_ratio(
-    results, layout_params, title_template, bands, axis_labels, logx, logy
-) -> Figure:
+def _build_binned_with_ref_ratio(results, layout_params, title_template, bands, axis_labels, logx, logy) -> Figure:
     """Rectangular stat panels + ratio vs reference row."""
     ns = _n_shells(results)
     height_ratios = [
         float(layout_params["spec_main_h"]),
         float(layout_params["spec_ratio_h"]),
     ]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
     ratio_ylim = _ratio_ylim(results)
 
     handles_out, labels_out = [], []
@@ -208,15 +200,11 @@ def _build_binned_with_ref_ratio(
     return fig
 
 
-def _build_binned_ratio_only_ref(
-    results, layout_params, title_template, bands, axis_labels, logx, logy
-) -> Figure:
+def _build_binned_ratio_only_ref(results, layout_params, title_template, bands, axis_labels, logx, logy) -> Figure:
     """Ratio vs reference panels only — no main stat panel."""
     ns = _n_shells(results)
     height_ratios = [float(layout_params["spec_ratio_h"])]
-    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(
-        ns, layout_params, height_ratios
-    )
+    fig, outer_gs, coords, coords_set, legend_cell = _setup_spectra_grid(ns, layout_params, height_ratios)
     ratio_ylim = _ratio_ylim(results)
 
     handles_out, labels_out = [], []

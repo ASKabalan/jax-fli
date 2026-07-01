@@ -1,4 +1,5 @@
 """Reusable save-figure dialog: format, DPI, transparency, download."""
+
 from __future__ import annotations
 
 import io
@@ -31,14 +32,10 @@ def render_save_figure(fig, key_prefix: str = "save", filename: str = "figure") 
             key=f"{key_prefix}_dpi",
         )
     with c_transp:
-        transparent = st.checkbox(
-            "Transparent", value=False, key=f"{key_prefix}_transp"
-        )
+        transparent = st.checkbox("Transparent", value=False, key=f"{key_prefix}_transp")
     with c_btn:
         buf = io.BytesIO()
-        fig.savefig(
-            buf, format=fmt, dpi=dpi, transparent=transparent, bbox_inches="tight"
-        )
+        fig.savefig(buf, format=fmt, dpi=dpi, transparent=transparent, bbox_inches="tight")
         buf.seek(0)
         st.download_button(
             label=f"Download .{fmt}",

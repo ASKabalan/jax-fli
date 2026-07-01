@@ -6,6 +6,7 @@ SphericalKappaField) use ``spherical_analysis_form.render_field_map`` instead.
 
 Angular Cl is NOT supported for flat types — the Cl tab shows an error for them.
 """
+
 from __future__ import annotations
 
 from math import ceil

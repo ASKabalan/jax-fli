@@ -1,4 +1,5 @@
 """Shared utilities, constants, and plot helpers for the Analysis page."""
+
 from __future__ import annotations
 
 import io
@@ -131,9 +132,7 @@ def _make_title(template: str, field, idx: int, *, label: str = "") -> str:
         arr = getattr(field, attr, None)
         if arr is not None:
             try:
-                title = title.replace(
-                    key, format(float(np.atleast_1d(np.asarray(arr))[idx]), fmt)
-                )
+                title = title.replace(key, format(float(np.atleast_1d(np.asarray(arr))[idx]), fmt))
             except Exception:
                 pass
     return title
@@ -171,11 +170,7 @@ def _apply_shared_log_ylim(fig) -> None:
     untouched; no-op when there is no positive data on any log panel.
     """
     log_axes = [ax for ax in fig.axes if ax.get_yscale() == "log"]
-    vals = [
-        np.asarray(ln.get_ydata(), dtype=float)
-        for ax in log_axes
-        for ln in ax.get_lines()
-    ]
+    vals = [np.asarray(ln.get_ydata(), dtype=float) for ax in log_axes for ln in ax.get_lines()]
     if not vals:
         return
     v = np.concatenate(vals)

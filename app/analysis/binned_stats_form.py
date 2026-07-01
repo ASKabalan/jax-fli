@@ -3,6 +3,7 @@
 Mirrors ``spherical_analysis_form.cl_tab`` (reference selector, plot layout, shading
 bands, compare-vs-reference ratio, ratio-only) but without theory.  Spherical maps only.
 """
+
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
@@ -90,19 +91,13 @@ def binned_tab(
 
             # --- Reference entry selector (reorder so ref is index 0) ---
             _labels = [e["label"] for e in active_entries]
-            _ref_label = st.selectbox(
-                "Reference entry", _labels, index=0, key=f"{kp}_ref_entry"
-            )
+            _ref_label = st.selectbox("Reference entry", _labels, index=0, key=f"{kp}_ref_entry")
             _ref_idx = _labels.index(_ref_label)
-            active_entries = [active_entries[_ref_idx]] + [
-                e for i, e in enumerate(active_entries) if i != _ref_idx
-            ]
+            active_entries = [active_entries[_ref_idx]] + [e for i, e in enumerate(active_entries) if i != _ref_idx]
 
             # --- Binning ---
             st.markdown("**Binning**")
-            bins = st.number_input(
-                "Bins", min_value=4, max_value=500, value=50, key=f"{kp}_bins"
-            )
+            bins = st.number_input("Bins", min_value=4, max_value=500, value=50, key=f"{kp}_bins")
             if stat_kind == "peak_counts":
                 normalize = st.checkbox(
                     "Normalize (S/N)",
@@ -112,9 +107,7 @@ def binned_tab(
                 )
                 density = True
             else:
-                density = st.checkbox(
-                    "Density (unit integral)", value=True, key=f"{kp}_density"
-                )
+                density = st.checkbox("Density (unit integral)", value=True, key=f"{kp}_density")
                 normalize = False
 
             auto_range = st.checkbox(
@@ -150,9 +143,7 @@ def binned_tab(
 
             # --- Plot layout ---
             st.markdown("**Plot layout**")
-            spec_ncols = st.number_input(
-                "Columns", min_value=1, max_value=10, value=2, key=f"{kp}_ncols"
-            )
+            spec_ncols = st.number_input("Columns", min_value=1, max_value=10, value=2, key=f"{kp}_ncols")
             spec_fig_w = st.number_input(
                 "Width/col",
                 min_value=2.0,
@@ -233,9 +224,7 @@ def binned_tab(
             _has = bool(st.session_state.get(results_key))
             cb1, cb2 = st.columns(2)
             with cb1:
-                compute_btn = st.button(
-                    "Compute", key=f"{kp}_compute_btn", type="primary"
-                )
+                compute_btn = st.button("Compute", key=f"{kp}_compute_btn", type="primary")
             with cb2:
                 redraw_btn = st.button(
                     "Redraw",
@@ -270,9 +259,7 @@ def binned_tab(
                 "spec_ratio_h": spec_ratio_h,
                 "spec_ncols": spec_ncols,
             }
-            xlabel = (
-                "S/N" if (stat_kind == "peak_counts" and normalize) else "pixel value"
-            )
+            xlabel = "S/N" if (stat_kind == "peak_counts" and normalize) else "pixel value"
             axis_labels = {
                 "xlabel": xlabel,
                 "ylabel": cfg["ylabel"],
@@ -280,9 +267,7 @@ def binned_tab(
             }
             eff_compare_ref = compare_ref and len(results) > 1
             eff_ratio_only = ratio_only and eff_compare_ref
-            builder = _BINNED_BUILDERS.get(
-                (eff_compare_ref, eff_ratio_only), _build_binned_main_only
-            )
+            builder = _BINNED_BUILDERS.get((eff_compare_ref, eff_ratio_only), _build_binned_main_only)
             with st.spinner("Rendering..."):
                 with _plt_lock:
                     fig = builder(

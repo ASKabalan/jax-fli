@@ -1,11 +1,11 @@
 """jax-fli Analysis app — Streamlit entry point (local dev + future HF Space)."""
+
 import os
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 
 import streamlit as st
-
 from analysis import run
 from analysis.styled_container import inject_custom_css
 

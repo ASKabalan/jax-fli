@@ -1,4 +1,5 @@
 """DensityField and ParticleField Streamlit UI: 3D P(k) tab."""
+
 from __future__ import annotations
 
 import os
@@ -39,17 +40,11 @@ def pk_tab(active_entries: list[dict]) -> None:
                 key="analysis_pk_ref_entry",
             )
             _ref_idx = _labels.index(_ref_label)
-            active_entries = [active_entries[_ref_idx]] + [
-                e for i, e in enumerate(active_entries) if i != _ref_idx
-            ]
+            active_entries = [active_entries[_ref_idx]] + [e for i, e in enumerate(active_entries) if i != _ref_idx]
 
-            pk_nl_fn = st.selectbox(
-                "Nonlinear fn", ["halofit", "linear"], key="analysis_pk_nl_fn"
-            )
+            pk_nl_fn = st.selectbox("Nonlinear fn", ["halofit", "linear"], key="analysis_pk_nl_fn")
 
-            compare_theory_pk = st.checkbox(
-                "Compare against theory", value=False, key="analysis_pk_compare_theory"
-            )
+            compare_theory_pk = st.checkbox("Compare against theory", value=False, key="analysis_pk_compare_theory")
             ratio_only_pk = st.checkbox(
                 "Ratio only (hide main panel)",
                 value=False,
@@ -144,9 +139,7 @@ def pk_tab(active_entries: list[dict]) -> None:
                 if pk_results:
                     # HARD: same number of snapshots and same k-grid length.
                     if len({s[1].spectra.shape[0] for s in pk_results}) > 1:  # type: ignore
-                        st.error(
-                            "Power spectra have different number of snapshots — cannot compare."
-                        )
+                        st.error("Power spectra have different number of snapshots — cannot compare.")
                         st.stop()
                     if len({s[1].wavenumber.size for s in pk_results}) > 1:  # pyright: ignore[reportGeneralTypeIssues]
                         st.error(
@@ -160,16 +153,12 @@ def pk_tab(active_entries: list[dict]) -> None:
                         _rtol = float(os.getenv("JAX_FLI_COMPARE_RTOL", "1e-1"))
                         _atol = float(os.getenv("JAX_FLI_COMPARE_ATOL", "1e-1"))
                         _arr = np.array([np.asarray(v) for v in _sf])
-                        if not np.all(
-                            np.isclose(_arr, _arr[0], rtol=_rtol, atol=_atol)
-                        ):
+                        if not np.all(np.isclose(_arr, _arr[0], rtol=_rtol, atol=_atol)):
                             st.warning("Power spectra have different scale factors.")
                     theory_pks = None
                     if compare_theory_pk:
                         with st.spinner("Computing theory P(k)..."):
-                            theory_pks = compute_theory_pk(
-                                ref_fld_pk, ref_cosmo_pk, pk_results, pk_nl_fn
-                            )
+                            theory_pks = compute_theory_pk(ref_fld_pk, ref_cosmo_pk, pk_results, pk_nl_fn)
                     st.session_state["analysis_pk_results"] = (
                         pk_results,
                         theory_pks,
@@ -189,9 +178,7 @@ def pk_tab(active_entries: list[dict]) -> None:
             }
             eff_theory = compare_theory_pk and _theory_pks is not None
             eff_ratio_only = ratio_only_pk and eff_theory
-            builder = PK_BUILDERS.get(
-                (eff_theory, eff_ratio_only), PK_BUILDERS[(False, False)]
-            )
+            builder = PK_BUILDERS.get((eff_theory, eff_ratio_only), PK_BUILDERS[(False, False)])
 
             with st.spinner("Rendering..."):
                 with _plt_lock:
@@ -204,9 +191,7 @@ def pk_tab(active_entries: list[dict]) -> None:
                         pk_bands,
                     )
                     _apply_shared_log_ylim(fig_pk)
-                    st.session_state["analysis_pk_png"] = _fig_to_png(
-                        fig_pk, dpi=int(pk_dpi)
-                    )
+                    st.session_state["analysis_pk_png"] = _fig_to_png(fig_pk, dpi=int(pk_dpi))
                     st.session_state["analysis_pk_fig"] = fig_pk
 
         pk_png = st.session_state.get("analysis_pk_png")
@@ -216,8 +201,6 @@ def pk_tab(active_entries: list[dict]) -> None:
             if pk_fig is not None:
                 from .save_figure import render_save_figure
 
-                render_save_figure(
-                    pk_fig, key_prefix="pk", filename="power_spectrum_3d"
-                )
+                render_save_figure(pk_fig, key_prefix="pk", filename="power_spectrum_3d")
         else:
             st.info("Click **Compute** to generate the 3D matter power spectrum.")

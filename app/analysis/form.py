@@ -3,6 +3,7 @@
 This module owns all session-state management and top-level UI scaffolding.
 Actual analysis logic is delegated to the analysis-specific modules.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -114,11 +115,7 @@ def _discover_hf_files(repo_id: str) -> list[str]:
     """Return a sorted list of repo-relative parquet paths for a HF dataset repo."""
     from huggingface_hub import list_repo_files
 
-    return sorted(
-        f
-        for f in list_repo_files(repo_id, repo_type="dataset")
-        if f.endswith(".parquet")
-    )
+    return sorted(f for f in list_repo_files(repo_id, repo_type="dataset") if f.endswith(".parquet"))
 
 
 def _build_hf_tree(paths: list[str]) -> dict:
@@ -139,9 +136,7 @@ def _build_hf_tree(paths: list[str]) -> dict:
 
 def _count_parquet(node: dict) -> int:
     """Total parquet files at and below a tree node."""
-    return len(node.get("", [])) + sum(
-        _count_parquet(c) for k, c in node.items() if k != ""
-    )
+    return len(node.get("", [])) + sum(_count_parquet(c) for k, c in node.items() if k != "")
 
 
 def _render_hf_node(node: dict, repo_id: str, prefix: str, depth: int) -> None:
@@ -218,9 +213,7 @@ def _update_index(entry_id: str, key: str):
 
 
 def _remove_entry(entry_id: str):
-    st.session_state[CATALOGS_KEY] = [
-        e for e in st.session_state[CATALOGS_KEY] if e["id"] != entry_id
-    ]
+    st.session_state[CATALOGS_KEY] = [e for e in st.session_state[CATALOGS_KEY] if e["id"] != entry_id]
 
 
 # ---------------------------------------------------------------------------
@@ -230,9 +223,7 @@ def _remove_entry(entry_id: str):
 
 def _render_hf_browser() -> None:
     with st.expander("\U0001f917 Load from HuggingFace Hub", expanded=False):
-        repo_id = st.text_input(
-            "Dataset repo", value=HF_REPO_ID, key="analysis_hf_repo"
-        )
+        repo_id = st.text_input("Dataset repo", value=HF_REPO_ID, key="analysis_hf_repo")
         try:
             paths = _discover_hf_files(repo_id)
         except Exception as e:
@@ -280,7 +271,7 @@ def _render_file_loading(entries: list[dict]) -> None:
             cb, cl, cp, ci, ct, cr = st.columns([0.5, 2, 3, 1, 1.5, 0.5])
             with cb:
                 st.checkbox(
-                    f"**#{i+1}**",
+                    f"**#{i + 1}**",
                     value=entry.get("active", True),
                     key=f"analysis_active_{eid}",
                     on_change=_toggle_active,
@@ -296,11 +287,7 @@ def _render_file_loading(entries: list[dict]) -> None:
                     label_visibility="collapsed",
                 )
             with cp:
-                path_display = (
-                    f"\U0001f917 {entry.get('hf_path', entry['path'])}"
-                    if is_hf
-                    else entry["path"]
-                )
+                path_display = f"\U0001f917 {entry.get('hf_path', entry['path'])}" if is_hf else entry["path"]
                 st.text_input(
                     "Path",
                     value=path_display,
@@ -343,7 +330,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
     st.divider()
     st.subheader("Visualization")
 
-    file_labels = [f"[{i+1}] {e['label']}" for i, e in enumerate(entries)]
+    file_labels = [f"[{i + 1}] {e['label']}" for i, e in enumerate(entries)]
     selected_idx = st.selectbox(
         "Select file to display",
         range(len(entries)),
@@ -377,9 +364,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                     value=2,
                     key="analysis_map_ncols",
                 )
-                _proj_disabled = field_type_str in (
-                    _DENSITY_3D | _PARTICLE_TYPE | _FLAT_TYPES
-                )
+                _proj_disabled = field_type_str in (_DENSITY_3D | _PARTICLE_TYPE | _FLAT_TYPES)
                 map_projection = st.selectbox(
                     "Projection",
                     ["mollweide", "cart", "polar", "aitoff", "hammer", "lambert"],
@@ -430,9 +415,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                     key="analysis_map_fig_h",
                 )
             with mc4:
-                map_colorbar = st.checkbox(
-                    "Colorbar", value=True, key="analysis_map_cbar"
-                )
+                map_colorbar = st.checkbox("Colorbar", value=True, key="analysis_map_cbar")
                 map_ticks = st.checkbox(
                     "Graticule",
                     value=False,
@@ -440,9 +423,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                     disabled=_proj_disabled,
                 )
             with mc5:
-                map_use_vmin = st.checkbox(
-                    "Custom vmin", value=False, key="analysis_map_use_vmin"
-                )
+                map_use_vmin = st.checkbox("Custom vmin", value=False, key="analysis_map_use_vmin")
                 map_vmin = st.number_input(
                     "vmin",
                     value=0.0,
@@ -450,9 +431,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                     key="analysis_map_vmin",
                     disabled=not map_use_vmin,
                 )
-                map_use_vmax = st.checkbox(
-                    "Custom vmax", value=False, key="analysis_map_use_vmax"
-                )
+                map_use_vmax = st.checkbox("Custom vmax", value=False, key="analysis_map_use_vmax")
                 map_vmax = st.number_input(
                     "vmax",
                     value=1.0,
@@ -492,9 +471,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                 with st.expander("3D Plot Options"):
                     dc1, dc2, dc3 = st.columns(3)
                     with dc1:
-                        d_params["elev"] = st.number_input(
-                            "Elevation", value=40.0, step=5.0, key="analysis_d_elev"
-                        )
+                        d_params["elev"] = st.number_input("Elevation", value=40.0, step=5.0, key="analysis_d_elev")
                         d_params["levels"] = st.number_input(
                             "Levels",
                             min_value=4,
@@ -503,9 +480,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                             key="analysis_d_levels",
                         )
                     with dc2:
-                        d_params["azim"] = st.number_input(
-                            "Azimuth", value=-30.0, step=5.0, key="analysis_d_azim"
-                        )
+                        d_params["azim"] = st.number_input("Azimuth", value=-30.0, step=5.0, key="analysis_d_azim")
                         d_params["project_slices"] = st.number_input(
                             "Project slices",
                             min_value=1,
@@ -522,30 +497,20 @@ def _render_field_map_section(entries: list[dict]) -> None:
                             step=0.1,
                             key="analysis_d_zoom",
                         )
-                        d_params["edges"] = st.checkbox(
-                            "Edges", value=True, key="analysis_d_edges"
-                        )
+                        d_params["edges"] = st.checkbox("Edges", value=True, key="analysis_d_edges")
 
                     st.markdown("**Crop** (e.g. `:` or `10:50`)")
                     cc1, cc2, cc3 = st.columns(3)
                     with cc1:
-                        d_crop_x = st.text_input(
-                            "Crop X", value=":", key="analysis_d_crop_x"
-                        )
+                        d_crop_x = st.text_input("Crop X", value=":", key="analysis_d_crop_x")
                     with cc2:
-                        d_crop_y = st.text_input(
-                            "Crop Y", value=":", key="analysis_d_crop_y"
-                        )
+                        d_crop_y = st.text_input("Crop Y", value=":", key="analysis_d_crop_y")
                     with cc3:
-                        d_crop_z = st.text_input(
-                            "Crop Z", value=":", key="analysis_d_crop_z"
-                        )
+                        d_crop_z = st.text_input("Crop Z", value=":", key="analysis_d_crop_z")
 
                     pc1, pc2 = st.columns([1, 1])
                     with pc1:
-                        d_params["do_project"] = st.checkbox(
-                            "Project to 2D", value=False, key="analysis_d_do_project"
-                        )
+                        d_params["do_project"] = st.checkbox("Project to 2D", value=False, key="analysis_d_do_project")
                     with pc2:
                         d_params["nz_slices"] = st.number_input(
                             "nz_slices",
@@ -578,9 +543,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                             value=4,
                             key="analysis_p_thinning",
                         )
-                        p_params["elev"] = st.number_input(
-                            "Elevation", value=40.0, step=5.0, key="analysis_p_elev"
-                        )
+                        p_params["elev"] = st.number_input("Elevation", value=40.0, step=5.0, key="analysis_p_elev")
                     with pc2:
                         p_params["point_size"] = st.number_input(
                             "Point size",
@@ -590,9 +553,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                             step=0.5,
                             key="analysis_p_point_size",
                         )
-                        p_params["azim"] = st.number_input(
-                            "Azimuth", value=-30.0, step=5.0, key="analysis_p_azim"
-                        )
+                        p_params["azim"] = st.number_input("Azimuth", value=-30.0, step=5.0, key="analysis_p_azim")
                     with pc3:
                         p_params["alpha"] = st.slider(
                             "Alpha",
@@ -686,26 +647,18 @@ def _render_field_map_section(entries: list[dict]) -> None:
                 elif field_type_str in _SPHERICAL_TYPES:
                     from . import spherical_analysis_form
 
-                    png, fig = spherical_analysis_form.render_field_map(
-                        selected_entry, plot_field, map_params
-                    )
+                    png, fig = spherical_analysis_form.render_field_map(selected_entry, plot_field, map_params)
                 else:  # flat types
                     from . import flat_analysis
 
-                    png, fig = flat_analysis.render_flat_field_map(
-                        selected_entry, plot_field, map_params
-                    )
-                    print(
-                        f"[form] Flat field map rendered: png size = {len(png) if png else 'None'}, fig = {fig}"
-                    )
+                    png, fig = flat_analysis.render_flat_field_map(selected_entry, plot_field, map_params)
+                    print(f"[form] Flat field map rendered: png size = {len(png) if png else 'None'}, fig = {fig}")
 
                 if png is not None:
                     st.session_state["analysis_field_png"] = png
                     st.session_state["analysis_field_fig"] = fig
                 else:
-                    st.error(
-                        "Field map rendering failed — check the console for details."
-                    )
+                    st.error("Field map rendering failed — check the console for details.")
 
             field_png = st.session_state.get("analysis_field_png")
             field_fig = st.session_state.get("analysis_field_fig")
@@ -714,9 +667,7 @@ def _render_field_map_section(entries: list[dict]) -> None:
                 if field_fig is not None:
                     from .save_figure import render_save_figure
 
-                    render_save_figure(
-                        field_fig, key_prefix="field_map", filename="field_map"
-                    )
+                    render_save_figure(field_fig, key_prefix="field_map", filename="field_map")
             else:
                 st.info("Adjust settings above, then click **Plot**.")
 
@@ -838,9 +789,7 @@ def _render_spectra_section(active_entries: list[dict]) -> None:
     pk_entries = [e for e in active_entries if _spectral_category(e) == "pk"]
     sph_raw = [e for e in active_entries if e["field_type"] in _SPHERICAL_TYPES]
 
-    tab_cl, tab_pk, tab_peak, tab_pdf, tab_star = st.tabs(
-        ["Angular Cl", "3D P(k)", "Peak counts", "PDF", "Starlet"]
-    )
+    tab_cl, tab_pk, tab_peak, tab_pdf, tab_star = st.tabs(["Angular Cl", "3D P(k)", "Peak counts", "PDF", "Starlet"])
 
     with tab_cl:
         if cl_entries:
@@ -859,22 +808,15 @@ def _render_spectra_section(active_entries: list[dict]) -> None:
 
             density_analysis_form.pk_tab(pk_entries)
         else:
-            st.info(
-                "No 3D P(k) spectra selected — load a DensityField or a precomputed "
-                "3D P(k) PowerSpectrum."
-            )
+            st.info("No 3D P(k) spectra selected — load a DensityField or a precomputed 3D P(k) PowerSpectrum.")
 
     with tab_peak:
         if sph_raw:
             from . import binned_stats_form
 
-            binned_stats_form.binned_tab(
-                sph_raw, sph_raw[0]["field_type"], "peak_counts"
-            )
+            binned_stats_form.binned_tab(sph_raw, sph_raw[0]["field_type"], "peak_counts")
         else:
-            st.info(
-                "Peak counts requires a raw spherical map (SphericalDensity / SphericalKappaField)."
-            )
+            st.info("Peak counts requires a raw spherical map (SphericalDensity / SphericalKappaField).")
 
     with tab_pdf:
         if sph_raw:
@@ -882,9 +824,7 @@ def _render_spectra_section(active_entries: list[dict]) -> None:
 
             binned_stats_form.binned_tab(sph_raw, sph_raw[0]["field_type"], "pdf")
         else:
-            st.info(
-                "PDF requires a raw spherical map (SphericalDensity / SphericalKappaField)."
-            )
+            st.info("PDF requires a raw spherical map (SphericalDensity / SphericalKappaField).")
 
     with tab_star:
         if sph_raw:
@@ -892,9 +832,7 @@ def _render_spectra_section(active_entries: list[dict]) -> None:
 
             starlet_form.starlet_tab(sph_raw, sph_raw[0]["field_type"])
         else:
-            st.info(
-                "Starlet requires a raw spherical map (SphericalDensity / SphericalKappaField)."
-            )
+            st.info("Starlet requires a raw spherical map (SphericalDensity / SphericalKappaField).")
 
 
 # ---------------------------------------------------------------------------

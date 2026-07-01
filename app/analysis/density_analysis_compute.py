@@ -4,10 +4,12 @@ No streamlit imports — all functions return plain data (arrays, figures, bytes
 Figure builders follow a strict "one function per plot mode" rule — no nested
 ifs for routing. Three modes: main only, with theory ratio, ratio only.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from math import ceil
-from typing import Any, Callable
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,11 +44,7 @@ def _snap_title(ref_fld, snap_idx: int) -> str:
     if ref_fld.scale_factors is not None:
         scale_factors = np.asarray(ref_fld.scale_factors)
     if scale_factors is not None:
-        a = (
-            float(scale_factors[snap_idx])
-            if scale_factors.ndim > 0
-            else float(scale_factors)
-        )
+        a = float(scale_factors[snap_idx]) if scale_factors.ndim > 0 else float(scale_factors)
     else:
         a = 1.0
     z = float(jc.utils.a2z(a))
@@ -299,11 +297,7 @@ def compute_theory_pk(
 
     theory_pks = []
     for i in range(n_snaps):
-        a_i = (
-            float(sfa[i])
-            if (sfa is not None and sfa.ndim > 0)
-            else (float(sfa) if sfa is not None else 1.0)
-        )
+        a_i = float(sfa[i]) if (sfa is not None and sfa.ndim > 0) else (float(sfa) if sfa is not None else 1.0)
         th = jax.jit(
             jc.power.nonlinear_matter_power,
             static_argnames=["nonlinear_fn"],
@@ -340,10 +334,7 @@ def render_density_field_map(
     nrows = max(1, ceil(n_plots / ncols))
 
     titles = [
-        _make_title(
-            map_params["title_template"], plot_field, i, label=selected_entry["label"]
-        )
-        for i in range(n_plots)
+        _make_title(map_params["title_template"], plot_field, i, label=selected_entry["label"]) for i in range(n_plots)
     ]
 
     fig = None
@@ -411,10 +402,7 @@ def render_particle_field_map(
     nrows = max(1, ceil(n_plots / ncols))
 
     titles = [
-        _make_title(
-            map_params["title_template"], plot_field, i, label=selected_entry["label"]
-        )
-        for i in range(n_plots)
+        _make_title(map_params["title_template"], plot_field, i, label=selected_entry["label"]) for i in range(n_plots)
     ]
 
     fig = None

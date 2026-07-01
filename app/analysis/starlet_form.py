@@ -8,6 +8,7 @@ drawn with ``cmap="RdBu"`` and a per-scale symmetric colour scale.
 Requires the optional CosmoStat backend (``pip install jax-fli[starlet]``); when absent,
 ``starlet_coefficients`` raises a loud ImportError that is surfaced to the user.
 """
+
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
@@ -61,13 +62,9 @@ def starlet_tab(active_entries: list[dict], ref_field_type: str) -> None:
 
             # --- Reference entry selector (reorder so ref is index 0) ---
             _labels = [e["label"] for e in active_entries]
-            _ref_label = st.selectbox(
-                "Reference entry", _labels, index=0, key=f"{kp}_ref_entry"
-            )
+            _ref_label = st.selectbox("Reference entry", _labels, index=0, key=f"{kp}_ref_entry")
             _ref_idx = _labels.index(_ref_label)
-            active_entries = [active_entries[_ref_idx]] + [
-                e for i, e in enumerate(active_entries) if i != _ref_idx
-            ]
+            active_entries = [active_entries[_ref_idx]] + [e for i, e in enumerate(active_entries) if i != _ref_idx]
 
             # --- Shell picker (single map) ---
             _ref_fld = indexed_field(active_entries[0])
@@ -82,9 +79,7 @@ def starlet_tab(active_entries: list[dict], ref_field_type: str) -> None:
                 help="Starlet transforms one map; pick which shell of the indexed field.",
             )
 
-            nscales = st.number_input(
-                "Scales", min_value=2, max_value=10, value=5, key=f"{kp}_nscales"
-            )
+            nscales = st.number_input("Scales", min_value=2, max_value=10, value=5, key=f"{kp}_nscales")
             normalize = st.checkbox(
                 "Normalize scales",
                 value=False,
@@ -132,9 +127,7 @@ def starlet_tab(active_entries: list[dict], ref_field_type: str) -> None:
             _has = bool(st.session_state.get(results_key))
             cb1, cb2 = st.columns(2)
             with cb1:
-                compute_btn = st.button(
-                    "Compute", key=f"{kp}_compute_btn", type="primary"
-                )
+                compute_btn = st.button("Compute", key=f"{kp}_compute_btn", type="primary")
             with cb2:
                 redraw_btn = st.button(
                     "Redraw",
@@ -150,9 +143,7 @@ def starlet_tab(active_entries: list[dict], ref_field_type: str) -> None:
                     results = [
                         (
                             e["label"],
-                            _single_map(e, shell).starlet_coefficients(
-                                nscales=int(nscales), normalize=normalize
-                            ),
+                            _single_map(e, shell).starlet_coefficients(nscales=int(nscales), normalize=normalize),
                         )
                         for e in active_entries
                     ]
@@ -176,8 +167,7 @@ def starlet_tab(active_entries: list[dict], ref_field_type: str) -> None:
             do_diff = compare_ref and n_entries > 1
             if do_diff and len(npix_set) > 1:
                 st.error(
-                    "Entries have different nside/npix — cannot compute starlet diffs. "
-                    "Showing per-scale maps only."
+                    "Entries have different nside/npix — cannot compute starlet diffs. Showing per-scale maps only."
                 )
                 do_diff = False
 

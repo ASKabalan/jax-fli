@@ -8,6 +8,7 @@ When theory comparison is enabled, a "Probe settings" expander appears:
   - s3       — weak-lensing with Stage-III n(z)
   - point sources — weak-lensing with user-specified source redshifts
 """
+
 from __future__ import annotations
 
 import os
@@ -82,9 +83,7 @@ def render_field_map(
 
     titles = []
     for i in range(n_maps):
-        t = _make_title(
-            map_params["title_template"], plot_field, i, label=selected_entry["label"]
-        )
+        t = _make_title(map_params["title_template"], plot_field, i, label=selected_entry["label"])
         titles.append(t)
 
     fig = None
@@ -131,15 +130,9 @@ def cl_tab(active_entries: list[dict]) -> None:
     """
     import jax.numpy as jnp
 
-    _raw_types = {
-        e["field_type"] for e in active_entries if e["field_type"] != "PowerSpectrum"
-    }
-    if (_raw_types & {"SphericalDensity", "FlatDensity"}) and (
-        _raw_types & _KAPPA_TYPES
-    ):
-        st.error(
-            "Cannot mix density and kappa fields in the same Angular Cl comparison."
-        )
+    _raw_types = {e["field_type"] for e in active_entries if e["field_type"] != "PowerSpectrum"}
+    if (_raw_types & {"SphericalDensity", "FlatDensity"}) and (_raw_types & _KAPPA_TYPES):
+        st.error("Cannot mix density and kappa fields in the same Angular Cl comparison.")
         return
     is_kappa = bool(_raw_types & _KAPPA_TYPES)
 
@@ -172,20 +165,14 @@ def cl_tab(active_entries: list[dict]) -> None:
                 key="analysis_spherical_cl_ref_entry",
             )
             _ref_idx = _labels.index(_ref_label)
-            active_entries = [active_entries[_ref_idx]] + [
-                e for i, e in enumerate(active_entries) if i != _ref_idx
-            ]
+            active_entries = [active_entries[_ref_idx]] + [e for i, e in enumerate(active_entries) if i != _ref_idx]
 
             # --- ℓ range ---
             lc1, lc2 = st.columns(2)
             with lc1:
-                lmin = st.number_input(
-                    "LMIN", min_value=0, value=10, key="analysis_lmin"
-                )
+                lmin = st.number_input("LMIN", min_value=0, value=10, key="analysis_lmin")
             with lc2:
-                lmax = st.number_input(
-                    "LMAX", min_value=10, value=int(_def_lmax), key="analysis_lmax"
-                )
+                lmax = st.number_input("LMAX", min_value=10, value=int(_def_lmax), key="analysis_lmax")
 
             nonlinear_fn_name = st.selectbox(
                 "Nonlinear fn",
@@ -222,9 +209,7 @@ def cl_tab(active_entries: list[dict]) -> None:
                 with st.expander("Probe settings", expanded=True):
                     # Density is not meaningful for kappa fields
                     _probe_options = (
-                        ["s3", "desY3", "point sources"]
-                        if is_kappa
-                        else ["density", "s3", "desY3", "point sources"]
+                        ["s3", "desY3", "point sources"] if is_kappa else ["density", "s3", "desY3", "point sources"]
                     )
                     _pt_key = "analysis_probe_type"
                     # Reset if stored value is no longer a valid option
@@ -285,10 +270,7 @@ def cl_tab(active_entries: list[dict]) -> None:
                         "Multiply theory by pixel window",
                         value=False,
                         key="analysis_pixwin",
-                        help=(
-                            "Spherical: healpy.pixwin(nside)  |  "
-                            "Flat: sinc² pixel window from pixel scale"
-                        ),
+                        help=("Spherical: healpy.pixwin(nside)  |  Flat: sinc² pixel window from pixel scale"),
                     )
 
             # --- Shell count (from the globally-indexed reference field) ---
@@ -401,9 +383,7 @@ def cl_tab(active_entries: list[dict]) -> None:
             if spectra_results:
                 # HARD checks — guarantee the spectra are actually comparable.
                 if len({s[1].spectra.shape[0] for s in spectra_results}) > 1:
-                    st.error(
-                        "Spectra have different number of shells — cannot compare."
-                    )
+                    st.error("Spectra have different number of shells — cannot compare.")
                     st.stop()
                 if len({s[1].wavenumber.size for s in spectra_results}) > 1:
                     st.error(
@@ -437,9 +417,7 @@ def cl_tab(active_entries: list[dict]) -> None:
             if compare_theory and spectra_results:
                 ref_entry = active_entries[0]
                 ells = jnp.asarray(spectra_results[0][1].wavenumber)
-                z_sources = list(
-                    st.session_state.get("analysis_nz_point_sources", [0.5])
-                )
+                z_sources = list(st.session_state.get("analysis_nz_point_sources", [0.5]))
                 with st.spinner("Computing theory Cl..."):
                     theory_result = _compute.compute_theory_cl(
                         ref_entry["catalog"],
@@ -500,8 +478,6 @@ def cl_tab(active_entries: list[dict]) -> None:
             if spectra_fig is not None:
                 from .save_figure import render_save_figure
 
-                render_save_figure(
-                    spectra_fig, key_prefix="spectra", filename="spectra"
-                )
+                render_save_figure(spectra_fig, key_prefix="spectra", filename="spectra")
         else:
             st.info("Click **Compute** to generate angular power spectra.")

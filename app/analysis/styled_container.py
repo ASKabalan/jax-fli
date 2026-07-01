@@ -1,4 +1,5 @@
 """CSS injection for styled form containers."""
+
 from __future__ import annotations
 
 import streamlit as st
