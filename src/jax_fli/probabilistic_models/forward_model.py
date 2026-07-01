@@ -27,6 +27,9 @@ _SOLVERS = {
 
 _LENSING_OUTPUTS = ("convergence", "shear", "reduced_shear")
 
+# Simulation pipeline depth: "pm" runs LPT then N-body; "lpt" paints the lightcone from LPT alone.
+_SIM_MODES = ("pm", "lpt")
+
 
 def make_full_field_model(
     config: Configurations,
@@ -47,6 +50,8 @@ def make_full_field_model(
         raise ValueError(f"lensing_output must be one of {_LENSING_OUTPUTS}, got {config.lensing_output!r}")
     if config.nbody_solver not in _SOLVERS:
         raise ValueError(f"nbody_solver must be one of {tuple(_SOLVERS)}, got {config.nbody_solver!r}")
+    if config.sim_mode not in _SIM_MODES:
+        raise ValueError(f"sim_mode must be one of {_SIM_MODES}, got {config.sim_mode!r}")
 
     painting = PaintingOptions(
         target=geometry,
@@ -118,29 +123,47 @@ def make_full_field_model(
                 if callable(nz) and hasattr(nz, "_norm"):
                     nz._norm = None
 
-        dx_field, p_field = lpt(
-            cosmo,
-            initial_conditions,
-            ts=config.t0,
-            order=config.lpt_order,
-            paint_order=config.paint_order,
-            gradient_order=config.gradient_order,
-            laplace_fd=config.laplace_fd,
-            dealiased=config.dealiased,
-            exact_growth=config.exact_growth,
-        )
+        if config.sim_mode == "lpt":
+            # LPT-only: paint the lightcone directly from a single multi-shell LPT call (no N-body).
+            lightcone, _ = lpt(
+                cosmo,
+                initial_conditions,
+                nb_shells=config.number_of_shells,
+                order=config.lpt_order,
+                painting=painting,
+                shell_spacing=config.shell_spacing,
+                min_width=config.min_width,
+                paint_order=config.paint_order,
+                gradient_order=config.gradient_order,
+                laplace_fd=config.laplace_fd,
+                dealiased=config.dealiased,
+                exact_growth=config.exact_growth,
+            )
+        else:
+            # pm: LPT snapshot at t0 -> N-body integration painting the lightcone.
+            dx_field, p_field = lpt(
+                cosmo,
+                initial_conditions,
+                ts=config.t0,
+                order=config.lpt_order,
+                paint_order=config.paint_order,
+                gradient_order=config.gradient_order,
+                laplace_fd=config.laplace_fd,
+                dealiased=config.dealiased,
+                exact_growth=config.exact_growth,
+            )
 
-        lightcone = nbody(
-            cosmo,
-            dx_field,
-            p_field,
-            solver=solver,
-            nb_shells=config.number_of_shells,
-            shell_spacing=config.shell_spacing,
-            min_width=config.min_width,
-            adjoint=config.adjoint,
-            checkpoints=config.checkpoints,
-        )
+            lightcone = nbody(
+                cosmo,
+                dx_field,
+                p_field,
+                solver=solver,
+                nb_shells=config.number_of_shells,
+                shell_spacing=config.shell_spacing,
+                min_width=config.min_width,
+                adjoint=config.adjoint,
+                checkpoints=config.checkpoints,
+            )
 
         kappa = born(
             cosmo,

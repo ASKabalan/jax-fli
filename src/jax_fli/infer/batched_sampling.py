@@ -215,10 +215,10 @@ def batched_sampling(
                 diagonal_preconditioning=mclmc_diagonal_preconditioning,
                 params=init_mclmc_params,
                 desired_energy_var=mclmc_desired_energy_var,
-                frac_tune1=0.5,
-                frac_tune2=0.5,
-                frac_tune3=0.0,
-                progress_bar=progress_bar,
+                frac_tune1=0.1,
+                frac_tune2=0.1,
+                frac_tune3=0.1,
+                # progress_bar=progress_bar,
             )
             last_state = tuned_state
             parameters = {

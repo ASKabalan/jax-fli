@@ -193,8 +193,8 @@ def _validate_args(args: Namespace, p: argparse.ArgumentParser) -> None:
             "pass --ic-input or --ic-repo + --ic-data-files."
         )
 
-    if args.nb_steps < 2:
-        p.error(f"--nb-steps must be >= 2, got {args.nb_steps}")
+    if args.sim_mode == "pm" and args.nb_steps < 2:
+        p.error(f"--nb-steps must be >= 2 for --sim-mode pm, got {args.nb_steps}")
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +294,7 @@ def main() -> None:
         nb_steps=args.nb_steps,
         field_sharding=sharding,
         # N-body / force / painting knobs (previously not forwarded from the CLI)
+        sim_mode=args.sim_mode,
         nbody_solver=_resolve_solver_name(args.solver),
         t0=args.t0,
         t1=args.t1,

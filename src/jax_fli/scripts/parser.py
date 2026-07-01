@@ -16,7 +16,9 @@ entry scripts compose only the groups they actually consume:
 * priors / inference    — ``add_prior_args`` / ``add_infer_args``
 * forward-model         — ``add_forward_model_args`` (likelihood mask / sigma / lightcone)
 
-``--sim-mode`` is **not** here: it belongs to fli-simulate alone and is defined inline there.
+``--sim-mode`` lives in ``add_integration_settings_args``: the full-field entry points (fli-infer /
+fli-samples) get the ``lpt``/``pm`` choice (default ``pm``); fli-simulate parametrizes it to be
+required and to add the ``lensing`` choice.
 """
 
 from __future__ import annotations
@@ -200,17 +202,30 @@ def add_output_target_args(p):
 # ---------------------------------------------------------------------------
 
 
-def add_integration_settings_args(p, solver_default="kdk"):
+def add_integration_settings_args(p, solver_default="kdk", sim_mode_default="pm", sim_mode_choices=("lpt", "pm")):
     """Integration / lightcone physics: solver, time-stepping, shell timing, force kernels.
 
     ``solver_default`` lets each command pick the N-body integrator default: ``fli-simulate``
     keeps ``kdk`` (DoubleKickDrift), while the full-field model entry points (``fli-infer`` /
     ``fli-samples``) pass ``bf`` (BullFrog, the Configurations default).
 
+    ``--sim-mode`` selects the pipeline depth. The full-field entry points (``fli-infer`` /
+    ``fli-samples``) keep the defaults (choices ``lpt``/``pm``, default ``pm``); ``fli-simulate``
+    passes ``sim_mode_default=None`` (making it required) and ``sim_mode_choices`` adding ``lensing``.
+
     Lensing parameters are **not** added here — scripts call ``add_lensing_args`` explicitly when
-    they need source-distribution / Born options. ``--sim-mode`` is fli-simulate-only.
+    they need source-distribution / Born options.
     """
     g = p.add_argument_group("integration")
+    g.add_argument(
+        "--sim-mode",
+        choices=list(sim_mode_choices),
+        default=sim_mode_default,
+        required=sim_mode_default is None,  # fli-simulate passes None => required
+        dest="sim_mode",
+        help="Pipeline depth: 'lpt' = LPT-only lightcone (no N-body); 'pm' = LPT + N-body lightcone; "
+        "'lensing' (fli-simulate only) = pm + Born -> kappa.",
+    )
     g.add_argument(
         "--nb-shells", type=int, default=None, dest="nb_shells", help="Number of lightcone shells (default: 8)"
     )

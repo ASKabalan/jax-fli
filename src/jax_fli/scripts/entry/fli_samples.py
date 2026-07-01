@@ -156,6 +156,7 @@ def main() -> None:
         min_redshift=args.min_z,
         max_redshift=args.max_z,
         # N-body / force / painting knobs (previously not forwarded from the CLI)
+        sim_mode=args.sim_mode,
         nbody_solver=_resolve_solver_name(args.solver),
         paint_order=args.paint_order,
         gradient_order=args.gradient_order,

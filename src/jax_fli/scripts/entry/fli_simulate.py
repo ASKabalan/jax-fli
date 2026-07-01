@@ -222,19 +222,12 @@ def parser() -> ArgumentParser:
     )
 
     p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
-    # --sim-mode is fli-simulate-only (lpt / pm / lensing select the pipeline depth).
-    p.add_argument(
-        "--sim-mode",
-        choices=["lpt", "pm", "lensing"],
-        required=True,
-        dest="sim_mode",
-        help="Simulation pipeline: lpt, pm (N-body), or lensing (N-body + Born)",
-    )
     add_common_args(p)
     add_distributed_args(p)
     add_simulation_settings_args(p)
     add_output_target_args(p)
-    add_integration_settings_args(p)
+    # --sim-mode is required for fli-simulate and adds the 'lensing' choice (pm + Born -> kappa).
+    add_integration_settings_args(p, sim_mode_default=None, sim_mode_choices=("lpt", "pm", "lensing"))
     add_lensing_args(p)
     add_cosmo_args(p)
     p.add_argument(
