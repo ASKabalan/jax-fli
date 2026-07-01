@@ -5,7 +5,7 @@ reparameterisation for bounded parameters, and full-field vs power-spectrum-leve
 are **in preparation**.
 
 In the meantime the command-line entry points already exist and are documented under
-[Scripts & utilities](../4-scripts-and-utilities/):
+[Scripts & utilities](../4-scripts-and-utilities/README.md):
 
 - [`fli-samples`](../4-scripts-and-utilities/fli-samples.md) — prior-predictive sampling
 - [`fli-infer`](../4-scripts-and-utilities/fli-infer.md) — full-field MCMC

@@ -39,4 +39,4 @@ the IC (when `ic` is not in `--sample`) or warm-starts a sampled IC.
 Plus the shared **cosmology**, **simulation**, **integration**, **lensing** and **prior** groups.
 The reversible `DoubleKickDrift` solver makes the gradient through the whole N-body run memory
 efficient. Post-process the chains with [`fli-extract`](fli-extract.md); the (work-in-progress)
-walk-through lives under [Sampling & inference](../3-sampling-and-inference/).
+walk-through lives under [Sampling & inference](../3-sampling-and-inference/README.md).
