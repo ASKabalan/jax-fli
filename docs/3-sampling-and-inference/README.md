@@ -1,10 +1,20 @@
 # Sampling & Inference
 
-Tutorials for probabilistic inference with `jax-fli` — custom MCMC distributions,
-reparameterisation for bounded parameters, and full-field vs power-spectrum-level posteriors —
-are **in preparation**.
+Probabilistic inference with `jax-fli` — building a NumPyro forward model, custom MCMC
+distributions, reparameterisation for bounded parameters, and full-field vs power-spectrum-level
+posteriors.
 
-In the meantime the command-line entry points already exist and are documented under
+- [Probabilistic Modeling](12-Probabilistic-Modeling.ipynb) — the forward-model builder, the
+  `Configurations` dataclass, and NumPyro/BlackJAX wrappers.
+- [Rosenbrock](13-Rosen.ipynb) — an MCMC sanity check on a known target before touching cosmology.
+- [LPT Lensing Inference](14-LPTLensingInference.ipynb) — a small end-to-end Bayesian posterior
+  over cosmology + initial conditions from an LPT lensing map.
+- [Full-Field Inference](15-FullFieldInference.ipynb) — full-field posterior with the PM forward
+  model.
+- [Configuration options](configurations-options.md) — the `Configurations` fields that drive the
+  forward model.
+
+The command-line entry points wrap the same pipeline for batch / HPC runs, documented under
 [Scripts & utilities](../4-scripts-and-utilities/README.md):
 
 - [`fli-samples`](../4-scripts-and-utilities/fli-samples.md) — prior-predictive sampling

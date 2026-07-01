@@ -31,6 +31,8 @@
 3-sampling-and-inference/README
 3-sampling-and-inference/12-Probabilistic-Modeling
 3-sampling-and-inference/13-Rosen
+3-sampling-and-inference/14-LPTLensingInference
+3-sampling-and-inference/15-FullFieldInference
 3-sampling-and-inference/configurations-options
 ```
 

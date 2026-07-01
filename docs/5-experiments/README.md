@@ -1,9 +1,16 @@
 # Experiments
 
-End-to-end reproduction studies behind the **jax-fli / jaxpm** methods paper. Each experiment lives
-in its own folder with a hand-written `README.md` (the goal + the exact run grid), a `run.sh` that
-launches the runs, and — once the data exists — a runnable Python script that saves the figures
-(SVG for the web, PDF for the paper). ⚠️ marks experiments **not yet run**; ✅ marks finished ones.
+[![Documentation](https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs)](https://jax-fli.readthedocs.io/en/latest/)
+[![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--experiments-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments)
+[![Results Explorer](https://img.shields.io/badge/%F0%9F%A4%97%20Results-Explorer-yellow?)](https://askabalan-jax-fli-results.hf.space/)
+
+End-to-end reproduction studies behind the **jax-fli / jaxpm** methods paper.
+
+Each experiment lives in its own folder with a hand-written `README.md` (the goal + the exact run grid), a `run.sh` that
+launches the runs, and once the data exists a runnable Python script that saves the figures
+(SVG for the web, PDF for the paper).
+
+⚠️ marks experiments **not yet run**; ✅ marks finished ones.
 
 ## Running
 
