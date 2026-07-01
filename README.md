@@ -7,7 +7,7 @@
 **Differentiable cosmological forward modeling on JAX**
 
 <p align="center">
-  <img src="assets/PIPELINE.png" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved through LPT / PM N-body to a light-cone shell, lensed to convergence and shear, and compared to the observable" width="100%">
+  <img src="assets/PIPELINE.svg" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved through LPT / PM N-body to a light-cone shell, lensed to convergence and shear, and compared to the observable" width="100%">
 </p>
 
 ## Overview
@@ -16,7 +16,7 @@
 
 
 <p align="center">
-  <img src="assets/depgraph.png" alt="jax-fli package ecosystem: jaxdecomp and jax_cosmo underpin jaxpm, which underpins jax-fli; jax-fli drives sampling (blackjax, numpyro), cataloging (datasets, arrow), summary statistics (pysc), and ray-tracing (dorian), plus the jax_healpy / s2fft spherical-harmonics branch. Nodes are colored by contribution: authored / lead, contributed, used." width="40%">
+  <img src="assets/depgraph.svg" alt="jax-fli package ecosystem: jaxdecomp and jax_cosmo underpin jaxpm, which underpins jax-fli; jax-fli drives sampling (blackjax, numpyro), cataloging (datasets, arrow), summary statistics (pysc), and ray-tracing (dorian), plus the jax_healpy / s2fft spherical-harmonics branch. Nodes are colored by contribution: authored / lead, contributed, used." width="40%">
 </p>
 
 ## Key Features
