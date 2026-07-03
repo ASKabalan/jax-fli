@@ -4,9 +4,9 @@ requires = ["hatchling", "hatch-vcs"]
 
 [dependency-groups]
 dev = [
-  "prek==0.4.5",
-  "pyright==1.1.410",
-  "ruff==0.15.18",
+  "prek==0.4.6",
+  "pyright==1.1.411",
+  "ruff==0.15.20",
   "toml-sort==0.24.4"
 ]
 docs = [
@@ -76,10 +76,10 @@ all = ["jax_fli[catalog, sampling, raytrace, plot, benchmark]"]
 benchmark = ["jax-hpc-profiler>=0.3.3"]
 catalog = [
   "datasets>=2.0",
-  "huggingface_hub>=0.20",
+  "huggingface_hub>=1.22.0",
   "h5py"
 ]
-cuda = ["jax[cuda]>=0.10.1"]
+cuda = ["jax[cuda]>=0.10.2"]
 examples = [
   "ipython",
   "ipykernel",
