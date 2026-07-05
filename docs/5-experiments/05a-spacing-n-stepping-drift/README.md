@@ -54,6 +54,20 @@ shell count at fixed accuracy.
 
 ![Density C_ell near/mid/far: 10-shell drift / no-drift vs 40-shell reference](assets/fig02-density-shells.svg)
 
+**Per-shell density census against theory.** Beyond those three shells, every shell of every run can be checked directly against the analytic Limber number-counts prediction (`compute_theory_cl_for_density`, comoving-volume weighted, times the HEALPix pixel window `w_ℓ²`). Each subplot is one shell: a log-log `C_ℓ` panel (no-drift red, with-drift blue, theory dashed) over a measured/theory ratio strip. The drift and no-drift runs share the seed and particles, so their Poisson shot noise is the *same* realisation and cancels between them — read the **red↔blue gap** as the drift's effect, and treat the shared rise of both curves above the theory at high `ℓ` (shot noise, which the theory omits) as meaningful only below the marked PM-Nyquist `ℓ_max ≈ πχ/dx`. With scale-factor spacing the shells stay thin, so the frozen-epoch bias is already sub-percent everywhere: drift and no-drift lie on top of each other on every shell, and each shell simply tracks theory down to the resolution cutoff. The equal-volume variant [05c](../05c-spacing-n-stepping-equal-vol/README.md), which deliberately fattens the inner shell, is where this same census opens a large red↔blue gap.
+
+![Per-shell density census vs Limber theory — 5 / 8 / 10 shells](assets/fig03-density-census-small.svg)
+
+![Per-shell density census vs Limber theory — 16 shells](assets/fig04-density-census-16.svg)
+
+![Per-shell density census vs Limber theory — 20 shells](assets/fig05-density-census-20.svg)
+
+![Per-shell density census vs Limber theory — 25 shells](assets/fig06-density-census-25.svg)
+
+![Per-shell density census vs Limber theory — 30 shells](assets/fig07-density-census-30.svg)
+
+![Per-shell density census vs Limber theory — 40 shells](assets/fig08-density-census-40.svg)
+
 **Born convergence is largely insensitive to the drift.** Ratioing each shell-count run to its own
 40-shell run, the drifted and undrifted lensing spectra converge to the few-percent level at much the same
 rate — the radial `κ` projection averages over the per-shell redshift assignment, so the density-shell
@@ -61,7 +75,11 @@ improvement barely carries into the convergence. The drift helps only at the coa
 the bias improves from `+5.4%` to `+3.3%`) and is gone once converged (the drifted and undrifted `κ` agree
 to `0.01%` at 40 shells). The drift is a density-field tool, not a lensing one.
 
-![Born convergence vs number of shells, no-drift vs with-drift](assets/fig03-lensing.svg)
+![Born convergence vs number of shells, no-drift vs with-drift](assets/fig09-lensing.svg)
+
+**…and directly against Limber theory.** The same convergence spectra, now ratioed to the Limber weak-lensing prediction for the single `z = 0.35` source plane (times `w_ℓ²`) instead of to the 40-shell run. Every shell count — 40 included — tracks the theory to within a few percent from `ℓ ≈ 10` to `≈ 100`, then falls progressively below it toward `ℓ ≈ 10³` as the finite PM resolution and the Born projection suppress the small-scale power. The shell-count spread of the previous figure rides on top of this common resolution deficit, which is what the convergence actually converges against — not the analytic theory.
+
+![Born convergence vs number of shells, ratioed to Limber theory](assets/fig10-lensing-theory.svg)
 
 A deeper, three-source-bin tomographic counterpart on a 5 Gpc/h box lives in
 [Experiment 05b](../05b-spacing-n-stepping-3bin/README.md); the equal-volume variant is

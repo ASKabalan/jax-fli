@@ -5,7 +5,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import numpy as np
@@ -43,7 +42,7 @@ theory_cls = compute_theory_cl_for_density(cosmo, spectra, jnp.arange(LMAX + 1))
 # The data are HEALPix nside-2048 maps, so the measured C_ell is suppressed by the pixel
 # window. Multiply the continuous-sky theory by pixwin^2 to compare like-for-like.
 pixwin2 = hp.pixwin(NSIDE, lmax=int(LMAX)) ** 2  # numpy (LMAX+1,)
-theory_cls = eqx.tree_at(lambda p: p.array, theory_cls, theory_cls.array * pixwin2)
+theory_cls = theory_cls * pixwin2
 
 # =============================================================================
 # Style + colors

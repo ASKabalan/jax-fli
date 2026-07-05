@@ -29,7 +29,7 @@ use a magma colormap; the starlet figures need the optional ``pycs``/CosmoStat b
 ``uv sync --extra starlet``.
 
 Run (CPU is fine; float64 — the weak-lensing theory C_ℓ NaNs above ℓ≈215 in float32):
-    JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/07-born-lensing/build_figures.py
+    JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/07-born-lensing/build.py
 """
 
 import jax
@@ -42,7 +42,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -97,7 +96,7 @@ def lensed_map(nbin, src):
 def pixwin_match(theory, nside):
     """theory × pixwin²(nside) at full ℓ resolution (BEFORE binning); ℓ-dependent within a band."""
     pw2 = hp.pixwin(nside, lmax=LMAX) ** 2
-    return eqx.tree_at(lambda p: p.array, theory, theory.array * pw2)
+    return theory * pw2
 
 
 def binned(ps):
