@@ -2177,6 +2177,19 @@ cuda = [
 ]
 
 [[package]]
+name = "jax-cadre"
+version = "0.1.2"
+source = { git = "https://github.com/CMBSciPol/cadre.git?branch=main#94248ebaf73c478c05f4e9a3104f318da4a93bdb" }
+dependencies = [
+    { name = "equinox" },
+    { name = "jax" },
+    { name = "jaxtyping" },
+    { name = "lineax" },
+    { name = "optax" },
+    { name = "optimistix" },
+]
+
+[[package]]
 name = "jax-cosmo"
 version = "0.1.dev313+g709f5dbda"
 source = { git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache#709f5dbdaac827eb7540872447cd07fbf2b31f2a" }
@@ -2257,9 +2270,11 @@ all = [
     { name = "getdist" },
     { name = "h5py" },
     { name = "huggingface-hub" },
+    { name = "jax-cadre" },
     { name = "jax-hpc-profiler" },
     { name = "matplotlib" },
     { name = "numpyro" },
+    { name = "optimistix" },
     { name = "orbax-checkpoint" },
     { name = "tabulate" },
 ]
@@ -2296,7 +2311,9 @@ raytrace = [
 sampling = [
     { name = "blackjax" },
     { name = "fastprogress" },
+    { name = "jax-cadre" },
     { name = "numpyro" },
+    { name = "optimistix" },
     { name = "orbax-checkpoint" },
 ]
 starlet = [
@@ -2362,6 +2379,8 @@ requires-dist = [
     { name = "ipywidgets", marker = "extra == 'examples'" },
     { name = "jax", specifier = ">=0.10.1" },
     { name = "jax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.10.1" },
+    { name = "jax-cadre", marker = "extra == 'all'", git = "https://github.com/CMBSciPol/cadre.git?branch=main" },
+    { name = "jax-cadre", marker = "extra == 'sampling'", git = "https://github.com/CMBSciPol/cadre.git?branch=main" },
     { name = "jax-cosmo", git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache" },
     { name = "jax-healpy", extras = ["recommended"], specifier = ">=0.7.0" },
     { name = "jax-hpc-profiler", marker = "extra == 'all'", specifier = ">=0.3.3" },
@@ -2372,6 +2391,8 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.0" },
     { name = "numpyro", marker = "extra == 'all'" },
     { name = "numpyro", marker = "extra == 'sampling'" },
+    { name = "optimistix", marker = "extra == 'all'", git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress" },
+    { name = "optimistix", marker = "extra == 'sampling'", git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress" },
     { name = "orbax-checkpoint", marker = "extra == 'all'" },
     { name = "orbax-checkpoint", marker = "extra == 'sampling'" },
     { name = "papermill", marker = "extra == 'examples'" },
@@ -3824,7 +3845,7 @@ name = "nvidia-cublas-cu12"
 version = "12.9.2.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cuda-nvrtc-cu12" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/a2/c96163a0fff1839c0c9548bbdeae7b853b867009e33b9b9264adc238b1cf/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:5572131a59c3eebeeb1c4c8144f772d49372c20124916e072a0e3fc30df421d5", size = 575012079, upload-time = "2026-04-08T18:51:47.303Z" },
@@ -3881,7 +3902,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.23.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/19/e70f60a82986f65111d30ffd1744ed3478a3f8cd67bcdac38bf00d57d9da/nvidia_cudnn_cu12-9.23.2.1-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:3adf706a93367d400b4e7668fc14834c7551c9122eeb22f8aec6435b18da5b6f", size = 778221490, upload-time = "2026-06-16T03:36:51.086Z" },
@@ -3893,7 +3914,7 @@ name = "nvidia-cufft-cu12"
 version = "11.4.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/2b/76445b0af890da61b501fde30650a1a4bd910607261b209cccb5235d3daa/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1a28c9b12260a1aa7a8fd12f5ebd82d027963d635ba82ff39a1acfa7c4c0fbcf", size = 200822453, upload-time = "2025-06-05T20:05:27.889Z" },
@@ -3905,9 +3926,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.5.82"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/03/99/686ff9bf3a82a531c62b1a5c614476e8dfa24a9d89067aeedf3592ee4538/nvidia_cusolver_cu12-11.7.5.82-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:62efa83e4ace59a4c734d052bb72158e888aa7b770e1a5f601682f16fe5b4fd2", size = 337869834, upload-time = "2025-06-05T20:06:53.125Z" },
@@ -3919,7 +3940,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.10.65"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/6f/8710fbd17cdd1d0fc3fea7d36d5b65ce1933611c31e1861da330206b253a/nvidia_cusparse_cu12-12.5.10.65-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:221c73e7482dd93eda44e65ce567c031c07e2f93f6fa0ecd3ba876a195023e83", size = 366359408, upload-time = "2025-06-05T20:07:42.501Z" },
@@ -3949,7 +3970,7 @@ name = "nvidia-nvshmem-cu12"
 version = "3.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cuda-cccl-cu12" },
+    { name = "nvidia-cuda-cccl-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/9a/a60b98b629e3b7c4ef6385b08c0e169f2048382c75476f377da54b83a8ca/nvidia_nvshmem_cu12-3.7.1-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:7de83f2aa2b58570b4058543fd3c3e992c19f96571380d46ec9b00e0062c6015", size = 229879072, upload-time = "2026-06-30T19:25:39.671Z" },
@@ -3993,17 +4014,13 @@ wheels = [
 [[package]]
 name = "optimistix"
 version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress#61eb6cfe52a79a4ffe4ed88ba9915d93bad8d94f" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "jaxtyping" },
     { name = "lineax" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/0b/3bdc0e698cb0d264e5dca0b5bb171342a950a43fa6e046d8c57189298422/optimistix-0.1.0.tar.gz", hash = "sha256:f05c9104748e87e1dc10a0b4a2be94e427f98c3eab0b1d41ea24a593d76be03d", size = 70164, upload-time = "2026-02-16T13:35:43.991Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/53/6a81a6ebb1739f19c32002139719d4ee021a349d5bdbe066910feed327a1/optimistix-0.1.0-py3-none-any.whl", hash = "sha256:c8edda7bf7fe48839c93fcd72bce750c950ed9f7033158303150b7ab395add81", size = 101740, upload-time = "2026-02-16T13:35:42.971Z" },
 ]
 
 [[package]]
@@ -4156,7 +4173,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [

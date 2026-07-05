@@ -184,6 +184,16 @@ def main() -> None:
     samples = pred(rng_key)
 
     print(f"sharding {samples['initial_conditions'].array.sharding} samples with {config.field_sharding}...")
+    # Recolor the WHITE initial_conditions -> physical delta, one sample at a time (lax.map is
+    # sequential; never vmap a field-sized batch), using each sample's stored cosmology.
+    samples["initial_conditions"] = jax.lax.map(
+        lambda wc: (
+            jfli.interpolate_initial_conditions(
+                wc[0], config.mesh_size, config.box_size, cosmo=wc[1], field_sharding=config.field_sharding
+            ).array
+        ),
+        (samples["initial_conditions"].array, samples["cosmo"]),
+    )
     # --- save via sample2catalog ---
     saving_fn = jfli.infer.sample2catalog(config)
     saving_fn(samples, args.path, args.batch_id)

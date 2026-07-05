@@ -42,7 +42,10 @@ class Configurations:
     min_width: float = 50.0  # Mpc/h comoving, minimum shell width
 
     # Lensing
-    # Observable returned by the forward model: "convergence" | "shear" | "reduced_shear"
+    # Observable returned by the forward model:
+    #   "convergence" | "shear" | "reduced_shear" | "density"
+    # "density" is the projected galaxy overdensity (clustering / number counts), not a
+    # lensing map; it is a spin-0 observable and reaches every likelihood cell for free.
     lensing_output: str = "convergence"
     # Spherical map->alm method for the shear (Kaiser-Squires) path: "jax" | "jax_cuda".
     map2alm_method: str = "jax"
@@ -78,6 +81,12 @@ class Configurations:
     mask: Any = None
     sigma_unobserved: float = 1e6  # likelihood sigma on pixels outside the survey mask
     log_lightcone: bool = False
+    # Likelihood space: "pixel" (per-pixel Normal, conditionable observable_* sites) or
+    # "harmonic" (ell-tapered Gaussian on whitened alm residuals via numpyro.factor —
+    # the field-level scale cut; requires ell_max and observed_maps at model build).
+    likelihood_space: str = "pixel"
+    ell_max: int | None = None  # scale cut: taper reaches 0 at this multipole (harmonic only)
+    ell_taper_width: int = 8  # cosine roll-off width of the scale-cut taper, in ell
 
     # Priors and inference settings
     priors: dict[str, Any]

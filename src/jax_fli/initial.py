@@ -117,8 +117,8 @@ def gaussian_initial_conditions(
 )
 def interpolate_initial_conditions(
     initial_field: Array,
-    mesh_size: tuple[int, int, int],
-    box_size: tuple[float, float, float],
+    mesh_size: tuple[int, int, int] = None,
+    box_size: tuple[float, float, float] = None,
     *,
     cosmo: jc.Cosmology | None = None,
     pk_fn: Callable[[jnp.ndarray], jnp.ndarray] = None,
@@ -165,6 +165,13 @@ def interpolate_initial_conditions(
             k = jnp.logspace(-4, 1, 128)
             pk = jc.power.linear_matter_power(cosmo, k)
             pk_fn = lambda x: jnp.interp(x, k, pk)
+    if isinstance(initial_field, DensityField):
+        initial_field = initial_field.array
+        mesh_size = initial_field.mesh_size
+        box_size = initial_field.box_size
+    else:
+        if mesh_size is None or box_size is None:
+            raise ValueError("mesh_size and box_size must be provided if initial_field is not a DensityField.")
 
     field = fft3d(initial_field)
     kvec = fftk(field)
