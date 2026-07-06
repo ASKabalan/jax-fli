@@ -5,6 +5,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpyro
+import numpyro.distributions as dist
 from numpyro.handlers import reparam
 from numpyro.infer.reparam import TransformReparam
 
@@ -54,15 +55,14 @@ def _nz_to_distributions(nz_shear):
 
 
 def build_harmonic_whiteners(config: Configurations, nz_list, dispersion, observed_field):
-    """Return ``residual_fn(observable) -> rho`` for the harmonic (ell-tapered) scale-cut likelihood,
-    so the factor is ``-0.5 * sum(rho ** 2)``.
+    """Return ``whiten_fn(field) -> rho``, the noise-whitened harmonic (ell-tapered) scale-cut pack
+    shared by the data and the model observable.
 
-    Packs the residual MAP ``observable - observed_field`` through the shared, precomputed ell-taper
-    (built once from ``observed_field`` via ``harmonic_pack_precompute`` and reused, so the SHT/taper
-    convention cannot drift between data and model), then whitens by ``1/sqrt(N_ell)`` with the flat
-    white noise ``N_ell = dispersion**2 / nbar``. Packing the residual (not ``pack(model) -
-    pack(data)``) avoids cancellation of two large packed vectors near the solution; the two are equal
-    because the pack is linear.
+    The pack (taper + Parseval weights) is precomputed once from ``observed_field`` via
+    ``harmonic_pack_precompute`` (it is geometry-only, data-independent) and reused for every packed
+    map, so the SHT/taper convention cannot drift between data and model; the whitening is
+    ``1/sqrt(N_ell)`` with the flat white noise ``N_ell = dispersion**2 / nbar``. The pack is linear,
+    so ``whiten_fn(model) - whiten_fn(data)`` is exactly the whitened packed residual.
     """
     l_cut, width = config.ell_max, config.ell_taper_width
     arcmin_per_rad = (180.0 / jnp.pi) * 60.0
@@ -71,11 +71,10 @@ def build_harmonic_whiteners(config: Configurations, nz_list, dispersion, observ
     )
     pack = observed_field.harmonic_pack_precompute(l_cut, width, method=config.map2alm_method)
 
-    def residual_fn(observable):
-        residual = observable.replace(array=observable.array - observed_field.array)
-        return residual.harmonic_pack(precompute=pack) * inv_sqrt_nl
+    def whiten_fn(field):
+        return field.harmonic_pack(precompute=pack) * inv_sqrt_nl
 
-    return residual_fn
+    return whiten_fn
 
 
 def make_likelihood(config: Configurations, observed_maps):
@@ -86,8 +85,9 @@ def make_likelihood(config: Configurations, observed_maps):
 
     - ``"pixel"``: a per-pixel Gaussian on every observable map, registering conditionable
       ``observable_i`` sites.
-    - ``"harmonic"``: the ell-tapered Gaussian on the whitened harmonic residual, entering as a
-      ``numpyro.factor`` bound to ``observed_maps`` (no conditionable sites).
+    - ``"harmonic"``: the ell-tapered Gaussian in packed harmonic space, as an observed
+      ``harmonic_obs`` site -- a unit Normal on the whitened packed model observable, observed at
+      the whitened packed data (``observed_maps``, packed once at build time).
     """
     nz_list = _nz_to_distributions(config.nz_shear)
     geometry = config.geometry
@@ -123,10 +123,12 @@ def make_likelihood(config: Configurations, observed_maps):
             flatsky_npix=config.flatsky_npix,
             field_size=config.field_size,
         )
-        residual_fn = build_harmonic_whiteners(config, nz_list, _dispersion(config), observed_field)
+        whiten_fn = build_harmonic_whiteners(config, nz_list, _dispersion(config), observed_field)
+        rho_obs = whiten_fn(observed_field)
 
         def harmonic_likelihood(observable):
-            numpyro.factor("harmonic_loglik", -0.5 * jnp.sum(residual_fn(observable) ** 2))
+            rho_model = whiten_fn(observable)
+            numpyro.sample("harmonic_obs", dist.Normal(rho_model, 1.0).to_event(rho_model.ndim), obs=rho_obs)
             return observable
 
         return harmonic_likelihood
@@ -164,9 +166,9 @@ def make_likelihood(config: Configurations, observed_maps):
 def full_field_probmodel(config: Configurations, observed_maps=None):
     """Return a NumPyro model for joint inference of cosmology and initial-condition fields.
 
-    The initial conditions use a :class:`~numpyro.infer.reparam.TransformReparam` base: NUTS traverses
-    the WHITE ``initial_conditions_base`` while the power-spectrum transform yields the colored
-    ``initial_conditions`` the forward model uses; the cosmology priors come from ``config.priors``.
+    The initial conditions are sampled WHITE (the ``initial_conditions`` site is a unit
+    ``DistributedNormal`` the sampler traverses directly) and colored inline with the
+    cosmology-dependent power spectrum; the cosmology priors come from ``config.priors``.
     The observable and likelihood are selected by
     ``config.likelihood_space`` ("pixel" per-pixel Normal, or "harmonic" ell-tapered scale cut),
     ``config.lensing_output`` and ``config.geometry``.
@@ -177,10 +179,11 @@ def full_field_probmodel(config: Configurations, observed_maps=None):
         Model configuration.
     observed_maps : array_like, optional
         Observed per-bin maps ``(n_bins, npix)``. Required when
-        ``config.likelihood_space == "harmonic"``: the ell-tapered likelihood enters as a
-        ``numpyro.factor`` on the whitened residual, so there are no conditionable
-        ``observable_*`` sites in that mode (do NOT wrap the model in ``condition``). Ignored by
-        the pixel likelihood, which keeps the conditionable sites.
+        ``config.likelihood_space == "harmonic"``: the ell-tapered likelihood enters as the
+        observed ``harmonic_obs`` site (a unit Normal on the whitened packed model, observed at
+        the whitened packed data), so there are no conditionable ``observable_*`` sites in that
+        mode (do NOT wrap the model in ``condition``). Ignored by the pixel likelihood, which
+        keeps the conditionable sites.
     """
     if config.likelihood_space not in ("pixel", "harmonic"):
         raise ValueError(f"Unknown likelihood_space: {config.likelihood_space!r}")

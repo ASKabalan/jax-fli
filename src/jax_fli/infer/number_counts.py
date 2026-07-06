@@ -102,17 +102,14 @@ def number_counts(
         raise ValueError(f"Expected lightcone with status=LIGHTCONE, got {lightcone.status}")
 
     overdensity = lightcone.to(DensityUnit.OVERDENSITY, normalization=normalization)
-    scale_factors = jnp.atleast_1d(lightcone.scale_factors)
-    z_shells = jc.utils.a2z(scale_factors)
-
     source_kind, sources = _normalize_sources(nz_shear)
-    weights = bias * _selection_weights(source_kind, sources, z_shells)  # (K, n_shells)
+    weights = bias * _selection_weights(source_kind, sources, overdensity.z_sources)  # (K, n_shells)
 
     is_spherical = isinstance(lightcone, SphericalDensity)
     if is_spherical:
         maps = jnp.einsum("ki,ip->kp", weights, overdensity.array)  # (K, npix)
     else:
-        r_center = jc.background.radial_comoving_distance(cosmo, scale_factors)
+        r_center = jc.background.radial_comoving_distance(cosmo, overdensity.scale_factors)  # (n_shells,)
         remapped = _remap_shells_to_grid(overdensity.array, r_center, lightcone)  # (n_shells, ny, nx)
         maps = jnp.einsum("ki,iyx->kyx", weights, remapped)  # (K, ny, nx)
 
