@@ -9,7 +9,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -81,7 +80,7 @@ n_shells = np.asarray(cic_spectra.array).shape[0]
 # -----------------------------------------------------------------------------
 theory_cls = compute_theory_cl_for_density(cic_cosmo, cic_spectra, jnp.arange(LMAX + 1))
 pixwin2 = hp.pixwin(NSIDE, lmax=LMAX) ** 2  # numpy (LMAX+1,)
-theory_pw = eqx.tree_at(lambda p: p.array, theory_cls, theory_cls.array * pixwin2)
+theory_pw = theory_cls * pixwin2
 theory_pw_arr = np.asarray(theory_pw.array)
 
 # Bandpower-binned theory + measured spectra (identical edges via lmin=2).

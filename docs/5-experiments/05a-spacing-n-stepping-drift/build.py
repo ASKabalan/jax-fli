@@ -8,7 +8,11 @@ of a thick shell — so a *drifted* coarse lightcone matches a *much finer* undr
           redshift it is assigned under a 10-shell freeze, the drift's smooth z(r), and a 40-shell freeze.
   fig02   per-shell density C_ell at the near / mid / far shell: the 10-shell drift / no-drift runs vs a
           continuous-lightcone reference built by summing the matching 40-shell run (counts -> overdensity).
-  fig03   Born convergence C_ell vs the number of shells, drift vs no-drift, each ratioed to its 40-shell run.
+  fig03   per-shell density C_ell census vs Limber theory for the 5- / 8- / 10-shell runs (drift + no-drift,
+          one subplot per shell: a log-log C_ell panel over a ratio-to-theory strip).
+  fig04-fig08  the same census for the 16- / 20- / 25- / 30- / 40-shell runs.
+  fig09   Born convergence C_ell vs the number of shells, drift vs no-drift, each ratioed to its 40-shell run.
+  fig10   the same Born convergence ratioed to the Limber weak-lensing theory (single z=0.35 source) instead.
 
 Run from the repo root (CPU is fine; fig01 runs a small sim, fig02 loads a few nside-2048 maps):
     JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/05a-spacing-n-stepping-drift/build.py
@@ -25,6 +29,7 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
+import healpy as hp
 import jax.numpy as jnp
 import jax_cosmo as jc
 import matplotlib.pyplot as plt
@@ -35,6 +40,7 @@ from matplotlib import cm
 from matplotlib.lines import Line2D
 
 import jax_fli as jfli
+from jax_fli import compute_theory_cl, compute_theory_cl_for_density
 from jax_fli.io import Catalog
 
 HERE = Path(__file__).resolve().parent
@@ -45,14 +51,32 @@ ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
 
 NEAR_SHELL, MID_SHELL, FAR_SHELL = 1, 5, 9  # which 10-run shell each fig02 column zooms in on
-NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # fig03 sweep (drift vs no-drift Born C_ell)
+NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # fig09 sweep (drift vs no-drift Born C_ell)
 NLB = 16
 LMAX = 1500  # the published spectra stop at ell 1500
+BOX, MESH = 2000.0, 2048.0  # per-shell PM-Nyquist line ell_max ~ pi*chi/dx, dx = box/mesh
+CENSUS_RATIO_YLIM = (0.75, 1.25)  # density census ratio-to-theory strip range
+KAPPA_RATIO_YLIM = (0.3, 1.3)  # fig10 kappa/theory range (small-scale suppression pulls it well below 1)
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
+# Density spectra: the full per-shell census (fig03-fig08), drift + no-drift at every shell count. fig02
+# additionally reads only the 10-run measured C_ell (drift_10 / nodrift_10) and the 40-run shell geometry.
+DRIFT_5_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_5.parquet"
+NODRIFT_5_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_5.parquet"
+DRIFT_8_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_8.parquet"
+NODRIFT_8_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_8.parquet"
 DRIFT_10_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_10.parquet"
 NODRIFT_10_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_10.parquet"
+DRIFT_16_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_16.parquet"
+NODRIFT_16_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_16.parquet"
+DRIFT_20_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_20.parquet"
+NODRIFT_20_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_20.parquet"
+DRIFT_25_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_25.parquet"
+NODRIFT_25_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_25.parquet"
+DRIFT_30_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_30.parquet"
+NODRIFT_30_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_30.parquet"
+DRIFT_40_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_drift_40.parquet"
 NODRIFT_40_SPECTRA = "05-spacing-n-stepping/05a-drift/density_spectra/spectra_exp5a_nodrift_40.parquet"
 
 DRIFT_5_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_drift_5.parquet"
@@ -76,12 +100,25 @@ NODRIFT_30_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_n
 NODRIFT_40_KAPPA = "05-spacing-n-stepping/05a-drift/kappa_spectra/spectra_born_nodrift_40.parquet"
 
 # -----------------------------------------------------------------------------
-# Density spectra: the 10-shell drift / no-drift runs (fig02 lines) + the 40-shell no-drift run (its
-# shell geometry tells fig02 which thin shells to sum for the reference). Kappa spectra: the full
-# shell-count sweep, drift and no-drift (fig03). Every HF parquet used is on its own line.
+# Density spectra feed the per-shell census (fig03-fig08); fig02 additionally uses the 10-run measured
+# C_ell and the 40-run shell geometry. Kappa spectra feed the Born-convergence figures (fig09, fig10),
+# drift and no-drift across the full shell-count sweep. Every HF parquet used is on its own line.
 # -----------------------------------------------------------------------------
+drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_5_SPECTRA}", split="train"))
+nodrift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_5_SPECTRA}", split="train"))
+drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_8_SPECTRA}", split="train"))
+nodrift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_8_SPECTRA}", split="train"))
 drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_10_SPECTRA}", split="train"))
 nodrift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_10_SPECTRA}", split="train"))
+drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_16_SPECTRA}", split="train"))
+nodrift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_16_SPECTRA}", split="train"))
+drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_20_SPECTRA}", split="train"))
+nodrift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_20_SPECTRA}", split="train"))
+drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_25_SPECTRA}", split="train"))
+nodrift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_25_SPECTRA}", split="train"))
+drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_30_SPECTRA}", split="train"))
+nodrift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_30_SPECTRA}", split="train"))
+drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_40_SPECTRA}", split="train"))
 nodrift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{NODRIFT_40_SPECTRA}", split="train"))
 
 kappa_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DRIFT_5_KAPPA}", split="train"))
@@ -123,13 +160,36 @@ kappa_nodrift_40_cat = Catalog.from_dataset(
 )
 
 cosmo = drift_10_cat.cosmology[0]  # one fiducial cosmology shared by every run
-for _c in (nodrift_10_cat, nodrift_40_cat, kappa_drift_40_cat, kappa_nodrift_40_cat):
+for _c in (
+    drift_5_cat,
+    nodrift_5_cat,
+    drift_8_cat,
+    nodrift_8_cat,
+    nodrift_10_cat,
+    drift_16_cat,
+    nodrift_16_cat,
+    drift_20_cat,
+    nodrift_20_cat,
+    drift_25_cat,
+    nodrift_25_cat,
+    drift_30_cat,
+    nodrift_30_cat,
+    drift_40_cat,
+    nodrift_40_cat,
+    kappa_drift_40_cat,
+    kappa_nodrift_40_cat,
+):
     assert np.isclose(float(_c.cosmology[0].Omega_c), float(cosmo.Omega_c))
     assert np.isclose(float(_c.cosmology[0].sigma8), float(cosmo.sigma8))
 
-drift_10 = drift_10_cat.field[0]
-nodrift_10 = nodrift_10_cat.field[0]
-nodrift_40 = nodrift_40_cat.field[0]
+drift_5, nodrift_5 = drift_5_cat.field[0], nodrift_5_cat.field[0]
+drift_8, nodrift_8 = drift_8_cat.field[0], nodrift_8_cat.field[0]
+drift_10, nodrift_10 = drift_10_cat.field[0], nodrift_10_cat.field[0]
+drift_16, nodrift_16 = drift_16_cat.field[0], nodrift_16_cat.field[0]
+drift_20, nodrift_20 = drift_20_cat.field[0], nodrift_20_cat.field[0]
+drift_25, nodrift_25 = drift_25_cat.field[0], nodrift_25_cat.field[0]
+drift_30, nodrift_30 = drift_30_cat.field[0], nodrift_30_cat.field[0]
+drift_40, nodrift_40 = drift_40_cat.field[0], nodrift_40_cat.field[0]
 ell_full = np.asarray(drift_10.wavenumber)
 
 # kappa C_ell (one source bin -> 1-D array each), keyed by shell count.
@@ -330,9 +390,98 @@ def fig02_density_shells():
 
 
 # =============================================================================
-# fig03 — Born convergence C_ell vs the number of shells, drift vs no-drift (ratio to each 40-shell run)
+# fig03-fig08 — per-shell density C_ell census vs Limber theory (drift + no-drift), one subplot per shell
 # =============================================================================
-def fig03_lensing():
+def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0.08):
+    """Draw one run's per-shell density census into `container` (a Figure or SubFigure): for every shell a
+    log-log C_ell panel (Limber theory dashed, no-drift red, with-drift blue) over a measured/theory ratio
+    strip. Theory is the comoving-volume Limber number-counts prediction x pixwin^2(nside=2048); drift and
+    no-drift share the shell geometry, so it is computed once from the no-drift run. The shot noise in the
+    measurement (absent from theory) lifts the ratio at high ell, so read the red<->blue gap (shared shot
+    noise cancels between the two runs) as the drift's frozen-epoch correction, not the distance from 1."""
+    pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
+    theory = np.asarray((compute_theory_cl_for_density(cosmo, spec_no, jnp.arange(LMAX + 1)) * pw2).array)
+    no = np.asarray(spec_no.array)
+    dr = np.asarray(spec_dr.array)
+    chi = np.asarray(spec_no.comoving_centers)
+    dx = BOX / MESH
+    gs = container.add_gridspec(
+        2 * nrows,
+        ncols,
+        height_ratios=[3, 1] * nrows,
+        hspace=0.45,
+        wspace=0.32,
+        left=0.06,
+        right=0.99,
+        top=top,
+        bottom=bottom,
+    )
+    for i in range(no.shape[0]):
+        r, c = divmod(i, ncols)
+        ax_s = container.add_subplot(gs[2 * r, c])
+        ax_r = container.add_subplot(gs[2 * r + 1, c], sharex=ax_s)
+        bc, th_b = _logbin(ell_full, theory[i])
+        _, no_b = _logbin(ell_full, no[i])
+        _, dr_b = _logbin(ell_full, dr[i])
+        ax_s.loglog(bc, th_b, "k--", lw=1.0)
+        ax_s.loglog(bc, no_b, color="tab:red", lw=1.0)
+        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.0)
+        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
+        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.8)
+        ax_r.semilogx(bc, no_b / th_b, color="tab:red", lw=1.0)
+        ax_r.semilogx(bc, dr_b / th_b, color="tab:blue", lw=1.0)
+        ax_r.set_ylim(*CENSUS_RATIO_YLIM)
+        lmax_sh = np.pi * chi[i] / dx  # PM Nyquist; beyond it the comparison is resolution-limited
+        for ax in (ax_s, ax_r):
+            ax.axvline(lmax_sh, color="0.6", ls=":", lw=0.8)
+            ax.grid(True, which="both", ls=":", alpha=0.35)
+            ax.tick_params(labelsize=7)
+        ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=8)
+        ax_s.tick_params(labelbottom=False)
+        if c == 0:
+            ax_s.set_ylabel(r"$C_\ell$", fontsize=8)
+            ax_r.set_ylabel("meas/th", fontsize=7)
+        if r == nrows - 1:
+            ax_r.set_xlabel(r"$\ell$", fontsize=8)
+
+
+def _census_legend(target, **kwargs):
+    handles = [
+        Line2D([], [], color="k", ls="--", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$"),
+        Line2D([], [], color="tab:red", lw=1.6, label="no drift"),
+        Line2D([], [], color="tab:blue", lw=1.6, label="with drift"),
+        Line2D([], [], color="0.6", ls=":", lw=1.2, label=r"$\ell_{\max}\approx\pi\chi/\mathrm{d}x$ (PM Nyquist)"),
+        Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
+    ]
+    target.legend(handles=handles, ncol=5, fontsize=9, frameon=False, **kwargs)
+
+
+def fig03_density_census_small():
+    """The three small runs (5 / 8 / 10 shells) stacked as one figure of sub-blocks."""
+    fig = plt.figure(figsize=(13.0, 14.0))
+    subs = fig.subfigures(4, 1, height_ratios=[0.18, 1, 2, 2], hspace=0.05)
+    _census_legend(subs[0], loc="center")  # dedicated legend strip on top
+    _draw_census(subs[1], nodrift_5, drift_5, 1, 5, top=0.82, bottom=0.14)
+    subs[1].suptitle("5 shells", fontsize=12)
+    _draw_census(subs[2], nodrift_8, drift_8, 2, 4, top=0.88, bottom=0.09)
+    subs[2].suptitle("8 shells", fontsize=12)
+    _draw_census(subs[3], nodrift_10, drift_10, 2, 5, top=0.88, bottom=0.09)
+    subs[3].suptitle("10 shells", fontsize=12)
+    savefig(ASSETS / "fig03-density-census-small", fig)
+
+
+def density_census(spec_no, spec_dr, nrows, ncols, stem):
+    """One run's census on an nrows x ncols grid (one shell per cell)."""
+    fig = plt.figure(figsize=(2.5 * ncols, 2.9 * nrows))
+    _draw_census(fig, spec_no, spec_dr, nrows, ncols, top=0.9, bottom=0.06)
+    _census_legend(fig, loc="upper center", bbox_to_anchor=(0.5, 0.99))
+    savefig(ASSETS / stem, fig)
+
+
+# =============================================================================
+# fig09 — Born convergence C_ell vs the number of shells, drift vs no-drift (ratio to each 40-shell run)
+# =============================================================================
+def fig09_lensing():
     counts = [n for n in NSHELLS_KAPPA if n != 40]
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(13.5, 6.6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
@@ -362,14 +511,63 @@ def fig03_lensing():
     ]
     fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
     fig.tight_layout()
-    savefig(ASSETS / "fig03-lensing", fig)
+    savefig(ASSETS / "fig09-lensing", fig)
+
+
+# =============================================================================
+# fig10 — Born convergence C_ell vs the number of shells, ratioed to the Limber weak-lensing theory
+# =============================================================================
+def fig10_lensing_theory():
+    """fig09 re-referenced to the Limber weak-lensing theory (single z=0.35 source plane x pixwin^2) instead
+    of the 40-shell run. Every shell count (40 included) is ratioed to theory: all agree with it at large
+    scales and fall below at small scales as the finite PM resolution and Born projection suppress power, so
+    the shell-count spread (the fig09 story) rides on a common resolution deficit rather than on the theory."""
+    counts = NSHELLS_KAPPA
+    colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.9, len(counts))))}
+    pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
+    theory = compute_theory_cl(cosmo, jnp.arange(LMAX + 1), jc.redshift.delta_nz(0.35)) * pw2
+    bc, th_b = _logbin(ell_full, np.asarray(theory.array).reshape(-1))
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(13.5, 6.6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
+    for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+        ax_s, ax_r = axes[0, col], axes[1, col]
+        ax_s.loglog(bc, th_b, color="k", ls="--", lw=1.8, label="Limber theory")
+        for n in counts:
+            _, c_b = _logbin(ell_full, kappa[n])
+            ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+        ax_s.set_title(f"Born convergence vs theory — {label}", fontsize=12)
+        ax_s.grid(True, which="both", ls=":", alpha=0.4)
+        ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$") if col == 0 else None
+        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
+        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+        for n in counts:
+            _, c_b = _logbin(ell_full, kappa[n])
+            ax_r.semilogx(bc, c_b / th_b, color=colors[n], lw=1.2)
+        ax_r.set_ylim(*KAPPA_RATIO_YLIM)
+        ax_r.set_xlabel(r"multipole $\ell$")
+        ax_r.grid(True, which="both", ls=":", alpha=0.4)
+        ax_r.set_ylabel("meas / theory") if col == 0 else None
+    handles = [Line2D([], [], color=colors[n], lw=1.6, label=f"{n} shells") for n in counts]
+    handles += [
+        Line2D([], [], color="k", ls="--", lw=1.8, label=r"Limber theory (single $z=0.35$ source)"),
+        Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    fig.tight_layout()
+    savefig(ASSETS / "fig10-lensing-theory", fig)
 
 
 def main():
     set_style()
     fig01_illustration()
     fig02_density_shells()
-    fig03_lensing()
+    fig03_density_census_small()
+    density_census(nodrift_16, drift_16, 4, 4, "fig04-density-census-16")
+    density_census(nodrift_20, drift_20, 4, 5, "fig05-density-census-20")
+    density_census(nodrift_25, drift_25, 5, 5, "fig06-density-census-25")
+    density_census(nodrift_30, drift_30, 5, 6, "fig07-density-census-30")
+    density_census(nodrift_40, drift_40, 5, 8, "fig08-density-census-40")
+    fig09_lensing()
+    fig10_lensing_theory()
     print(f"assets written to {ASSETS}")
 
 

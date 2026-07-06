@@ -38,7 +38,7 @@ geometry-agnostic, so the footprint/decomposition variants ride on the exp-06 de
 sliced to the lightcone's depth (`s3[:n]` / `des_y3[:n]`, so sim bin *i* matches reference bin *i*).
 float64. The convergence catalogs are pushed to HuggingFace
 (`07-cosmogrid-lensing/kappa/…`, with measured spectra under `07-cosmogrid-lensing/spectra/…`) and
-studied locally by [`build_figures.py`](build_figures.py).
+studied locally by [`build.py`](build.py).
 
 A few lensing-specific points shape every figure:
 
@@ -123,8 +123,8 @@ bash run.sh
 
 # 2. Build the figures (fig01–fig08) from the published κ products (CPU; float64; loads two ~1.2 GB
 #    nside-2048 κ maps from the HF cache). Starlet figures (fig03/04/08/09) need `uv sync --extra starlet`.
-JAX_PLATFORMS=cpu uv run --no-sync python build_figures.py
+JAX_PLATFORMS=cpu uv run --no-sync python build.py
 ```
 
-`build_figures.py` loads only the published spectra/maps from the `ASKabalan/jax-fli-experiments`
+`build.py` loads only the published spectra/maps from the `ASKabalan/jax-fli-experiments`
 dataset — no GPU and no re-simulation.

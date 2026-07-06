@@ -30,7 +30,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -181,7 +180,7 @@ theory = compute_theory_cl_for_density(cosmo, spec1024["ngp"], jnp.arange(LMAX +
 
 def _pixwin_match(nside):
     pw2 = hp.pixwin(nside, lmax=LMAX) ** 2  # numpy (LMAX+1,)
-    return eqx.tree_at(lambda p: p.array, theory, theory.array * pw2)
+    return theory * pw2
 
 
 theory_pw = {1024: _pixwin_match(1024), 2048: _pixwin_match(2048)}

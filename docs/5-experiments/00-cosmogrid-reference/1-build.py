@@ -5,7 +5,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import jax_cosmo as jc
@@ -82,7 +81,7 @@ def pixwin_match(theory, nside):
     measured map at that nside. The pixel window is ell-dependent within a bin, so this MUST be
     applied at full resolution, BEFORE bandpower binning."""
     pw2 = hp.pixwin(nside, lmax=LMAX) ** 2  # numpy (LMAX+1,)
-    return eqx.tree_at(lambda p: p.array, theory, theory.array * pw2)
+    return theory * pw2
 
 
 # =============================================================================

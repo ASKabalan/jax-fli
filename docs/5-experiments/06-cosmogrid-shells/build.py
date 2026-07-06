@@ -49,7 +49,6 @@ jax.config.update("jax_enable_x64", True)
 import sys
 from pathlib import Path
 
-import equinox as eqx
 import healpy as hp
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -271,7 +270,7 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
     ell = jnp.arange(LMAX + 1)
     theory = compute_theory_cl_for_density(cosmo, cg_hi, ell)
     pw2 = hp.pixwin(NSIDE_HI, lmax=LMAX) ** 2
-    theory = np.asarray(eqx.tree_at(lambda p: p.array, theory, theory.array * pw2).array)
+    theory = np.asarray((theory * pw2).array)
     ell_np = np.asarray(ell)
 
     binned = {nb: bandpowers(sim_fs[nb]) for nb in NBINS}  # nb -> (ell, cl)
