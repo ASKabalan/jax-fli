@@ -3,7 +3,7 @@
 from .analyze import analyze, requires_arviz
 from .batched_sampling import batched_sampling, requires_samplers
 from .posterior import build_mcsamples, plot_posterior, requires_getdist
-from .sample_converter import default_save, sample2catalog
+from .sample_converter import colour_ic, default_save, sample2catalog
 
 try:
     from .dist import DistributedIC, DistributedNormal, PreconditionnedUniform
@@ -28,5 +28,6 @@ __all__ = [
     "requires_samplers",
     "requires_getdist",
     "sample2catalog",
+    "colour_ic",
     "default_save",
 ]

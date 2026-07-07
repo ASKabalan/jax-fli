@@ -137,5 +137,5 @@ Observed per-pixel σ inside the footprint is `sigma_e / sqrt(n_gal · pixel_are
 | `nuts_target_accept` | `float` | `0.8` | NUTS window-adaptation target acceptance rate. |
 | `mclmc_desired_energy_var` | `float` | `1e-3` | MCLMC desired energy variance for `L`/`step_size` tuning. |
 | `mclmc_num_tune` | `int \| None` | `None` | MCLMC tuning steps; defaults to `num_warmup`. |
-| `mclmc_init_step_size_scale` | `float` | `1e-4` | MCLMC initial step scale factor: `sqrt(total_dim) * scale`. |
+| `mclmc_init_step_size` | `float` | `1e-4` | MCLMC initial step scale factor. |
 | `mclmc_diagonal_preconditioning` | `bool` | `False` | Enable diagonal preconditioning for MCLMC. |

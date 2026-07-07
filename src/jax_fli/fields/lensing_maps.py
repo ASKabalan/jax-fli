@@ -419,6 +419,37 @@ class SphericalShearField(SphericalDensity):
             unit=self.unit,
         )
 
+    def scale_cut(self, l_cut, l_width, *, return_map: bool = True, method: str = "jax"):
+        """Spin-2 map-level scale cut: low-pass the shear map to ``l_cut`` with a cosine ell-taper.
+
+        Overrides the spin-0 :meth:`SphericalDensity.scale_cut`. Transforms the ``(2, npix)`` shear
+        ``(g1, g2)`` to spin-2 E/B ``a_lm`` (``map2alm_spin``), tapers both by ``w_ell`` (1 below
+        ``l_cut - l_width``, cosine roll-off, 0 at ``l_cut``), then either transforms back to a
+        band-limited shear map (``return_map=True``, default -> a new SphericalShearField ``(2, npix)``)
+        or returns the stacked s2fft 2D E/B ``a_lm`` of shape ``(2, lmax + 1, 2*lmax + 1)``
+        (``return_map=False``). Single map only (``(2, npix)``); enable float64 for accurate transforms.
+        """
+        import jax_healpy as jhp
+
+        if not 0 < l_width <= l_cut:
+            raise ValueError(f"l_width must be in (0, l_cut]; got l_width={l_width}, l_cut={l_cut}")
+        if self.array.ndim != 2 or self.array.shape[0] != 2:
+            raise ValueError("scale_cut expects a single shear map (2, npix); index a bin first, e.g. field[i]")
+        lmax = max(int(l_cut), 2 * self.nside - 1)  # s2fft floor; the taper zeroes ell >= l_cut anyway
+        ell = jnp.arange(lmax + 1)
+        x = (ell - (l_cut - l_width)) / l_width  # cosine scale-cut taper (matches SphericalDensity.scale_cut)
+        w = jnp.where(ell <= l_cut - l_width, 1.0, jnp.where(ell >= l_cut, 0.0, 0.5 * (1.0 + jnp.cos(jnp.pi * x))))
+        alm_e, alm_b = jhp.map2alm_spin(
+            [self.array[0], self.array[1]], spin=2, lmax=lmax, iter=0, healpy_ordering=False, method=method
+        )
+        alm_e, alm_b = alm_e * w[:, None], alm_b * w[:, None]  # per-ell taper broadcast over the m axis
+        if not return_map:
+            return jnp.stack([alm_e, alm_b])
+        g1, g2 = jhp.alm2map_spin(
+            [alm_e, alm_b], nside=self.nside, spin=2, lmax=lmax, healpy_ordering=False, method=method
+        )
+        return self.replace(array=jnp.stack([jnp.real(g1), jnp.real(g2)]))
+
     def apply_sharding(self) -> SphericalShearField:
         """Shard the spherical shear into the lensing layout ``P([None,] "y", None, "x")`` (BINS/N,
         component replicated, NPIX/M), keeping ``field_sharding`` the canonical 3-D mesh layout.

@@ -14,6 +14,7 @@ from typing import ParamSpec, TypeVar
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Key, PyTree
 
 from ..io import load_sharded, save_sharded
@@ -52,17 +53,23 @@ def batched_sampling(
     num_samples: int = 1000,
     batch_count: int = 5,
     sampler: str = "NUTS",
+    thinning: int = 1,
     init_params: PyTree | None = None,
     progress_bar: bool = True,
+    print_rate: int | None = None,
     save_callback: Callable[[dict, str, int, dict | None], None] = default_save,
+    post_process: Callable[[dict], dict] | None = None,
     # ── NUTS tuning ──
     max_num_doublings: int = 10,
     target_accept: float = 0.8,
-    # ── MCLMC tuning ──
+    # ── MCLMC tuning (init step scale / num_tune / preconditioning shared with MAMS) ──
     mclmc_desired_energy_var: float = 1e-3,
     mclmc_num_tune: int | None = None,
-    mclmc_init_step_size_scale: float = 1e-4,
+    mclmc_init_step_size: float = 1e-4,
     mclmc_diagonal_preconditioning: bool = False,
+    # ── MAMS (adjusted MCLMC) tuning ──
+    mams_target_accept: float = 0.9,
+    mams_l_proposal_factor: float = float("inf"),
     *model_args,
     **model_kwargs,
 ):
@@ -77,15 +84,28 @@ def batched_sampling(
     model : callable
         A NumPyro model. For inference it must already be conditioned on the data
         (e.g. ``numpyro.handlers.condition(model, {...})``).
-    sampler : {"NUTS", "MCLMC"}
-        Sampling algorithm.
+    sampler : {"NUTS", "MCLMC", "MAMS"}
+        Sampling algorithm. ``"MAMS"`` is the Metropolis-adjusted microcanonical sampler
+        (BlackJAX ``adjusted_mclmc_dynamic``: quasi-random trajectory lengths, unbiased);
+        it reuses ``mclmc_num_tune`` / ``mclmc_init_step_size_scale`` /
+        ``mclmc_diagonal_preconditioning`` and adds ``mams_target_accept`` and
+        ``mams_l_proposal_factor``.
+    thinning : int
+        Store one sample every ``thinning`` kernel steps. Mostly useful for MCLMC,
+        where one kernel step is a single integration step (vs a full trajectory
+        for NUTS), so consecutive unthinned draws are highly correlated.
+    post_process : callable, optional
+        A ``(sample_dict) -> sample_dict`` transform chained AFTER numpyro's ``postprocess_fn``,
+        applied once per sample inside the sampling scan. Use it for per-sample field-sized work
+        (e.g. recoloring a white ``initial_conditions`` to the physical field with its sampled
+        cosmology) so it never runs batched across the whole draw.
     max_num_doublings, target_accept : int, float
         NUTS knobs. ``max_num_doublings`` is the leapfrog trajectory doubling depth
         (the BlackJAX equivalent of ``max_tree_depth``); ``target_accept`` is the
         window-adaptation target acceptance rate.
-    mclmc_desired_energy_var, mclmc_num_tune, mclmc_init_step_size_scale, mclmc_diagonal_preconditioning
-        MCLMC knobs. ``mclmc_init_step_size_scale`` sets the initial tuning step size
-        to ``sqrt(total_dim) * scale`` — overriding the BlackJAX default of
+    mclmc_desired_energy_var, mclmc_num_tune, mclmc_init_step_size, mclmc_diagonal_preconditioning
+        MCLMC knobs. ``mclmc_init_step_size`` sets the initial tuning step size
+        overriding the BlackJAX default of
         ``sqrt(total_dim) * 0.25``, which NaNs and collapses to zero at high dimension.
         ``mclmc_num_tune`` defaults to ``num_warmup``.
 
@@ -112,8 +132,10 @@ def batched_sampling(
     import numpyro
     import orbax.checkpoint as ocp
     from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
+    from blackjax.base import SamplingAlgorithm
 
-    assert sampler in {"NUTS", "MCLMC"}, "Only 'NUTS' and 'MCLMC' samplers are supported"
+    assert sampler in {"NUTS", "MCLMC", "MAMS"}, "Only 'NUTS', 'MCLMC' and 'MAMS' samplers are supported"
+    assert thinning >= 1, "thinning must be a positive integer"
 
     os.makedirs(path, exist_ok=True)
     state_path = f"{path}/sampling_state"
@@ -145,6 +167,15 @@ def batched_sampling(
             parameters = {
                 "step_size": jnp.array(0.0),
                 "inverse_mass_matrix": jnp.zeros(total_dim),
+            }
+        elif sampler == "MAMS":
+            last_state = blackjax.mcmc.adjusted_mclmc_dynamic.init(
+                position=initial_position, logdensity_fn=logdensity_fn, random_generator_arg=init_key
+            )
+            parameters = {
+                "L": jnp.array(0.0),
+                "step_size": jnp.array(0.0),
+                "inverse_mass_matrix": jnp.ones(total_dim),
             }
         else:  # MCLMC
             last_state = blackjax.mcmc.mclmc.init(
@@ -181,59 +212,154 @@ def batched_sampling(
             adapt = blackjax.window_adaptation(
                 blackjax.nuts, logdensity_fn, progress_bar=progress_bar, target_acceptance_rate=target_accept
             )
-            (last_state, tuned), _ = adapt.run(warmup_key, initial_position, num_warmup)
+            # jit the adaptation scan (num_warmup baked static via the closure)
+            (last_state, tuned), _ = jax.jit(lambda k, p: adapt.run(k, p, num_warmup))(warmup_key, initial_position)
             parameters = {
                 "step_size": tuned["step_size"],
                 "inverse_mass_matrix": tuned["inverse_mass_matrix"],
             }
-        else:  # MCLMC
-            initial_state = blackjax.mcmc.mclmc.init(
-                position=initial_position, logdensity_fn=logdensity_fn, rng_key=init_key
+            np.savez(f"{path}/warmup_params.npz", step_size=tuned["step_size"])
+            print(f"Post warm up, step size is {tuned['step_size']}")
+
+        elif sampler == "MAMS":
+            from blackjax.mcmc.adjusted_mclmc_dynamic import rescale
+
+            initial_state = blackjax.mcmc.adjusted_mclmc_dynamic.init(
+                position=initial_position, logdensity_fn=logdensity_fn, random_generator_arg=init_key
             )
-            kernel_builder = lambda imm: blackjax.mcmc.mclmc.build_kernel(
-                logdensity_fn=logdensity_fn,
+
+            # Fork API: the tuner calls the kernel as
+            # (rng_key, state, logdensity_fn, step_size, inverse_mass_matrix, integration_steps_params);
+            # build_kernel bakes integration_steps_fn, and the avg trajectory length arrives via
+            # integration_steps_params at call time (integration_steps_fn(key, *integration_steps_params)).
+            _mams_base = blackjax.mcmc.adjusted_mclmc_dynamic.build_kernel(
+                integration_steps_fn=lambda key, avg: jnp.ceil(jax.random.uniform(key) * rescale(avg)),
                 integrator=blackjax.mcmc.integrators.isokinetic_mclachlan,
-                inverse_mass_matrix=imm,
             )
-            # Override the BlackJAX default initial step size (sqrt(dim) * 0.25), which NaNs on
-            # the first leapfrog iteration at high dim and decays to 0 before tuning converges.
-            print("Tuning MCLMC parameters (L and step_size)...")
-            print(
-                f"  ==> mclmc_desired_energy_var={mclmc_desired_energy_var}, mclmc_init_step_size_scale={mclmc_init_step_size_scale}"
-            )
-            print(f"  ==> step_size = jnp.sqrt(dim) * scale = {jnp.sqrt(total_dim) * mclmc_init_step_size_scale}")
-            init_mclmc_params = MCLMCAdaptationState(
-                L=jnp.sqrt(total_dim),
-                step_size=jnp.sqrt(total_dim) * mclmc_init_step_size_scale,
+
+            def mams_kernel(rng_key, state, logdensity_fn, step_size, inverse_mass_matrix, integration_steps_params):
+                return _mams_base(
+                    rng_key=rng_key,
+                    state=state,
+                    logdensity_fn=logdensity_fn,
+                    step_size=step_size,
+                    inverse_mass_matrix=inverse_mass_matrix,
+                    integration_steps_params=integration_steps_params,
+                    L_proposal_factor=mams_l_proposal_factor,
+                )
+
+            num_tune = mclmc_num_tune if mclmc_num_tune is not None else num_warmup
+            print("Tuning MAMS parameters (L and step_size)...")
+            print(f"  ==> mams_target_accept={mams_target_accept}, num_tune={num_tune}")
+            init_step = mclmc_init_step_size
+            # Cap the INITIAL trajectory at ~50 integration steps: L = sqrt(dim) with a small
+            # step would make the first tuning trajectories cost L/step ~ 1000s of gradients
+            # at field dimensions (the tuner re-estimates L from the data in its later phases).
+            init_mams_params = MCLMCAdaptationState(
+                L=jnp.minimum(jnp.sqrt(total_dim), 50.0 * init_step),
+                step_size=init_step,
                 inverse_mass_matrix=jnp.ones(total_dim),
             )
-            tuned_state, tuned_params, _ = blackjax.mclmc_find_L_and_step_size(
-                mclmc_kernel=kernel_builder,
-                num_steps=mclmc_num_tune if mclmc_num_tune is not None else num_warmup,
-                state=initial_state,
-                rng_key=warmup_key,
-                diagonal_preconditioning=mclmc_diagonal_preconditioning,
-                params=init_mclmc_params,
-                desired_energy_var=mclmc_desired_energy_var,
-                frac_tune1=0.1,
-                frac_tune2=0.1,
-                frac_tune3=0.1,
-                # progress_bar=progress_bar,
+            _mams_tune = jax.jit(
+                lambda k, st, p: blackjax.adjusted_mclmc_find_L_and_step_size(
+                    mclmc_kernel=mams_kernel,
+                    logdensity_fn=logdensity_fn,
+                    num_steps=num_tune,
+                    state=st,
+                    rng_key=k,
+                    target=mams_target_accept,
+                    diagonal_preconditioning=mclmc_diagonal_preconditioning,
+                    params=p,
+                )
             )
+            tuned_state, tuned_params, _ = _mams_tune(warmup_key, initial_state, init_mams_params)
             last_state = tuned_state
             parameters = {
                 "L": tuned_params.L,
                 "step_size": tuned_params.step_size,
                 "inverse_mass_matrix": tuned_params.inverse_mass_matrix,
             }
+            np.savez(f"{path}/warmup_params.npz", L=tuned_params.L, step_size=tuned_params.step_size)
+            print(f"Post warm up, L is {tuned_params.L} step size is {tuned_params.step_size}")
+
+        else:  # MCLMC
+            initial_state = blackjax.mcmc.mclmc.init(
+                position=initial_position, logdensity_fn=logdensity_fn, rng_key=init_key
+            )
+            # Fork API: the tuner calls the kernel directly as
+            # (rng_key, state, logdensity_fn, inverse_mass_matrix, L, step_size); build_kernel returns
+            # exactly that (logdensity/imm/L/step_size passed at call time, not baked into a builder).
+            mclmc_kernel = blackjax.mcmc.mclmc.build_kernel(integrator=blackjax.mcmc.integrators.isokinetic_mclachlan)
+            # Override the BlackJAX default initial step size (sqrt(dim) * 0.25), which NaNs on
+            # the first leapfrog iteration at high dim and decays to 0 before tuning converges.
+            print("Tuning MCLMC parameters (L and step_size)...")
+            print(
+                f"  ==> mclmc_desired_energy_var={mclmc_desired_energy_var}, mclmc_init_step_size={mclmc_init_step_size}"
+            )
+            print(f"  ==> step_size = {mclmc_init_step_size}")
+            init_mclmc_params = MCLMCAdaptationState(
+                L=jnp.sqrt(total_dim),
+                step_size=mclmc_init_step_size,
+                inverse_mass_matrix=jnp.ones(total_dim),
+            )
+            num_tune = mclmc_num_tune if mclmc_num_tune is not None else num_warmup
+            # progress_bar=False is REQUIRED so the tuning folds into a lax.scan (the default True keeps
+            # it out of a scan); jit it (num_tune / frac_* / diagonal_preconditioning baked static via closure).
+            _mclmc_tune = jax.jit(
+                lambda k, st, p: blackjax.mclmc_find_L_and_step_size(
+                    mclmc_kernel=mclmc_kernel,
+                    logdensity_fn=logdensity_fn,
+                    num_steps=num_tune,
+                    state=st,
+                    rng_key=k,
+                    diagonal_preconditioning=mclmc_diagonal_preconditioning,
+                    params=p,
+                    desired_energy_var=mclmc_desired_energy_var,
+                    frac_tune1=0.4,
+                    frac_tune2=0.4,
+                    frac_tune3=0.2,
+                    num_effective_samples=256,
+                    progress_bar=progress_bar,
+                    print_rate=print_rate,
+                )
+            )
+            tuned_state, tuned_params, _ = _mclmc_tune(warmup_key, initial_state, init_mclmc_params)
+            last_state = tuned_state
+            parameters = {
+                "L": tuned_params.L,
+                "step_size": tuned_params.step_size,
+                "inverse_mass_matrix": tuned_params.inverse_mass_matrix,
+            }
+            np.savez(f"{path}/warmup_params.npz", L=tuned_params.L, step_size=tuned_params.step_size)
+            print(f"Post warm up, L is {tuned_params.L} step size is {tuned_params.step_size}")
 
         inference_state = {"nb_samples": jnp.array(0), "last_state": last_state, "parameters": parameters}
         save_sharded(inference_state, state_path, overwrite=True, dump_structure=False)
 
     if sampler == "NUTS":
         sampler_fn = blackjax.nuts(logdensity_fn, max_num_doublings=max_num_doublings, **parameters)
+    elif sampler == "MAMS":
+        from blackjax.mcmc.adjusted_mclmc_dynamic import rescale
+
+        avg_steps = parameters["L"] / parameters["step_size"]
+        sampler_fn = blackjax.adjusted_mclmc_dynamic(
+            logdensity_fn,
+            step_size=parameters["step_size"],
+            inverse_mass_matrix=parameters["inverse_mass_matrix"],
+            L_proposal_factor=mams_l_proposal_factor,
+            integration_steps_fn=lambda k: jnp.ceil(jax.random.uniform(k) * rescale(avg_steps)),
+        )
     else:  # MCLMC
         sampler_fn = blackjax.mclmc(logdensity_fn, **parameters)
+
+    if thinning > 1:
+        base_sampler_fn = sampler_fn
+
+        def thinned_step(rng_key, state):
+            keys = jax.random.split(rng_key, thinning)
+            return jax.lax.scan(lambda s, k: base_sampler_fn.step(k, s), state, keys)
+
+        sampler_fn = SamplingAlgorithm(base_sampler_fn.init, thinned_step)
 
     start_batch = nb_samples // num_samples
     if start_batch >= batch_count:
@@ -246,7 +372,28 @@ def batched_sampling(
             if postprocess_fn is not None
             else state.position
         )
+        # Chain a per-sample post-process after numpyro's postprocess (runs once per scan step, so
+        # field-sized work like recoloring the white IC happens one sample at a time -- never batched).
+        if post_process is not None:
+            position = post_process(position)
         return position, info
+
+    # Build the per-batch sampler ONCE and jit it: sampler_fn / transform / num_samples / progress_bar are
+    # closed over (compile-time constants), so only (batch_key, init_state) are traced. This compiles on the
+    # first batch and is reused for the rest -- removing the per-batch Python re-trace of the field-dimensional
+    # potential and giving one compiled/sharded boundary (so the model's collectives run inside a single program).
+    @jax.jit
+    def run_batch(batch_key, init_state):
+        last_state, (samples, infos) = blackjax.util.run_inference_algorithm(
+            rng_key=batch_key,
+            initial_state=init_state,
+            inference_algorithm=sampler_fn,
+            num_steps=num_samples,
+            transform=transform,
+            progress_bar=progress_bar,
+            print_rate=print_rate,
+        )
+        return last_state, samples, infos
 
     for i in range(start_batch, batch_count):
         print(f"Sampling batch {i + 1}/{batch_count} using {sampler} (blackjax)...")
@@ -254,14 +401,7 @@ def batched_sampling(
 
         run_key, batch_key = jax.random.split(run_key)
 
-        last_state, (samples, infos) = blackjax.util.run_inference_algorithm(
-            rng_key=batch_key,
-            initial_state=last_state,
-            inference_algorithm=sampler_fn,
-            num_steps=num_samples,
-            transform=transform,
-            progress_bar=progress_bar,
-        )
+        last_state, samples, infos = run_batch(batch_key, last_state)
         if sampler == "MCLMC":
             metrics = {
                 "mean_num_steps": None,
@@ -269,7 +409,7 @@ def batched_sampling(
                 # MCLMCInfo has no acceptance rate; report the fraction of NaN-free steps.
                 "mean_accept_prob": float(jnp.mean(infos.nonans.astype(jnp.float32))),
             }
-        else:
+        else:  # NUTS and MAMS share the HMCInfo-style fields
             metrics = {
                 "mean_num_steps": float(jnp.mean(infos.num_integration_steps)),
                 "total_divergences": int(jnp.sum(infos.is_divergent)),

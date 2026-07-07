@@ -202,6 +202,7 @@ pmesh = ["setuptools", "wheel", "cython", "numpy", "mpi4py"]
 # for local dev + locking. uv strips [tool.uv.sources] from the published wheel, so released
 # metadata depends only on the plain PyPI names.
 [tool.uv.sources]
+blackjax = {branch = "progressbar-mclmc", git = "https://github.com/ASKabalan/blackjax"}
 discodj = {git = "https://github.com/cosmo-sims/DISCO-DJ.git"}
 fastpm = {git = "https://github.com/ASKabalan/fastpm-python"}
 glass = {git = "https://github.com/glass-dev/glass"}

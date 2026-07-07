@@ -1257,6 +1257,33 @@ class SphericalDensity(AbstractField):
         )
         return coeffs.normalized if normalize else coeffs
 
+    def scale_cut(self, l_cut, l_width, *, return_map: bool = True, method: str = "jax"):
+        """Map-level scale cut: low-pass the map to ``l_cut`` with a cosine ell-taper.
+
+        Transforms to spherical harmonics, applies the taper ``w_ell`` (1 below ``l_cut - l_width``,
+        cosine roll-off, 0 at ``l_cut``), then either transforms back to a band-limited map
+        (``return_map=True``, default -> a new SphericalDensity) or returns the s2fft 2D ``a_lm``
+        array of shape ``(lmax + 1, 2*lmax + 1)`` for inspection (``return_map=False``). This is the
+        pure map-level scale cut (no whitening or packing). Single map only (index a shell first,
+        e.g. ``field[i]``); enable float64 for accurate transforms.
+        """
+        if not 0 < l_width <= l_cut:
+            raise ValueError(f"l_width must be in (0, l_cut]; got l_width={l_width}, l_cut={l_cut}")
+        if self.array.ndim != 1:
+            raise ValueError("scale_cut expects a single map (npix,); index a shell first, e.g. field[i]")
+        lmax = max(int(l_cut), 2 * self.nside - 1)  # s2fft floor; the taper zeroes ell >= l_cut anyway
+        ell = jnp.arange(lmax + 1)
+        x = (ell - (l_cut - l_width)) / l_width  # cosine scale-cut taper (mirrors harmonic.py)
+        w = jnp.where(ell <= l_cut - l_width, 1.0, jnp.where(ell >= l_cut, 0.0, 0.5 * (1.0 + jnp.cos(jnp.pi * x))))
+        flm = jhp.map2alm(self.array, lmax=lmax, iter=0, pol=False, healpy_ordering=False, method=method)
+        flm = flm * w[:, None]  # per-ell taper broadcast over the m axis
+        if not return_map:
+            return flm
+        band_limited = jnp.real(
+            jhp.alm2map(flm, nside=self.nside, lmax=lmax, pol=False, healpy_ordering=False, method=method)
+        )
+        return self.replace(array=band_limited)
+
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> SphericalDensity:
         """
