@@ -2173,6 +2173,23 @@ cuda = [
 ]
 
 [[package]]
+name = "jax-cadre"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "equinox" },
+    { name = "jax" },
+    { name = "jaxtyping" },
+    { name = "lineax" },
+    { name = "optax" },
+    { name = "optimistix" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/48/996e719969c7bbc9de621deee651b7b9e420dd3c51514d81226923ec0446/jax_cadre-0.1.3.tar.gz", hash = "sha256:c2c47bdca71c000f96a798fcd6350415646d9b963d5626f3fe3954c6bfa63591", size = 24657, upload-time = "2026-07-06T22:10:01.616Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/44/db66a2de5f5d4065a824c4db617a5a7c715bd83d0732392b7b31814da62b/jax_cadre-0.1.3-py3-none-any.whl", hash = "sha256:d1950e499843517cf5ac47cbb73619e0667f23db3bc0420c235b8a90fd6dc792", size = 23451, upload-time = "2026-07-06T22:10:00.371Z" },
+]
+
+[[package]]
 name = "jax-cosmo"
 version = "0.1.dev313+g709f5dbda"
 source = { git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache#709f5dbdaac827eb7540872447cd07fbf2b31f2a" }
@@ -2253,9 +2270,11 @@ all = [
     { name = "getdist" },
     { name = "h5py" },
     { name = "huggingface-hub" },
+    { name = "jax-cadre" },
     { name = "jax-hpc-profiler" },
     { name = "matplotlib" },
     { name = "numpyro" },
+    { name = "optimistix" },
     { name = "orbax-checkpoint" },
     { name = "tabulate" },
 ]
@@ -2292,7 +2311,9 @@ raytrace = [
 sampling = [
     { name = "blackjax" },
     { name = "fastprogress" },
+    { name = "jax-cadre" },
     { name = "numpyro" },
+    { name = "optimistix" },
     { name = "orbax-checkpoint" },
 ]
 starlet = [
@@ -2358,6 +2379,8 @@ requires-dist = [
     { name = "ipywidgets", marker = "extra == 'examples'" },
     { name = "jax", specifier = ">=0.10.1" },
     { name = "jax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.10.1" },
+    { name = "jax-cadre", marker = "extra == 'all'" },
+    { name = "jax-cadre", marker = "extra == 'sampling'" },
     { name = "jax-cosmo", git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache" },
     { name = "jax-healpy", extras = ["recommended"], specifier = ">=0.7.0" },
     { name = "jax-hpc-profiler", marker = "extra == 'all'", specifier = ">=0.3.3" },
@@ -2368,6 +2391,8 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.0" },
     { name = "numpyro", marker = "extra == 'all'" },
     { name = "numpyro", marker = "extra == 'sampling'" },
+    { name = "optimistix", marker = "extra == 'all'", git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress" },
+    { name = "optimistix", marker = "extra == 'sampling'", git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress" },
     { name = "orbax-checkpoint", marker = "extra == 'all'" },
     { name = "orbax-checkpoint", marker = "extra == 'sampling'" },
     { name = "papermill", marker = "extra == 'examples'" },
@@ -3989,17 +4014,13 @@ wheels = [
 [[package]]
 name = "optimistix"
 version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ASKabalan/optimistix.git?branch=add-progress#61eb6cfe52a79a4ffe4ed88ba9915d93bad8d94f" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "jaxtyping" },
     { name = "lineax" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/0b/3bdc0e698cb0d264e5dca0b5bb171342a950a43fa6e046d8c57189298422/optimistix-0.1.0.tar.gz", hash = "sha256:f05c9104748e87e1dc10a0b4a2be94e427f98c3eab0b1d41ea24a593d76be03d", size = 70164, upload-time = "2026-02-16T13:35:43.991Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/53/6a81a6ebb1739f19c32002139719d4ee021a349d5bdbe066910feed327a1/optimistix-0.1.0-py3-none-any.whl", hash = "sha256:c8edda7bf7fe48839c93fcd72bce750c950ed9f7033158303150b7ab395add81", size = 101740, upload-time = "2026-02-16T13:35:42.971Z" },
 ]
 
 [[package]]

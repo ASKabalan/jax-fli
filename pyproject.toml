@@ -98,7 +98,9 @@ sampling = [
   "blackjax",
   "numpyro",
   "orbax-checkpoint",
-  "fastprogress"
+  "fastprogress",
+  "jax-cadre",
+  "optimistix"
 ]
 # Spherical starlet wavelets (SphericalDensity.starlet_coefficients) need CosmoStat, which
 # imports as `pycs` and ships a C++ backend with a non-trivial build.
@@ -208,6 +210,7 @@ fastpm = {git = "https://github.com/ASKabalan/fastpm-python"}
 glass = {git = "https://github.com/glass-dev/glass"}
 jax-cosmo = {branch = "better-cache", git = "https://github.com/ASKabalan/jax_cosmo"}
 jaxpm = {branch = "notebook-and-docs-update", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git"}
+optimistix = {branch = "add-progress", git = "https://github.com/ASKabalan/optimistix.git"}
 pfft-python = {git = "https://github.com/MP-Gadget/pfft-python"}
 pmesh = {git = "https://github.com/MP-Gadget/pmesh"}
 pycs = {branch = "master", git = "https://github.com/CosmoStat/cosmostat"}

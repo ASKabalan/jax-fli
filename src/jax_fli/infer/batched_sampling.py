@@ -324,6 +324,7 @@ def batched_sampling(
                 )
             )
             tuned_state, tuned_params, _ = _mclmc_tune(warmup_key, initial_state, init_mclmc_params)
+            jax.block_until_ready(tuned_state)
             last_state = tuned_state
             parameters = {
                 "L": tuned_params.L,
@@ -402,6 +403,7 @@ def batched_sampling(
         run_key, batch_key = jax.random.split(run_key)
 
         last_state, samples, infos = run_batch(batch_key, last_state)
+        jax.block_until_ready(last_state)
         if sampler == "MCLMC":
             metrics = {
                 "mean_num_steps": None,
