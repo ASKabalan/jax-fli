@@ -87,7 +87,7 @@ def batched_sampling(
     sampler : {"NUTS", "MCLMC", "MAMS"}
         Sampling algorithm. ``"MAMS"`` is the Metropolis-adjusted microcanonical sampler
         (BlackJAX ``adjusted_mclmc_dynamic``: quasi-random trajectory lengths, unbiased);
-        it reuses ``mclmc_num_tune`` / ``mclmc_init_step_size_scale`` /
+        it reuses ``mclmc_num_tune`` / ``mclmc_init_step_size`` /
         ``mclmc_diagonal_preconditioning`` and adds ``mams_target_accept`` and
         ``mams_l_proposal_factor``.
     thinning : int
