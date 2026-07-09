@@ -214,7 +214,9 @@ def plot_born_windows(
     chi_line = jnp.linspace(0.0, chi_k, 512)
     w_line = chi_line / jc.background.a_of_chi(cosmo, chi_line) * (1.0 - chi_line / chi_k)
     ax.fill_between(np.asarray(chi_line), np.asarray(w_line), color="0.9", zorder=0, label="exact kernel area")
-    ax.plot(np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.9, zorder=4, label=rf"$w(\chi)$, $z_s={z_kernel}$")
+    ax.plot(
+        np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.9, zorder=4, label=rf"$w(\chi)$, $z_s={z_kernel}$"
+    )
 
     chi_s_arr = jnp.atleast_1d(jnp.asarray(chi_k))
     single = len(comoving_centers) == 1
@@ -223,8 +225,12 @@ def plot_born_windows(
         widths = np.asarray(density_width[label])
         a_shell = jc.background.a_of_chi(cosmo, jnp.asarray(centers))
         # box area = shell Born weight under this quadrature → box height = weight / width
-        w_shell = np.asarray(_born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, quadrature)[:, 0])
-        w_exact = np.asarray(_born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, "gauss_legendre")[:, 0])
+        w_shell = np.asarray(
+            _born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, quadrature)[:, 0]
+        )
+        w_exact = np.asarray(
+            _born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, "gauss_legendre")[:, 0]
+        )
         heights = np.where(widths > 0, w_shell / widths, 0.0)
         contrib = (centers - widths / 2) < chi_k  # shells in front of the source
 
@@ -234,7 +240,11 @@ def plot_born_windows(
                 face, edge, alpha = (("#4C72B0", "#AFC7E3")[i % 2], "0.3", 0.6)  # alternating shades → shell widths pop
             else:
                 face, edge, alpha = (cm(j), cm(j), 0.28)
-            ax.add_patch(plt.Rectangle((lo, 0), widths[i], heights[i], facecolor=face, edgecolor=edge, lw=0.7, alpha=alpha, zorder=1))
+            ax.add_patch(
+                plt.Rectangle(
+                    (lo, 0), widths[i], heights[i], facecolor=face, edgecolor=edge, lw=0.7, alpha=alpha, zorder=1
+                )
+            )
         if quadrature == "midpoint":  # midpoint samples the kernel at each shell center — mark it on the curve
             ax.plot(centers[contrib], heights[contrib], "o", ms=3.5, color=("#14315e" if single else cm(j)), zorder=5)
 
