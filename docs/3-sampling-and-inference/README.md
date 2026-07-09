@@ -1,23 +1,15 @@
 # Sampling & Inference
 
-Probabilistic inference with `jax-fli` — building a NumPyro forward model, custom MCMC
-distributions, reparameterisation for bounded parameters, and full-field vs power-spectrum-level
-posteriors.
+Probabilistic inference with `jax-fli` — building a NumPyro forward model, custom MCMC distributions, reparameterisation for bounded parameters, and full-field (MCMC) posteriors over cosmology and the initial-condition field.
 
-- [Probabilistic Modeling](12-Probabilistic-Modeling.ipynb) — the forward-model builder, the
-  `Configurations` dataclass, and NumPyro/BlackJAX wrappers.
-- [Rosenbrock](13-Rosen.ipynb) — an MCMC sanity check on a known target before touching cosmology.
-- [LPT Lensing Inference](14-LPTLensingInference.ipynb) — a small end-to-end Bayesian posterior
-  over cosmology + initial conditions from an LPT lensing map.
-- [Full-Field Inference](15-FullFieldInference.ipynb) — full-field posterior with the PM forward
-  model.
-- [Configuration options](configurations-options.md) — the `Configurations` fields that drive the
-  forward model.
+- [Probabilistic Modeling](12-Probabilistic-Modeling.ipynb) — the forward-model builder, the `Configurations` dataclass, custom MCMC distributions, and the NumPyro/BlackJAX wrappers.
+- [Rosenbrock](13-Rosen.ipynb) — an MCMC sampler sanity check (NUTS / MCLMC / MAMS, compared at a matched gradient budget) on a known target before touching cosmology.
+- [LPT Density MCLMC](14-LPTDensityMCLMC.ipynb) — full-posterior field-level inference of `(Ω_c, σ₈)` over the initial-condition field on a 1LPT spherical galaxy-overdensity mock (seed 0), sampled with MCLMC.
+- [Configuration options](configurations-options.md) — the `Configurations` fields that drive the forward model.
 
-The command-line entry points wrap the same pipeline for batch / HPC runs, documented under
-[Scripts & utilities](../4-scripts-and-utilities/README.md):
+The command-line entry points wrap the same pipeline for batch / HPC runs, documented under [Scripts & utilities](../4-scripts-and-utilities/README.md):
 
 - [`fli-samples`](../4-scripts-and-utilities/fli-samples.md) — prior-predictive sampling
-- [`fli-infer`](../4-scripts-and-utilities/fli-infer.md) — full-field MCMC
+- [`fli-infer`](../4-scripts-and-utilities/fli-infer.md) — full-field MCMC (NUTS / MCLMC)
 - [`fli-2pcf`](../4-scripts-and-utilities/fli-2pcf.md) — power-spectrum-level MCMC
 - [`fli-extract`](../4-scripts-and-utilities/fli-extract.md) — per-chain statistics

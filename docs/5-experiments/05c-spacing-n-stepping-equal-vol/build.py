@@ -152,25 +152,25 @@ chi40 = np.asarray(nodrift_40.comoving_centers)
 
 # Born-convergence (kappa) spectra: 3-bin tomographic (Stage-3 [:3]) auto C_ell per shell count, drift and
 # no-drift. Each parquet holds a (3, n_ell) array — one scalar auto spectrum per source bin. Feeds fig09/fig10.
-KAPPA_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_5.parquet"
-KAPPA_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_8.parquet"
-KAPPA_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_10.parquet"
-KAPPA_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_12.parquet"
-KAPPA_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_16.parquet"
-KAPPA_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_20.parquet"
-KAPPA_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_25.parquet"
-KAPPA_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_30.parquet"
-KAPPA_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_drift_40.parquet"
+KAPPA_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_5.parquet"
+KAPPA_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_8.parquet"
+KAPPA_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_10.parquet"
+KAPPA_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_12.parquet"
+KAPPA_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_16.parquet"
+KAPPA_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_20.parquet"
+KAPPA_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_25.parquet"
+KAPPA_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_30.parquet"
+KAPPA_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_40.parquet"
 
-KAPPA_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_5.parquet"
-KAPPA_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_8.parquet"
-KAPPA_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_10.parquet"
-KAPPA_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_12.parquet"
-KAPPA_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_16.parquet"
-KAPPA_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_20.parquet"
-KAPPA_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_25.parquet"
-KAPPA_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_30.parquet"
-KAPPA_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/kappa_spectra/spectra_born_nodrift_40.parquet"
+KAPPA_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_5.parquet"
+KAPPA_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_8.parquet"
+KAPPA_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_10.parquet"
+KAPPA_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_12.parquet"
+KAPPA_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_16.parquet"
+KAPPA_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_20.parquet"
+KAPPA_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_25.parquet"
+KAPPA_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_30.parquet"
+KAPPA_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_40.parquet"
 
 kappa_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_5}", split="train"))
 kappa_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_8}", split="train"))

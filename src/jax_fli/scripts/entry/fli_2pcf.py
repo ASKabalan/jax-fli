@@ -153,10 +153,10 @@ def parser() -> argparse.ArgumentParser:
         help="MCLMC desired energy variance for L/step_size tuning (default: 1e-3)",
     )
     p.add_argument(
-        "--mclmc-init-step-size-scale",
+        "--mclmc-init-step-size",
         type=float,
         default=1e-4,
-        dest="mclmc_init_step_size_scale",
+        dest="mclmc_init_step_size",
         help="MCLMC initial step size = sqrt(total_dim) * scale (default: 1e-4)",
     )
     p.add_argument("--seed", type=int, default=0, help="JAX PRNGKey seed (default: 0)")
@@ -245,7 +245,7 @@ def main() -> None:
         nuts_max_num_doublings=args.max_num_doublings,
         nuts_target_accept=args.target_accept,
         mclmc_desired_energy_var=args.mclmc_desired_energy_var,
-        mclmc_init_step_size_scale=args.mclmc_init_step_size_scale,
+        mclmc_init_step_size=args.mclmc_init_step_size,
     )
 
     # --- build probabilistic model and condition on observed C_ell ---
@@ -265,7 +265,7 @@ def main() -> None:
         target_accept=config.nuts_target_accept,
         mclmc_desired_energy_var=config.mclmc_desired_energy_var,
         mclmc_num_tune=config.mclmc_num_tune,
-        mclmc_init_step_size_scale=config.mclmc_init_step_size_scale,
+        mclmc_init_step_size=config.mclmc_init_step_size,
         mclmc_diagonal_preconditioning=config.mclmc_diagonal_preconditioning,
         progress_bar=not args.no_progress_bar,
         save_callback=jfli.ppl.sample2catalog(config),

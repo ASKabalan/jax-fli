@@ -13,8 +13,10 @@ entry scripts compose only the groups they actually consume:
 * source                — ``add_source_args`` (local glob or HuggingFace repo; ``prefix=`` for a 2nd
                           source, ``multi=`` for one-pattern-per-chain; used by born/dorian/infer/extract)
 * lensing post-proc     — ``add_lensing_postproc_args`` (output/nside/normalization for fli-born-rt / fli-dorian-rt)
-* priors / inference    — ``add_prior_args`` / ``add_infer_args``
-* forward-model         — ``add_forward_model_args`` (likelihood mask / sigma / lightcone)
+* priors / inference    — ``add_prior_args`` / ``add_infer_args`` (sampler-only)
+* forward-model         — ``add_forward_model_args`` (shape noise / mask / lightcone) +
+                          ``add_scale_cut_args`` (optional pixel-likelihood ell cut) + ``add_gradient_args``
+                          (adjoint / checkpoints) — the last two used by fli-infer
 
 ``--sim-mode`` lives in ``add_integration_settings_args``: the full-field entry points (fli-infer /
 fli-samples) get the ``lpt``/``pm`` choice (default ``pm``); fli-simulate parametrizes it to be
@@ -343,6 +345,13 @@ def add_lensing_args(p):
     g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
     g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
     g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
+    g.add_argument(
+        "--quadrature",
+        choices=["midpoint", "gauss_legendre"],
+        default="midpoint",
+        help="Born per-shell weight quadrature: 'midpoint' evaluates the lensing kernel at shell centers "
+        "(historic); 'gauss_legendre' integrates it exactly over each shell (default: midpoint)",
+    )
 
 
 def add_source_args(p, *, prefix="", multi=False):
@@ -489,9 +498,11 @@ def add_prior_args(p):
 
 
 def add_infer_args(p, *, with_initial_condition=True):
-    """Sampling configuration shared between fli-infer and launcher/infer.
+    """Sampler-only configuration for fli-infer (NUTS / MCLMC tuning).
 
-    Does NOT include path args (--observable, --path) — those differ between
+    Forward-model gradient (``--adjoint`` / ``--checkpoints``) lives in ``add_gradient_args`` and the
+    shape noise (``--sigma-e``) in ``add_forward_model_args`` — both are shared with fli-muse, so this
+    builder no longer owns them. Does NOT include path args (--observable, --path) — those differ between
     the entry script (full paths, required) and the launcher (constructed from
     --observable-dir / --output-dir / --chain-index).
 
@@ -516,7 +527,6 @@ def add_infer_args(p, *, with_initial_condition=True):
         dest="init_cosmo",
         help="Warm-start cosmological parameters from the observable's stored cosmology.",
     )
-    g.add_argument("--sigma-e", type=float, default=0.26, dest="sigma_e", help="Shape noise dispersion (default: 0.26)")
     g.add_argument(
         "--num-warmup", type=int, default=500, dest="num_warmup", help="MCMC warmup iterations (default: 500)"
     )
@@ -526,13 +536,6 @@ def add_infer_args(p, *, with_initial_condition=True):
     g.add_argument(
         "--batch-count", type=int, default=5, dest="batch_count", help="Number of sequential batches (default: 5)"
     )
-    g.add_argument(
-        "--adjoint",
-        choices=["checkpointed", "recursive"],
-        default="checkpointed",
-        help="Gradient strategy for NUTS (default: checkpointed)",
-    )
-    g.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")
     g.add_argument("--sampler", choices=["NUTS", "MCLMC"], default="NUTS", help="MCMC sampler (default: NUTS)")
     # NUTS tuning
     g.add_argument(
@@ -558,26 +561,28 @@ def add_infer_args(p, *, with_initial_condition=True):
         help="MCLMC desired energy variance for L/step_size tuning (default: 1e-3)",
     )
     g.add_argument(
-        "--mclmc-init-step-size-scale",
+        "--mclmc-init-step-size",
         type=float,
         default=1e-4,
-        dest="mclmc_init_step_size_scale",
+        dest="mclmc_init_step_size",
         help="MCLMC initial step size = sqrt(total_dim) * scale (default: 1e-4)",
     )
     g.add_argument("--no-progress-bar", action="store_true", dest="no_progress_bar", help="Suppress tqdm progress bars")
 
 
 def add_forward_model_args(p):
-    """Full-field likelihood knobs (used by fli-infer and fli-samples).
+    """Full-field likelihood knobs (used by fli-infer, fli-samples, and fli-muse).
 
-    These map onto Configurations fields used by the survey-mask-aware likelihood: a footprint
-    mask, the inflated sigma on pixels outside it, and whether to record the lightcone.
+    These map onto Configurations fields used by the survey-mask-aware likelihood: the shape-noise
+    dispersion ``--sigma-e`` (the single shared home for it), a footprint mask, the inflated sigma on
+    pixels outside it, and whether to record the lightcone.
     ``--lensing-output`` (convergence vs shear) lives here because shear is a forward-model
     concern only — the simulation / ray-tracing scripts (fli-simulate / fli-born-rt /
     fli-dorian-rt) emit density or convergence, never shear. ``--apodization-scale-deg`` is in
     the simulation-settings group (shared with fli-simulate).
     """
     g = p.add_argument_group("forward model")
+    g.add_argument("--sigma-e", type=float, default=0.26, dest="sigma_e", help="Shape-noise dispersion (default: 0.26)")
     g.add_argument(
         "--lensing-output",
         choices=["convergence", "shear", "reduced_shear"],
@@ -621,3 +626,49 @@ def add_forward_model_args(p):
         dest="map2alm_method",
         help="Method for map to alm conversion (default: jax)",
     )
+
+
+# ---------------------------------------------------------------------------
+# Pixel-likelihood scale cut + forward-model gradient (shared by the gradient-based
+# full-field entry fli-infer; NOT fli-samples / post-processing)
+# ---------------------------------------------------------------------------
+
+
+def add_scale_cut_args(p):
+    """Optional map-level scale cut for the pixel likelihood (used by fli-infer).
+
+    If ``--ell-max`` is set, each observable map is band-limited to that multipole (map2alm ->
+    cosine taper -> alm2map) before the per-pixel Gaussian; the taper reaches zero at ``--ell-max``
+    with a cosine roll-off of ``--ell-taper-width`` in ell. Spherical geometry only. If unset, no cut.
+    """
+    g = p.add_argument_group("scale cut")
+    g.add_argument(
+        "--ell-max",
+        type=int,
+        default=None,
+        dest="ell_max",
+        help="Scale cut: band-limit each observable map to this multipole before the pixel Gaussian (default: off)",
+    )
+    g.add_argument(
+        "--ell-taper-width",
+        type=int,
+        default=8,
+        dest="ell_taper_width",
+        help="Cosine roll-off width of the scale-cut taper, in ell (default: 8)",
+    )
+
+
+def add_gradient_args(p):
+    """Forward-model backprop strategy (used by fli-infer's NUTS and fli-muse's score gradient).
+
+    ``checkpointed`` trades recomputation for memory when differentiating the N-body integration;
+    ``--checkpoints`` sets the number of gradient checkpoints.
+    """
+    g = p.add_argument_group("gradient")
+    g.add_argument(
+        "--adjoint",
+        choices=["checkpointed", "recursive"],
+        default="checkpointed",
+        help="Gradient strategy for the N-body backprop (default: checkpointed)",
+    )
+    g.add_argument("--checkpoints", type=int, default=10, help="Number of gradient checkpoints (default: 10)")

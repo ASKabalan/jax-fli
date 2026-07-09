@@ -60,7 +60,7 @@ def main() -> None:
     if lead:
         print(
             f"  density {type(lightcone).__name__} {tuple(lightcone.array.shape)} nside={lightcone.nside} "
-            f"| n(z)={len(nz_shear)} bin(s), normalization={args.normalization}"
+            f"| n(z)={len(nz_shear)} bin(s), normalization={args.normalization}, quadrature={args.quadrature}"
         )
 
     kappa = jax.block_until_ready(
@@ -72,6 +72,7 @@ def main() -> None:
             max_z=args.max_z,
             n_integrate=args.n_integrate,
             normalization=args.normalization,
+            quadrature=args.quadrature,
         )
     )
 

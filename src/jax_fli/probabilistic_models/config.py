@@ -42,13 +42,17 @@ class Configurations:
     min_width: float = 50.0  # Mpc/h comoving, minimum shell width
 
     # Lensing
-    # Observable returned by the forward model: "convergence" | "shear" | "reduced_shear"
+    # Observable returned by the forward model:
+    #   "convergence" | "shear" | "reduced_shear" | "density"
+    # "density" is the projected galaxy overdensity (clustering / number counts), not a
+    # lensing map; it is a spin-0 observable and reaches every likelihood cell for free.
     lensing_output: str = "convergence"
     # Spherical map->alm method for the shear (Kaiser-Squires) path: "jax" | "jax_cuda".
     map2alm_method: str = "jax"
     min_redshift: float = 0.01
     max_redshift: float = 1.5
     n_integrate: int = 32  # number of points for the lensing integral along the line of sight
+    quadrature: str = "midpoint"  # Born per-shell weight quadrature: "midpoint" | "gauss_legendre"
     apodization_scale_deg: float = 1.0  # C2 apodization scale for the observer visibility mask
 
     # Geometry / painting (spherical only for now)
@@ -78,6 +82,11 @@ class Configurations:
     mask: Any = None
     sigma_unobserved: float = 1e6  # likelihood sigma on pixels outside the survey mask
     log_lightcone: bool = False
+    # Optional pixel-likelihood scale cut (spherical only): if ell_max is set, each observable map is
+    # band-limited to ell_max (map2alm -> cosine taper -> alm2map, via SphericalDensity.scale_cut /
+    # SphericalShearField.scale_cut) before the per-pixel Gaussian. None -> no scale cut.
+    ell_max: int | None = None  # scale cut: cosine taper reaches 0 at this multipole
+    ell_taper_width: int = 8  # cosine roll-off width of the scale-cut taper, in ell
 
     # Priors and inference settings
     priors: dict[str, Any]
@@ -95,5 +104,5 @@ class Configurations:
     nuts_target_accept: float = 0.8  # window-adaptation target acceptance rate
     mclmc_desired_energy_var: float = 1e-3
     mclmc_num_tune: int | None = None  # tuning steps; defaults to num_warmup
-    mclmc_init_step_size_scale: float = 1e-4  # initial step = sqrt(total_dim) * scale (avoids high-dim collapse)
+    mclmc_init_step_size: float = 1e-4  # initial step = sqrt(total_dim) * scale (avoids high-dim collapse)
     mclmc_diagonal_preconditioning: bool = False
