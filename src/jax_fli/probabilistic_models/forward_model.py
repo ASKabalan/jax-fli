@@ -10,6 +10,7 @@ from jax.sharding import PartitionSpec as P
 
 from ..data import build_observer_visibility_mask
 from ..fields.painting import PaintingOptions
+from ..infer.number_counts import number_counts
 from ..lensing import born
 from ..pm import BullFrog, DoubleKickDrift, DriftInterp, DriftKickDrift, NoCorrection, NoInterp, lpt, nbody
 from .config import Configurations
@@ -25,7 +26,7 @@ _SOLVERS = {
     "BullFrog": BullFrog,
 }
 
-_LENSING_OUTPUTS = ("convergence", "shear", "reduced_shear")
+_LENSING_OUTPUTS = ("convergence", "shear", "reduced_shear", "density")
 
 # Simulation pipeline depth: "pm" runs LPT then N-body; "lpt" paints the lightcone from LPT alone.
 _SIM_MODES = ("pm", "lpt")
@@ -165,6 +166,19 @@ def make_full_field_model(
                 checkpoints=config.checkpoints,
             )
 
+        # Density is a clustering probe (projected galaxy overdensity), not lensing: it
+        # skips Born and the Kaiser-Squires branch entirely.
+        if config.lensing_output == "density":
+            observable = number_counts(
+                cosmo,
+                lightcone,
+                nz_shear=config.nz_shear,
+                min_z=config.min_redshift,
+                max_z=config.max_redshift,
+                n_integrate=config.n_integrate,
+            )
+            return observable, lightcone
+
         kappa = born(
             cosmo,
             lightcone,
@@ -196,9 +210,13 @@ def make_full_field_model(
                 ks_input = ks_input.replace(
                     array=jax.lax.with_sharding_constraint(ks_input.array, replicated), field_sharding=None
                 )
-            observable = ks_input.get_shear(
-                reduced_shear=config.lensing_output == "reduced_shear", method=map2alm_method
-            )
+            reduced = config.lensing_output == "reduced_shear"
+            # Spherical Kaiser-Squires takes an SHT ``method``; the flat (FFT-based) get_shear
+            # does not accept one, so only pass it for spherical geometry.
+            if geometry == "spherical":
+                observable = ks_input.get_shear(reduced_shear=reduced, method=map2alm_method)
+            else:
+                observable = ks_input.get_shear(reduced_shear=reduced)
 
         return observable, lightcone
 

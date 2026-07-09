@@ -7,7 +7,11 @@ import sys
 from argparse import Namespace
 
 import jax
+import jax.numpy as jnp
 import jax_cosmo as jc
+from jax.scipy.special import ndtri
+from jaxpm.distributed import fft3d, ifft3d
+from jaxpm.kernels import fftk
 from numpyro.handlers import condition
 
 import jax_fli as jfli
@@ -230,39 +234,71 @@ def main() -> None:
 
     sample_set = set(args.sample)  # _validate_args already guarantees this contains 'cosmo' and/or 'ic'
 
+    # The catalog stores the COLORED physical delta, but the model samples the WHITE field and colors
+    # it inline (with the sampled cosmology). De-color the loaded IC to white via the inverse
+    # power-spectrum transform (using the IC's own cosmology) so both fixing and warm-starting condition
+    # the white `initial_conditions` site the model actually traverses -- not a doubly-colored field.
+    white_ic = None
+    if ic_field is not None:
+        # Exact inverse of the model's inline coloring (interpolate_initial_conditions): divide the
+        # colored field by sqrt(P(k)) on the SAME 128-point grid and mesh/box kmesh (no k=0 special
+        # case, which is what the transform-based inverse gets wrong), so the white field round-trips.
+        mesh_t, box_t = tuple(args.mesh_size), tuple(args.box_size)
+        k = jnp.logspace(-4, 1, 128)
+        pk = jc.power.linear_matter_power(ic_cosmo, k)
+        colored = fft3d(ic_field.array)
+        kmesh = sum((kk / box_t[i] * mesh_t[i]) ** 2 for i, kk in enumerate(fftk(colored))) ** 0.5
+        pkmesh = jnp.interp(kmesh, k, pk) * (mesh_t[0] * mesh_t[1] * mesh_t[2]) / (box_t[0] * box_t[1] * box_t[2])
+        white_ic = ifft3d(colored / jnp.sqrt(pkmesh)).real
+
     condition_data = {f"observable_{i}": observable_arrays[i] for i in range(n_observables)}
     # ==================================================================================================
-    # Fix parameters that are NOT sampled. Cosmology (incl. h) is conditioned on the IC catalog's cosmology.
+    # Fix parameters that are NOT sampled.
     # ==================================================================================================
+    # Fixing cosmology: with 'cosmo' unsampled the model builds `fiducial_cosmology()` (empty priors,
+    # no cosmo sample sites), so PIN the fiducial to the IC catalog's cosmology. Conditioning the name
+    # `Omega_c` is a no-op here -- TransformReparam turns it deterministic and the latent site is
+    # `Omega_c_base` -- so it must NOT be added to condition_data.
     if "cosmo" not in sample_set:
         if ic_cosmo is None:
             p.error(
                 "fixing cosmology (--sample without 'cosmo') needs an IC source (--ic-input / --ic-repo) "
                 "to read the truth cosmology from."
             )
-        condition_data["Omega_c"] = float(ic_cosmo.Omega_c)
-        condition_data["sigma8"] = float(ic_cosmo.sigma8)
-        condition_data["h"] = float(ic_cosmo.h)
+        fiducial_cosmology = lambda **_: ic_cosmo
+    else:
+        fiducial_cosmology = jc.Planck18
 
     if "ic" not in sample_set:
-        assert ic_field is not None  # guaranteed by _validate_args
-        condition_data["initial_conditions"] = ic_field.array
+        assert white_ic is not None  # guaranteed by _validate_args
+        condition_data["initial_conditions"] = white_ic
     # ==================================================================================================
 
     # ==================================================================================================
     # Initializing the probabilistic model configuration
     # ==================================================================================================
     init_params = None
-    if "ic" in sample_set and ic_field is not None:
-        init_params = {"initial_conditions": ic_field.array}
+    if "ic" in sample_set and white_ic is not None:
+        init_params = {"initial_conditions": white_ic}
     if args.init_cosmo:
         if ic_cosmo is None:
             p.error("--init-cosmo needs an IC source (--ic-input / --ic-repo) to warm-start cosmology from.")
-        # Warm-start every sampled cosmological parameter (Omega_c, sigma8, h) from the IC's cosmology.
-        init_params = init_params or {}
-        init_params.update(
-            {"Omega_c": float(ic_cosmo.Omega_c), "sigma8": float(ic_cosmo.sigma8), "h": float(ic_cosmo.h)}
-        )
+        if "cosmo" in sample_set:
+            # Warm-start the WHITE reparam bases `<name>_base` (the latent sites NUTS moves), computing
+            # each from the IC cosmology via the inverse PreconditionnedUniform bijector
+            # `base = ndtri((phys - low) / (high - low))` (Probit o Affine). Seeding the physical names
+            # would be a no-op under reparam.
+            init_params = init_params or {}
+            init_params.update(
+                {
+                    f"{name}_base": float(ndtri((phys - lo) / (hi - lo)))
+                    for name, (lo, hi), phys in (
+                        ("Omega_c", args.prior_omega_c, float(ic_cosmo.Omega_c)),
+                        ("sigma8", args.prior_sigma8, float(ic_cosmo.sigma8)),
+                        ("h", args.prior_h, float(ic_cosmo.h)),
+                    )
+                }
+            )
     # ==================================================================================================
 
     nz_shear = _resolve_nz_shear(args)
@@ -328,8 +364,8 @@ def main() -> None:
         kernel_width_arcmin=args.kernel_width_arcmin,
         kernel_width_pixels=args.kernel_width_pixels,
         pixel_window_deconvolution=args.pixel_window_deconvolution,
-        # Cosmology and nz
-        fiducial_cosmology=jc.Planck18,
+        # Cosmology and nz (fiducial is Planck18 when sampling cosmology, else pinned to the IC cosmology)
+        fiducial_cosmology=fiducial_cosmology,
         nz_shear=nz_shear,
         # Masking / likelihood + observer visibility mask
         mask=mask,
@@ -369,6 +405,18 @@ def main() -> None:
         init_params=init_params,
         progress_bar=not args.no_progress_bar,
         save_callback=jfli.ppl.sample2catalog(config),
+        # Recolor the WHITE initial_conditions -> physical delta per sample (inside the sampling scan,
+        # one field at a time) with each sample's cosmology; sample2catalog then just saves it.
+        post_process=lambda s: {
+            **s,
+            "initial_conditions": jfli.interpolate_initial_conditions(
+                s["initial_conditions"],
+                config.mesh_size,
+                config.box_size,
+                cosmo=s["cosmo"],
+                field_sharding=config.field_sharding,
+            ).array,
+        },
     )
 
 

@@ -328,6 +328,16 @@ class FlatShearField(FlatDensity):
             unit=self.unit,
         )
 
+    def harmonic_pack_precompute(self, l_cut, l_width, *, method: str = "jax"):
+        """Spin-2 harmonic scale-cut precompute: the flat spin-2 shear is packed through the flat
+        Kaiser-Squires E-map (spin-0/spin-2 share one taper). Overrides the spin-0
+        :meth:`FlatDensity.harmonic_pack_precompute`; :meth:`harmonic_pack` is inherited.
+        """
+        from .._src.summary_statistics.harmonic import compute_harmonic_pack_flat
+
+        field_size_rad = tuple(f * jnp.pi / 180.0 for f in self.field_size)
+        return compute_harmonic_pack_flat(self.flatsky_npix, field_size_rad, l_cut, l_width, spin=2)
+
 
 # --------------------------------------------------------------------------- #
 # Spherical shear                                                             #
@@ -418,6 +428,15 @@ class SphericalShearField(SphericalDensity):
             status=FieldStatus.KAPPA,
             unit=self.unit,
         )
+
+    def harmonic_pack_precompute(self, l_cut, l_width, *, method: str = "jax"):
+        """Spin-2 harmonic scale-cut precompute: the spherical spin-2 shear is packed through its
+        E-mode ``map2alm_spin`` (B dropped, a pure-noise null). Overrides the spin-0
+        :meth:`SphericalDensity.harmonic_pack_precompute`; :meth:`harmonic_pack` is inherited.
+        """
+        from .._src.summary_statistics.harmonic import compute_harmonic_pack_spherical
+
+        return compute_harmonic_pack_spherical(self.nside, l_cut, l_width, spin=2, method=method)
 
     def apply_sharding(self) -> SphericalShearField:
         """Shard the spherical shear into the lensing layout ``P([None,] "y", None, "x")`` (BINS/N,

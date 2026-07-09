@@ -505,6 +505,33 @@ class FlatDensity(AbstractField):
             unit=SpectralUnit.ANGULAR_CL,
         )
 
+    def harmonic_pack_precompute(self, l_cut, l_width, *, method: str = "jax"):
+        """Build the reusable ell-taper + Parseval weights for the harmonic scale-cut pack (spin-0).
+
+        ``field_size`` (degrees) is converted to radians so the FFT ell-grid is a true multipole grid.
+        Data-independent, so build once and reuse for data and model — mirrors
+        :func:`~jax_fli.summary_statistics.decouple.compute_mcm`. ``method`` is accepted for API parity
+        with the spherical field and ignored (the flat transform is an FFT). Returns a
+        :class:`~jax_fli._src.summary_statistics.harmonic.HarmonicPack`.
+        """
+        from .._src.summary_statistics.harmonic import compute_harmonic_pack_flat
+
+        field_size_rad = tuple(f * jnp.pi / 180.0 for f in self.field_size)
+        return compute_harmonic_pack_flat(self.flatsky_npix, field_size_rad, l_cut, l_width, spin=0)
+
+    def harmonic_pack(self, l_cut=None, l_width=None, *, precompute=None, method: str = "jax"):
+        """Transform the map to its whitened, ell-tapered harmonic residual vector ``rho`` (Parseval-
+        normalized, no noise). Pass a :meth:`harmonic_pack_precompute` object via ``precompute`` to
+        reuse the weights across calls; otherwise it is built from ``l_cut``/``l_width``.
+        """
+        from .._src.summary_statistics.harmonic import apply_harmonic_pack_flat
+
+        if precompute is None:
+            if l_cut is None or l_width is None:
+                raise ValueError("harmonic_pack requires l_cut and l_width when precompute is None")
+            precompute = self.harmonic_pack_precompute(l_cut, l_width, method=method)
+        return apply_harmonic_pack_flat(self.array, precompute)
+
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> FlatDensity:
         """
@@ -1256,6 +1283,30 @@ class SphericalDensity(AbstractField):
             name=self.name,
         )
         return coeffs.normalized if normalize else coeffs
+
+    def harmonic_pack_precompute(self, l_cut, l_width, *, method: str = "jax"):
+        """Build the reusable ell-taper + Parseval weights for the harmonic scale-cut pack (spin-0).
+
+        Data-independent (depends only on ``nside``, ``l_cut``, ``l_width``), so build once and reuse
+        for data and model — mirrors :func:`~jax_fli.summary_statistics.decouple.compute_mcm`. Returns a
+        :class:`~jax_fli._src.summary_statistics.harmonic.HarmonicPack`.
+        """
+        from .._src.summary_statistics.harmonic import compute_harmonic_pack_spherical
+
+        return compute_harmonic_pack_spherical(self.nside, l_cut, l_width, spin=0, method=method)
+
+    def harmonic_pack(self, l_cut=None, l_width=None, *, precompute=None, method: str = "jax"):
+        """Transform the map to its whitened, ell-tapered harmonic residual vector ``rho`` (Parseval-
+        normalized, no noise). Pass a :meth:`harmonic_pack_precompute` object via ``precompute`` to
+        reuse the weights across calls; otherwise it is built from ``l_cut``/``l_width``.
+        """
+        from .._src.summary_statistics.harmonic import apply_harmonic_pack_spherical
+
+        if precompute is None:
+            if l_cut is None or l_width is None:
+                raise ValueError("harmonic_pack requires l_cut and l_width when precompute is None")
+            precompute = self.harmonic_pack_precompute(l_cut, l_width, method=method)
+        return apply_harmonic_pack_spherical(self.array, precompute)
 
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> SphericalDensity:
