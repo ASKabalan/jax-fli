@@ -214,6 +214,7 @@ def batched_sampling(
             )
             # jit the adaptation scan (num_warmup baked static via the closure)
             (last_state, tuned), _ = jax.jit(lambda k, p: adapt.run(k, p, num_warmup))(warmup_key, initial_position)
+            jax.block_until_ready(tuned)
             parameters = {
                 "step_size": tuned["step_size"],
                 "inverse_mass_matrix": tuned["inverse_mass_matrix"],
@@ -273,6 +274,7 @@ def batched_sampling(
                 )
             )
             tuned_state, tuned_params, _ = _mams_tune(warmup_key, initial_state, init_mams_params)
+            jax.block_until_ready(tuned_params)
             last_state = tuned_state
             parameters = {
                 "L": tuned_params.L,
