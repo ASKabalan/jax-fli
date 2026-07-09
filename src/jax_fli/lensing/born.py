@@ -170,10 +170,14 @@ def plot_born_windows(
 
     fig, (ax_kernel, ax_ratio) = plt.subplots(1, 2, figsize=(13.5, 4.6))
 
-    chi_k = float(np.asarray(jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(jnp.asarray(z_kernel)))).ravel()[0])
+    chi_k = float(
+        np.asarray(jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(jnp.asarray(z_kernel)))).ravel()[0]
+    )
     chi_line = jnp.linspace(0.0, chi_k, 512)
     w_line = chi_line / jc.background.a_of_chi(cosmo, chi_line) * (1.0 - chi_line / chi_k)
-    ax_kernel.plot(np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.8, label=rf"$w(\chi)$ for $z_s={z_kernel}$")
+    ax_kernel.plot(
+        np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.8, label=rf"$w(\chi)$ for $z_s={z_kernel}$"
+    )
     ax_kernel.fill_between(np.asarray(chi_line), np.asarray(w_line), color="0.85", zorder=0)
 
     cm = plt.get_cmap("tab10")

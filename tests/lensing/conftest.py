@@ -191,6 +191,14 @@ def born_kappa_multi_per_plane(cosmology, lensing_lightcone):
 
 
 @pytest.fixture(scope="session")
+def born_kappa_multi_per_plane_gl(cosmology, lensing_lightcone):
+    """Born convergence maps at z_source=[0.5, 1.0], per-plane normalization, Gauss-Legendre quadrature."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="per_plane", quadrature="gauss_legendre"
+    )
+
+
+@pytest.fixture(scope="session")
 def raytrace_born_kappa_single(cosmology, lensing_lightcone):
     """Raytrace(born=True) convergence at z=0.5, global normalization (requires dorian)."""
     pytest.importorskip("dorian")
