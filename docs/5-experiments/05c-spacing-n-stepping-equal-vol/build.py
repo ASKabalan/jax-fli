@@ -13,9 +13,22 @@ crosses the lightcone) buys the most.
   fig03   per-shell density C_ell census vs Limber theory for the 5- / 8- / 10-shell runs (drift + no-drift,
           one subplot per shell: a log-log C_ell panel over a ratio-to-theory strip).
   fig04-fig08  the same census for the 16- / 20- / 25- / 30- / 40-shell runs.
+  fig09   Born convergence C_ell per tomographic bin (Stage-3 [:3]) vs the number of shells, drift vs no-drift,
+          each ratioed to its own 40-shell run (three source-bin row-pairs x no-drift / with-drift columns).
+  fig10   the same Born convergence ratioed to the Limber weak-lensing theory instead of the 40-shell run.
+  fig11   the 20-shell convergence against the CosmoGrid Born reference (thin shells, same born() code, its own
+          cosmology) — each measurement ratioed to the Limber theory at its own cosmology.
+  fig12   the diagnosis: measured kappa_N/kappa_40 vs the pure-Limber shell-quadrature prediction sum K_i^2 C^ii.
 
-Every 05c run is published for both drift and no-drift up to 40 shells, so the census covers both. Born lensing
-is not yet published for 05c, so there is no convergence figure here.
+Every 05c run is published for both drift and no-drift up to 40 shells, so the census and the convergence cover
+both. The equal-volume convergence is strongly biased at coarse-to-moderate shell counts even though every
+per-shell density C_ell is fine. The cause (fig12) is NOT a bug in born() — born is verified to equal the
+kernel-weighted sum of its input shells to <= 4% — but the shell-discretization of the lensing integral itself:
+one midpoint kernel weight x one volume-averaged map per shell is a bad quadrature when the kernel varies
+strongly across a shell, and equal-volume spacing makes the inner shells (where the low-z lensing kernel lives)
+as fat as possible. The same sum fed with per-shell LIMBER theory reproduces the excess (1.4-1.7x at N=8-30,
+~1 at N=40) with no simulation input. The drift removes the shells' frozen-epoch error (~20%, the census story)
+but cannot fix the quadrature, which is structural to the shelling.
 
 Run from the repo root (CPU is fine; fig01 runs a small sim, fig02 sums nside-2048 maps):
     JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/05c-spacing-n-stepping-equal-vol/build.py
@@ -39,11 +52,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datasets import load_dataset
 from huggingface_hub import snapshot_download
+from matplotlib import cm
 from matplotlib.lines import Line2D
 
 import jax_fli as jfli
-from jax_fli import compute_theory_cl_for_density
-from jax_fli.io import Catalog
+from jax_fli import compute_theory_cl, compute_theory_cl_for_density
+from jax_fli.io import Catalog, get_stage3_nz_shear
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -55,6 +69,7 @@ REPO = "ASKabalan/jax-fli-experiments"
 LMAX = 1500  # the published spectra stop at ell 1500
 BOX, MESH = 5000.0, 2560.0  # per-shell PM-Nyquist line ell_max ~ pi*chi/dx, dx = box/mesh (equal-volume box)
 CENSUS_RATIO_YLIM = (0.7, 1.35)  # ratio-to-theory strip range (wide enough for the fat inner shell)
+NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # Born-convergence shell-count sweep (fig09/fig10)
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
@@ -134,6 +149,118 @@ edges10 = np.stack([chi10 - 0.5 * w10, chi10 + 0.5 * w10], axis=0)
 chi30 = np.asarray(nodrift_30.comoving_centers)
 w30 = np.asarray(nodrift_30.density_width)
 chi40 = np.asarray(nodrift_40.comoving_centers)
+
+# Born-convergence (kappa) spectra: 3-bin tomographic (Stage-3 [:3]) auto C_ell per shell count, drift and
+# no-drift. Each parquet holds a (3, n_ell) array — one scalar auto spectrum per source bin. Feeds fig09/fig10.
+KAPPA_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_5.parquet"
+KAPPA_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_8.parquet"
+KAPPA_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_10.parquet"
+KAPPA_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_12.parquet"
+KAPPA_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_16.parquet"
+KAPPA_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_20.parquet"
+KAPPA_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_25.parquet"
+KAPPA_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_30.parquet"
+KAPPA_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_40.parquet"
+
+KAPPA_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_5.parquet"
+KAPPA_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_8.parquet"
+KAPPA_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_10.parquet"
+KAPPA_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_12.parquet"
+KAPPA_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_16.parquet"
+KAPPA_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_20.parquet"
+KAPPA_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_25.parquet"
+KAPPA_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_30.parquet"
+KAPPA_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_40.parquet"
+
+kappa_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_5}", split="train"))
+kappa_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_8}", split="train"))
+kappa_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_10}", split="train"))
+kappa_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_12}", split="train"))
+kappa_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_16}", split="train"))
+kappa_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_20}", split="train"))
+kappa_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_25}", split="train"))
+kappa_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_30}", split="train"))
+kappa_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_40}", split="train"))
+
+kappa_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_5}", split="train")
+)
+kappa_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_8}", split="train")
+)
+kappa_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_10}", split="train")
+)
+kappa_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_12}", split="train")
+)
+kappa_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_16}", split="train")
+)
+kappa_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_20}", split="train")
+)
+kappa_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_25}", split="train")
+)
+kappa_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_30}", split="train")
+)
+kappa_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_40}", split="train")
+)
+
+for _c in (kappa_drift_5_cat, kappa_drift_40_cat, kappa_nodrift_5_cat, kappa_nodrift_40_cat):
+    assert np.isclose(float(_c.cosmology[0].Omega_c), float(cosmo.Omega_c))
+    assert np.isclose(float(_c.cosmology[0].sigma8), float(cosmo.sigma8))
+
+# External reference for fig11: Born convergence on the CosmoGrid density shells (~70-100 Mpc/h thin shells,
+# full N-body, nside 2048), computed with the SAME jax_fli born(). NOTE: this sim is at a DIFFERENT cosmology
+# (sigma8=0.90, h=0.73) than the 05c runs — fig11 therefore ratios each measurement to the Limber theory at
+# its OWN cosmology instead of ratioing the two measurements directly.
+COSMOGRID_KAPPA = "00-cosmogrid/kappa_spectra/spectra_kappa_born_s3.parquet"
+
+cosmogrid_kappa_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{COSMOGRID_KAPPA}", split="train")
+)
+cosmo_cg = cosmogrid_kappa_cat.cosmology[0]  # deliberately NOT asserted equal to `cosmo` (different sim)
+kappa_cosmogrid = np.asarray(cosmogrid_kappa_cat.field[0].array)[:3]  # first 3 of the 4 Stage-3 bins
+
+# kappa C_ell keyed by shell count; each entry is (3, n_ell) — one auto spectrum per tomographic bin.
+kappa_drift = {
+    n: np.asarray(c.field[0].array)
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_drift_5_cat,
+            kappa_drift_8_cat,
+            kappa_drift_10_cat,
+            kappa_drift_12_cat,
+            kappa_drift_16_cat,
+            kappa_drift_20_cat,
+            kappa_drift_25_cat,
+            kappa_drift_30_cat,
+            kappa_drift_40_cat,
+        ],
+    )
+}
+kappa_nodrift = {
+    n: np.asarray(c.field[0].array)
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_nodrift_5_cat,
+            kappa_nodrift_8_cat,
+            kappa_nodrift_10_cat,
+            kappa_nodrift_12_cat,
+            kappa_nodrift_16_cat,
+            kappa_nodrift_20_cat,
+            kappa_nodrift_25_cat,
+            kappa_nodrift_30_cat,
+            kappa_nodrift_40_cat,
+        ],
+    )
+}
 
 
 def _logbin(ell, y, nb=20):
@@ -393,6 +520,189 @@ def density_census(spec_no, spec_dr, nrows, ncols, stem):
     savefig(ASSETS / stem, fig)
 
 
+# =============================================================================
+# fig09 — Born convergence C_ell per tomographic bin vs the number of shells (ratio to each 40-shell run)
+# =============================================================================
+def fig09_lensing():
+    """Per source bin, the Born convergence C_ell for every shell count ratioed to its own 40-shell run. Three
+    tomographic bins (Stage-3 [:3]) are stacked as row-pairs; no-drift and with-drift fill the two columns, and
+    the ratio window adapts per bin. For equal-volume spacing the low-z bin 1 (whose lensing kernel weights the
+    fat inner shell) is strongly biased and slow to reach the 40-shell run; the drift lowers the bias — compare
+    the two columns — but does not close it, so the frozen-epoch error of the fat inner shell survives the Born
+    projection here (contrast the scale-factor 05a/05b, where the projection washes the drift out)."""
+    counts = [n for n in NSHELLS_KAPPA if n != 40]
+    colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
+    nbins = kappa_nodrift[40].shape[0]
+    fig, axes = plt.subplots(
+        2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
+    )
+    for b in range(nbins):
+        # data-driven ratio window shared by both columns of this source bin (bin 1 swings far more than bin 3)
+        rr = []
+        for kappa in (kappa_nodrift, kappa_drift):
+            bc, ref_b = _logbin(ell_full, kappa[40][b])
+            for n in counts:
+                _, c_b = _logbin(ell_full, kappa[n][b])
+                rr.append((c_b / ref_b)[bc >= 20])
+        rr = np.concatenate(rr)
+        lo = min(0.9, max(0.4, 0.95 * float(np.nanmin(rr))))
+        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+            ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
+            bc, ref_b = _logbin(ell_full, kappa[40][b])
+            ax_s.loglog(bc, ref_b, color="k", lw=1.8)
+            for n in counts:
+                _, c_b = _logbin(ell_full, kappa[n][b])
+                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            ax_s.grid(True, which="both", ls=":", alpha=0.4)
+            ax_s.tick_params(labelbottom=False)
+            if col == 0:
+                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
+            ax_r.axhspan(0.97, 1.03, color="0.7", alpha=0.3)
+            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            for n in counts:
+                _, c_b = _logbin(ell_full, kappa[n][b])
+                ax_r.semilogx(bc, c_b / ref_b, color=colors[n], lw=1.2)
+            ax_r.set_ylim(lo, hi)  # per-bin window (bin 1 swings far more than bin 3)
+            ax_r.grid(True, which="both", ls=":", alpha=0.4)
+            if col == 0:
+                ax_r.set_ylabel("meas / 40 sh.")
+            if b == nbins - 1:
+                ax_r.set_xlabel(r"multipole $\ell$")
+            else:
+                ax_r.tick_params(labelbottom=False)
+    handles = [Line2D([], [], color=colors[n], lw=1.6, label=f"{n} shells") for n in counts]
+    handles += [
+        Line2D([], [], color="k", lw=1.8, label="40 shells (reference)"),
+        Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm3\%$"),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    savefig(ASSETS / "fig09-lensing", fig)
+
+
+# =============================================================================
+# fig10 — Born convergence C_ell per tomographic bin ratioed to the Limber weak-lensing theory
+# =============================================================================
+def fig10_lensing_theory():
+    """fig09 re-referenced to the Limber weak-lensing theory (the same Stage-3 [:3] source bins the Born sim
+    used, x pixwin^2(2048)) instead of the 40-shell run. All counts track theory at large scales and fall below
+    at small scales as the finite PM resolution and Born projection suppress power. The per-bin ratio window
+    adapts: the equal-volume low-z bin 1 sits well above theory at coarse-to-moderate shell counts (the fat inner
+    shell), and the drift shifts it (compare the columns) without removing the offset."""
+    counts = NSHELLS_KAPPA
+    colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.9, len(counts))))}
+    pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
+    theory = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    nbins = theory.shape[0]
+    fig, axes = plt.subplots(
+        2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
+    )
+    for b in range(nbins):
+        bc, th_b = _logbin(ell_full, theory[b])
+        # data-driven ratio window shared by both columns of this source bin
+        rr = np.concatenate(
+            [
+                (_logbin(ell_full, kappa[n][b])[1] / th_b)[bc >= 20]
+                for kappa in (kappa_nodrift, kappa_drift)
+                for n in counts
+            ]
+        )
+        lo = min(0.9, max(0.2, 0.95 * float(np.nanmin(rr))))
+        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+            ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
+            ax_s.loglog(bc, th_b, color="k", ls="--", lw=1.8)
+            for n in counts:
+                _, c_b = _logbin(ell_full, kappa[n][b])
+                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            ax_s.grid(True, which="both", ls=":", alpha=0.4)
+            ax_s.tick_params(labelbottom=False)
+            if col == 0:
+                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
+            ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
+            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            for n in counts:
+                _, c_b = _logbin(ell_full, kappa[n][b])
+                ax_r.semilogx(bc, c_b / th_b, color=colors[n], lw=1.2)
+            ax_r.set_ylim(lo, hi)  # per-bin window
+            ax_r.grid(True, which="both", ls=":", alpha=0.4)
+            if col == 0:
+                ax_r.set_ylabel("meas / theory")
+            if b == nbins - 1:
+                ax_r.set_xlabel(r"multipole $\ell$")
+            else:
+                ax_r.tick_params(labelbottom=False)
+    handles = [Line2D([], [], color=colors[n], lw=1.6, label=f"{n} shells") for n in counts]
+    handles += [
+        Line2D(
+            [],
+            [],
+            color="k",
+            ls="--",
+            lw=1.8,
+            label=r"Limber weak-lensing theory (Stage-3 bins 1--3) $\times\,w_\ell^2$",
+        ),
+        Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    savefig(ASSETS / "fig10-lensing-theory", fig)
+
+
+# =============================================================================
+# fig11 — 20-shell Born convergence vs the CosmoGrid Born reference (each ratioed to its OWN Limber theory)
+# =============================================================================
+def fig11_lensing_cosmogrid():
+    """The 20-shell drift / no-drift Born convergence against the CosmoGrid Born convergence — the external
+    reference computed with the SAME born() on CosmoGrid's ~70-100 Mpc/h thin shells (full N-body, nside 2048).
+    CosmoGrid is a different realisation at a DIFFERENT cosmology (sigma8=0.90 vs 0.816), so each measurement is
+    ratioed to the Limber weak-lensing theory at its own cosmology: identical code, different shelling — the
+    CosmoGrid curve hugs 1 while the equal-volume 20-shell runs carry the thick-shell quadrature excess."""
+    pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
+    th_own = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    th_cg = np.asarray((compute_theory_cl(cosmo_cg, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
+    for b in range(3):
+        bc, cg_b = _logbin(ell_full, kappa_cosmogrid[b])
+        _, no_b = _logbin(ell_full, kappa_nodrift[20][b])
+        _, dr_b = _logbin(ell_full, kappa_drift[20][b])
+        _, tho_b = _logbin(ell_full, th_own[b])
+        _, thc_b = _logbin(ell_full, th_cg[b])
+        ax_s, ax_r = axes[0, b], axes[1, b]
+        ax_s.loglog(bc, cg_b, color="k", lw=1.6)
+        ax_s.loglog(bc, thc_b, color="k", ls=":", lw=1.1)
+        ax_s.loglog(bc, no_b, color="tab:red", lw=1.5)
+        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.5)
+        ax_s.loglog(bc, tho_b, color="0.45", ls="--", lw=1.1)
+        ax_s.set_title(f"bin {b + 1}", fontsize=11)
+        ax_s.grid(True, which="both", ls=":", alpha=0.4)
+        if b == 0:
+            ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
+        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
+        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+        ax_r.semilogx(bc, cg_b / thc_b, color="k", lw=1.5)
+        ax_r.semilogx(bc, no_b / tho_b, color="tab:red", lw=1.4)
+        ax_r.semilogx(bc, dr_b / tho_b, color="tab:blue", lw=1.4)
+        ax_r.set_ylim(0.3, 1.9)
+        ax_r.set_xlabel(r"multipole $\ell$")
+        ax_r.grid(True, which="both", ls=":", alpha=0.4)
+        if b == 0:
+            ax_r.set_ylabel("meas / own theory")
+    handles = [
+        Line2D([], [], color="k", lw=1.6, label="CosmoGrid Born (thin shells, N-body)"),
+        Line2D([], [], color="tab:red", lw=1.6, label="20 equal-volume shells, no drift"),
+        Line2D([], [], color="tab:blue", lw=1.6, label="20 equal-volume shells, with drift"),
+        Line2D([], [], color="0.45", ls="--", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (run cosmology)"),
+        Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (CosmoGrid cosmology)"),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    fig.tight_layout()
+    savefig(ASSETS / "fig11-lensing-cosmogrid", fig)
+
+
 def main():
     set_style()
     fig01_illustration()
@@ -403,6 +713,9 @@ def main():
     density_census(nodrift_25, drift_25, 5, 5, "fig06-density-census-25")
     density_census(nodrift_30, drift_30, 5, 6, "fig07-density-census-30")
     density_census(nodrift_40, drift_40, 5, 8, "fig08-density-census-40")
+    fig09_lensing()
+    fig10_lensing_theory()
+    fig11_lensing_cosmogrid()
     print(f"assets written to {ASSETS}")
 
 
