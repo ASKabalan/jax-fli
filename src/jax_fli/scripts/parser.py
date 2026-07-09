@@ -345,6 +345,13 @@ def add_lensing_args(p):
     g.add_argument("--min-z", type=float, default=0.01, help="Minimum redshift for n(z) integration (default: 0.01)")
     g.add_argument("--max-z", type=float, default=1.5, help="Maximum redshift for n(z) integration (default: 1.5)")
     g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
+    g.add_argument(
+        "--quadrature",
+        choices=["midpoint", "gauss_legendre"],
+        default="midpoint",
+        help="Born per-shell weight quadrature: 'midpoint' evaluates the lensing kernel at shell centers "
+        "(historic); 'gauss_legendre' integrates it exactly over each shell (default: midpoint)",
+    )
 
 
 def add_source_args(p, *, prefix="", multi=False):

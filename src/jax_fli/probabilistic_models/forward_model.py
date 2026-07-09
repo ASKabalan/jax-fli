@@ -186,6 +186,7 @@ def make_full_field_model(
             min_z=config.min_redshift,
             max_z=config.max_redshift,
             n_integrate=config.n_integrate,
+            quadrature=config.quadrature,
         )
 
         # The apodized observer visibility mask is a Kaiser-Squires concern: apodizing the

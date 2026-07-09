@@ -154,6 +154,7 @@ def main() -> None:
         min_width=args.min_width,
         min_redshift=args.min_z,
         max_redshift=args.max_z,
+        quadrature=args.quadrature,
         # N-body / force / painting knobs (previously not forwarded from the CLI)
         sim_mode=args.sim_mode,
         nbody_solver=_resolve_solver_name(args.solver),

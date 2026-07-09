@@ -369,6 +369,7 @@ def main() -> None:
         min_redshift=args.min_z,
         max_redshift=args.max_z,
         n_integrate=args.n_integrate,
+        quadrature=args.quadrature,
         apodization_scale_deg=args.apodization_scale_deg,
         # Geometry / painting (spherical only for now)
         nside=model_nside,
