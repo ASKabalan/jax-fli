@@ -111,24 +111,29 @@ def plot_born_windows(
     max_z=1.5,
     n_integrate=32,
     z_kernel=0.6,
+    quadrature="both",
 ):
-    """Plot the Born lensing kernel against the per-shell windows of one or more radial schemes.
+    """Diagnose the shell quadrature of the Born lensing integral for one or more radial schemes.
 
-    Produces a two-panel figure sharing the same shell weights ``born`` itself uses
-    (:func:`jax_fli._src.lensing._born._born_windows`):
+    A single-panel figure whose content is chosen by ``quadrature`` (all three share the exact shell
+    weights ``born`` itself uses, :func:`jax_fli._src.lensing._born._born_windows`):
 
-    - Left: the continuous lensing kernel ``w(chi) = chi (1+z) (1 - chi/chi_s)`` for a source at
-      ``z_kernel`` (exact area shaded), overlaid with each scheme's shell windows as
-      midpoint-rule rectangles (height = kernel at the shell center, width = shell width).
-      A rectangle poking above the shaded area is weight the midpoint quadrature invents.
-    - Right: the per-shell ratio of the midpoint weight to the exact Gauss-Legendre weight,
-      collapsed over the source n(z) (or evaluated per source redshift for scalar sources),
-      one line per tomographic bin. Thin shells sit at 1; wide near shells overshoot.
+    - ``"midpoint"`` / ``"gauss_legendre"``: the continuous lensing kernel
+      ``w(chi) = chi (1+z) (1 - chi/chi_s)`` for a source at ``z_kernel`` (black curve, exact area
+      shaded), overlaid with that quadrature's shell **windows** drawn as boxes. Each box spans its
+      shell width ``Delta chi`` and its **area is the shell's Born weight** (so box height =
+      weight / Delta chi). Midpoint boxes are flat at the kernel's shell-center value and poke above
+      the exact area on wide near shells; Gauss-Legendre boxes carry the exact per-shell integral, so
+      they tile the shaded area. The title reports the net ``sum of windows`` vs the exact total.
+    - ``"both"`` (default): the per-shell ratio ``midpoint / exact``, collapsed over the source n(z)
+      (or per source redshift for scalar sources), one line per tomographic bin. Thin shells sit at
+      1; wide near shells overshoot. ``z_kernel`` is ignored here (the ratio uses ``nz_shear``).
 
     Parameters
     ----------
     nz_shear : list of jc.redshift.redshift_distribution or array of float
-        Source distributions (e.g. from ``get_stage3_nz_shear``) or scalar source redshifts.
+        Source distributions (e.g. from ``get_stage3_nz_shear``) or scalar source redshifts. Only used
+        by ``quadrature="both"``; the single-quadrature views use ``z_kernel`` instead.
     cosmo : jax_cosmo.Cosmology, optional
         Cosmology for distances and ``a_of_chi``. Default: ``jc.Planck18()``.
     comoving_centers : array or dict of {label: array}
@@ -136,14 +141,16 @@ def plot_born_windows(
     density_width : array or dict of {label: array}
         Shell widths Delta chi [Mpc/h], matching ``comoving_centers`` (same labels for dicts).
     min_z, max_z, n_integrate : float, float, int
-        The n(z) integration grid — keep identical to the ``born`` call being diagnosed.
+        The n(z) integration grid for ``quadrature="both"`` — keep identical to the ``born`` call.
     z_kernel : float, default=0.6
-        Source redshift of the continuous kernel curve in the left panel (display only).
+        Source redshift of the kernel curve + windows in the single-quadrature views.
+    quadrature : {"both", "midpoint", "gauss_legendre"}, default="both"
+        Which view to draw (see above).
 
     Returns
     -------
-    (matplotlib.figure.Figure, (matplotlib.axes.Axes, matplotlib.axes.Axes))
-        The figure and its (kernel + windows, weight ratio) axes.
+    (matplotlib.figure.Figure, matplotlib.axes.Axes)
+        The figure and its single axis.
     """
     import matplotlib.pyplot as plt
     import numpy as np
@@ -157,65 +164,91 @@ def plot_born_windows(
         density_width = {None: density_width}
     if set(comoving_centers) != set(density_width):
         raise ValueError("comoving_centers and density_width must carry the same scheme labels")
+    if quadrature not in ("both", "midpoint", "gauss_legendre"):
+        raise ValueError(f"quadrature must be 'both', 'midpoint', or 'gauss_legendre', got {quadrature!r}")
 
-    source_kind, sources = _normalize_sources(nz_shear)
-    if source_kind == "distribution":
-        z_grid = jnp.linspace(min_z, max_z, n_integrate + 1)
-        # (K, Z): n(z) x Simpson weights — the same collapse born applies to the kappa grid.
-        collapse = jnp.stack([nz(z_grid) for nz in sources]) * _simps_weights(min_z, max_z, n_integrate)
-    else:
-        z_grid = jnp.atleast_1d(sources)
-        collapse = jnp.eye(z_grid.shape[0])  # scalar sources: one column per source redshift
-    chi_source = jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(z_grid)).reshape(-1)
+    cm = plt.get_cmap("tab10")
 
-    fig, (ax_kernel, ax_ratio) = plt.subplots(1, 2, figsize=(13.5, 4.6))
+    # ---- quadrature="both": the per-shell midpoint/exact ratio, folded through the source n(z) ----
+    if quadrature == "both":
+        source_kind, sources = _normalize_sources(nz_shear)
+        if source_kind == "distribution":
+            z_grid = jnp.linspace(min_z, max_z, n_integrate + 1)
+            # (K, Z): n(z) x Simpson weights — the same collapse born applies to the kappa grid.
+            collapse = jnp.stack([nz(z_grid) for nz in sources]) * _simps_weights(min_z, max_z, n_integrate)
+        else:
+            z_grid = jnp.atleast_1d(sources)
+            collapse = jnp.eye(z_grid.shape[0])  # scalar sources: one column per source redshift
+        chi_source = jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(z_grid)).reshape(-1)
 
+        fig, ax = plt.subplots(figsize=(7.6, 4.7))
+        single = len(comoving_centers) == 1  # one scheme → colour by bin; several → colour by scheme
+        for j, label in enumerate(comoving_centers):
+            centers = jnp.asarray(comoving_centers[label])
+            widths = jnp.asarray(density_width[label])
+            a_shell = jc.background.a_of_chi(cosmo, centers)
+            w_mid = _born_windows(cosmo, centers, a_shell, widths, chi_source, "midpoint")  # (S, Z)
+            w_gl = _born_windows(cosmo, centers, a_shell, widths, chi_source, "gauss_legendre")
+            ks_mid = np.asarray(jnp.einsum("kz,sz->ks", collapse, w_mid))
+            ks_gl = np.asarray(jnp.einsum("kz,sz->ks", collapse, w_gl))
+            for b in range(ks_mid.shape[0]):
+                ok = ks_gl[b] > 1e-12 * ks_gl[b].max()
+                name = f"bin {b + 1}" if label is None else f"{label} bin {b + 1}"
+                color, ls = (cm(b), "-") if single else (cm(j), ["-", "--", ":", "-."][b % 4])
+                ax.plot(np.asarray(centers)[ok], ks_mid[b][ok] / ks_gl[b][ok], color=color, ls=ls, lw=1.6, label=name)
+
+        ax.axhline(1.0, color="0.4", ls="--", lw=0.9)
+        ax.set_xlabel(r"shell center $\chi$ [$h^{-1}\mathrm{Mpc}$]")
+        ax.set_ylabel("midpoint weight / exact (GL) weight")
+        ax.set_title("Born shell quadrature error: midpoint / Gauss–Legendre")
+        ax.grid(True, ls=":", alpha=0.4)
+        ax.legend(fontsize=8, ncol=max(1, len(comoving_centers)))
+        fig.tight_layout()
+        return fig, ax
+
+    # ---- quadrature="midpoint"/"gauss_legendre": w(chi) with that scheme's shell windows as boxes ----
+    fig, ax = plt.subplots(figsize=(8.2, 4.9))
     chi_k = float(
         np.asarray(jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(jnp.asarray(z_kernel)))).ravel()[0]
     )
     chi_line = jnp.linspace(0.0, chi_k, 512)
     w_line = chi_line / jc.background.a_of_chi(cosmo, chi_line) * (1.0 - chi_line / chi_k)
-    ax_kernel.plot(
-        np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.8, label=rf"$w(\chi)$ for $z_s={z_kernel}$"
-    )
-    ax_kernel.fill_between(np.asarray(chi_line), np.asarray(w_line), color="0.85", zorder=0)
+    ax.fill_between(np.asarray(chi_line), np.asarray(w_line), color="0.9", zorder=0, label="exact kernel area")
+    ax.plot(np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.9, zorder=4, label=rf"$w(\chi)$, $z_s={z_kernel}$")
 
-    cm = plt.get_cmap("tab10")
+    chi_s_arr = jnp.atleast_1d(jnp.asarray(chi_k))
+    single = len(comoving_centers) == 1
     for j, label in enumerate(comoving_centers):
-        centers = jnp.asarray(comoving_centers[label])
-        widths = jnp.asarray(density_width[label])
-        a_shell = jc.background.a_of_chi(cosmo, centers)
-        w_mid = _born_windows(cosmo, centers, a_shell, widths, chi_source, "midpoint")  # (S, Z)
-        w_gl = _born_windows(cosmo, centers, a_shell, widths, chi_source, "gauss_legendre")
-        color = cm(j)
+        centers = np.asarray(comoving_centers[label])
+        widths = np.asarray(density_width[label])
+        a_shell = jc.background.a_of_chi(cosmo, jnp.asarray(centers))
+        # box area = shell Born weight under this quadrature → box height = weight / width
+        w_shell = np.asarray(_born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, quadrature)[:, 0])
+        w_exact = np.asarray(_born_windows(cosmo, jnp.asarray(centers), a_shell, jnp.asarray(widths), chi_s_arr, "gauss_legendre")[:, 0])
+        heights = np.where(widths > 0, w_shell / widths, 0.0)
+        contrib = (centers - widths / 2) < chi_k  # shells in front of the source
 
-        heights = np.asarray(centers / a_shell * jnp.clip(1.0 - centers / chi_k, 0.0, None))
-        for i, (c, dw) in enumerate(zip(np.asarray(centers), np.asarray(widths))):
-            lo = c - dw / 2
-            if lo > chi_k:
-                break
-            ax_kernel.add_patch(plt.Rectangle((lo, 0), dw, heights[i], fill=False, edgecolor=color, lw=1.4, ls="--"))
-            ax_kernel.axvline(lo + dw, color="0.6", lw=0.5)
+        for i in np.nonzero(contrib)[0]:
+            lo = centers[i] - widths[i] / 2
+            if single:
+                face, edge, alpha = (("#4C72B0", "#AFC7E3")[i % 2], "0.3", 0.6)  # alternating shades → shell widths pop
+            else:
+                face, edge, alpha = (cm(j), cm(j), 0.28)
+            ax.add_patch(plt.Rectangle((lo, 0), widths[i], heights[i], facecolor=face, edgecolor=edge, lw=0.7, alpha=alpha, zorder=1))
+        if quadrature == "midpoint":  # midpoint samples the kernel at each shell center — mark it on the curve
+            ax.plot(centers[contrib], heights[contrib], "o", ms=3.5, color=("#14315e" if single else cm(j)), zorder=5)
 
-        ks_mid = np.asarray(jnp.einsum("kz,sz->ks", collapse, w_mid))
-        ks_gl = np.asarray(jnp.einsum("kz,sz->ks", collapse, w_gl))
-        for b in range(ks_mid.shape[0]):
-            ok = ks_gl[b] > 1e-12 * ks_gl[b].max()
-            name = f"bin {b + 1}" if label is None else f"{label} bin {b + 1}"
-            ls = ["-", "--", ":", "-."][b % 4]
-            ax_ratio.plot(np.asarray(centers)[ok], ks_mid[b][ok] / ks_gl[b][ok], color=color, ls=ls, lw=1.6, label=name)
+        tot, tot_ex = w_shell[contrib].sum(), w_exact[contrib].sum()
+        bias = 100.0 * (tot / tot_ex - 1.0) if tot_ex else 0.0
+        pre = "" if label is None else f"{label}: "
+        ax.plot([], [], " ", label=f"{pre}Σ windows {tot:.3g} ({bias:+.1f}% vs exact)")
 
-    ax_kernel.set_xlim(0, chi_k * 1.02)
-    ax_kernel.set_ylim(bottom=0)
-    ax_kernel.set_xlabel(r"$\chi$ [$h^{-1}\mathrm{Mpc}$]")
-    ax_kernel.set_ylabel(r"$w(\chi) = \chi\,(1+z)\,(1-\chi/\chi_s)$")
-    ax_kernel.legend(loc="upper right", fontsize=9)
-
-    ax_ratio.axhline(1.0, color="0.4", ls="--", lw=0.9)
-    ax_ratio.set_xlabel(r"shell center $\chi$ [$h^{-1}\mathrm{Mpc}$]")
-    ax_ratio.set_ylabel("midpoint weight / exact weight")
-    ax_ratio.grid(True, ls=":", alpha=0.4)
-    ax_ratio.legend(fontsize=8, ncol=max(1, len(comoving_centers)))
-
+    qname = "midpoint (rectangle rule)" if quadrature == "midpoint" else "Gauss–Legendre (exact)"
+    ax.set_xlim(0, chi_k * 1.02)
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel(r"$\chi$ [$h^{-1}\mathrm{Mpc}$]")
+    ax.set_ylabel(r"$w(\chi) = \chi\,(1+z)\,(1-\chi/\chi_s)$")
+    ax.set_title(rf"Born shell windows — {qname};  box width $=\Delta\chi$, box area $=$ shell weight")
+    ax.legend(loc="upper right", fontsize=8)
     fig.tight_layout()
-    return fig, (ax_kernel, ax_ratio)
+    return fig, ax
