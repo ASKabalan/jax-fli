@@ -8,8 +8,8 @@ Run the core `jax_fli` pipeline — initial conditions → LPT / PM N-body → l
 ```bash
 fli-simulate --sim-mode pm \
     --mesh-size 512 512 512 --box-size 1000 1000 1000 \
-    --solver bf --n-steps 20 --nside 512 \
-    --output out/ --name fiducial
+    --solver bf --nb-steps 20 --nside 512 \
+    --output out.parquet --name fiducial
 ```
 
 `--sim-mode` selects the pipeline:
@@ -17,18 +17,22 @@ fli-simulate --sim-mode pm \
 | Mode | What it runs |
 |------|--------------|
 | `lpt` | Lagrangian Perturbation Theory only |
-| `pm` / `nbody` | full Particle-Mesh integration |
+| `pm` | full Particle-Mesh integration |
 | `lensing` | PM lightcone + Born convergence (requires `--nside` or `--flatsky-npix`) |
+
+(`--sim-mode` is required; the valid values are exactly `lpt`, `pm`, `lensing`.)
 
 ## Key arguments
 
 | Group | Flags |
 |-------|-------|
-| simulation | `--mesh-size`, `--box-size`, `--halo-size`, `--observer`, `--seed` |
-| output target | `--nside` (HEALPix), `--flatsky-npix`, `--density` (3-D box) |
-| integration | `--solver {kdk,dkd,bf}`, `--lpt-order {1,2}`, `--t0`, `--t1`, `--n-steps`, `--nb-shells` |
+| simulation | `--mesh-size`, `--box-size`, `--halo-multiplier`, `--observer-position`, `--seed` |
+| output target | `--nside` (HEALPix), `--flatsky-npix`, `--density` (3-D box), `--scheme`, `--paint-nside`, `--kernel-width-pixels` |
+| integration | `--solver {kdk,dkd,bf}`, `--lpt-order {1,2}`, `--t0`, `--t1`, `--nb-steps`, `--nb-shells`, `--paint-order`, `--shell-spacing`, `--drift-on-lightcone` |
+| lensing (mode `lensing`) | `--nz-shear`, `--min-z`, `--max-z`, `--n-integrate`, `--quadrature {midpoint,gauss_legendre}` |
+| gradient | `--grad {none,reverse,checkpoint,checkpointed_<N>}` (differentiate the forward model w.r.t. the IC) |
 | cosmology | `--Omega-c --Omega-b --h --sigma8 --n-s --w0 --wa` |
-| output | `--output <dir>`, `--name <label>` |
+| output | `--output <file.parquet>`, `--shells-per-file <N>`, `--name <label>` |
 | benchmarking | `--perf`, `--iterations` |
 
 Run `fli-simulate --help` for the full list and defaults.
