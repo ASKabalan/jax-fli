@@ -130,18 +130,18 @@ def analyze(
 
                 if has_true_ic:
                     assert ce.true_ic is not None
-                    ce.true_ic.project().plot(ax=axes[c, 0], title="True IC")
+                    ce.true_ic.project().plot(ax=axes[c, 0], titles="True IC")
                     mean_c = mean_field.replace(array=mean_field.array[c])
-                    mean_c.project().plot(ax=axes[c, 1], title="Mean")
+                    mean_c.project().plot(ax=axes[c, 1], titles="Mean")
                     std_c = std_field.replace(array=std_field.array[c])
-                    std_c.project().plot(ax=axes[c, 2], title="Std")
+                    std_c.project().plot(ax=axes[c, 2], titles="Std")
                     diff_c = ce.true_ic - mean_c
                     diff_c.project().plot(ax=axes[c, 3], title="Diff")
                 else:
                     mean_c = mean_field.replace(array=mean_field.array[c])
-                    mean_c.project().plot(ax=axes[c, 0], title="Mean")
+                    mean_c.project().plot(ax=axes[c, 0], titles="Mean")
                     std_c = std_field.replace(array=std_field.array[c])
-                    std_c.project().plot(ax=axes[c, 1], title="Std")
+                    std_c.project().plot(ax=axes[c, 1], titles="Std")
 
             fig.tight_layout()
             if outfolder_path:
