@@ -1,22 +1,14 @@
 # Multi-host PM and validation against theory
 
-The single-GPU notebooks scale to **multiple nodes** with no change to the physics code — only
-the device mesh grows. This page shows how to launch the distributed pipeline on a SLURM cluster
-and how to validate the resulting convergence against its Halofit theory prediction.
+The single-GPU notebooks scale to **multiple nodes** with no change to the physics code — only the device mesh grows. This page shows how to launch the distributed pipeline on a SLURM cluster and how to validate the resulting convergence against its Halofit theory prediction.
 
-Two runnable scripts back this page: [`11-multi-host-pm.py`](11-multi-host-pm.py) runs the
-distributed simulation, and [`11-multi-host-validate.py`](11-multi-host-validate.py) renders the
-figures below from its outputs.
+Two runnable scripts back this page: [`11-multi-host-pm.py`](11-multi-host-pm.py) runs the distributed simulation, and [`11-multi-host-validate.py`](11-multi-host-validate.py) renders the figures below from its outputs.
 
 ---
 
 ## How multi-host works
 
-JAX runs **one process per device**. Across nodes, the processes are tied together by a
-coordinator: each calls `jax.distributed.initialize()` **before touching the JAX backend** (this
-is why the script imports `jax`, calls `initialize()`, and only *then* imports `jax_fli`). After
-that, a `NamedSharding` over a 2-D device mesh partitions the first two spatial axes of every
-field, and `jax_fli` / `jaxpm` handle the halo exchange and distributed FFTs automatically.
+JAX runs **one process per device**. Across nodes, the processes are tied together by a coordinator: each calls `jax.distributed.initialize()` **before touching the JAX backend** (this is why the script imports `jax`, calls `initialize()`, and only *then* imports `jax_fli`). After that, a `NamedSharding` over a 2-D device mesh partitions the first two spatial axes of every field, and `jax_fli` / `jaxpm` handle the halo exchange and distributed FFTs automatically.
 
 ```python
 import jax
@@ -45,12 +37,7 @@ sharding = NamedSharding(mesh, P("x", "y"))
 # gaussian_initial_conditions(..., field_sharding=sharding) -> lpt -> nbody -> born -> get_shear
 ```
 
-On a single node a plain `jax.make_mesh` is enough — all GPUs share one fast NVLink fabric. Across
-nodes the links are *not* equal: GPUs inside a node are joined by NVLink, while nodes talk over the
-much slower InfiniBand network. `create_hybrid_device_mesh` lays the devices out so the PM's halo
-exchange — the heaviest communication — runs over NVLink wherever it can, and only the slab
-boundaries between nodes cross InfiniBand. See the JAX guide on
-[meshes with non-uniform communication bandwidth](https://docs.jax.dev/en/latest/multi_process.html#meshes-can-have-non-uniform-communication-bandwidth).
+On a single node a plain `jax.make_mesh` is enough — all GPUs share one fast NVLink fabric. Across nodes the links are *not* equal: GPUs inside a node are joined by NVLink, while nodes talk over the much slower InfiniBand network. `create_hybrid_device_mesh` lays the devices out so the PM's halo exchange — the heaviest communication — runs over NVLink wherever it can, and only the slab boundaries between nodes cross InfiniBand. See the JAX guide on [meshes with non-uniform communication bandwidth](https://docs.jax.dev/en/latest/multi_process.html#meshes-can-have-non-uniform-communication-bandwidth).
 
 The lead process (`jax.process_index() == 0`) gathers the result and writes the Parquet catalogs.
 
@@ -70,14 +57,11 @@ srun python 11-multi-host-pm.py \
      --gpus-per-node 4 --out sim.parquet   # writes sim_kappa.parquet + sim_shear.parquet
 ```
 
-The repository also ships a SLURM dispatcher — `fli-launcher` (see
-[Scripts & utilities](../4-scripts-and-utilities/fli-launcher.md)) — which submits grids of these
-jobs over cosmologies and seeds.
+The repository also ships a SLURM dispatcher — `fli-launcher` (see [Scripts & utilities](../4-scripts-and-utilities/fli-launcher.md)) — which submits grids of these jobs over cosmologies and seeds.
 
 ### Test it on a laptop first
 
-The same script runs on a single host with **fake CPU devices** — a quick smoke test of the whole
-multi-host code path before you queue a real job:
+The same script runs on a single host with **fake CPU devices** — a quick smoke test of the whole multi-host code path before you queue a real job:
 
 ```bash
 XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
@@ -86,30 +70,21 @@ XLA_FLAGS="--xla_force_host_platform_device_count=4" JAX_PLATFORMS=cpu \
 
 ## Validating against theory
 
-`11-multi-host-pm.py` writes **two** catalogs: a `SphericalKappaField` (the Born convergence) and a
-`SphericalShearField` (the two shear components, from `kappa.get_shear()`), one map per source bin.
-The figures below are from a `mesh = 1200³`, `nside = 1024` run over the **two** lowest Stage-3
-source bins.
+`11-multi-host-pm.py` writes **two** catalogs: a `SphericalKappaField` (the Born convergence) and a `SphericalShearField` (the two shear components, from `kappa.get_shear()`), one map per source bin. The figures below are from a `mesh = 1200³`, `nside = 1024` run over the **two** lowest Stage-3 source bins.
 
 ### Maps
 
 ![Simulated convergence maps for the two source bins](11-multi-host-kappa-maps.png)
 
-The convergence κ is the Born line-of-sight projection of the lightcone density onto each source
-plane. Bin 2 reaches a higher effective source redshift than bin 1, so it integrates through more
-structure and carries a visibly larger amplitude.
+The convergence κ is the Born line-of-sight projection of the lightcone density onto each source plane. Bin 2 reaches a higher effective source redshift than bin 1, so it integrates through more structure and carries a visibly larger amplitude.
 
 ![Simulated shear components γ1 and γ2 for the two source bins](11-multi-host-shear-maps.png)
 
-The shear (γ1, γ2) is the spin-2 field obtained from κ with `kappa.get_shear()` — the forward
-Kaiser–Squires transform on the sphere (κ → E-mode → shear). It is what a galaxy survey actually measures; the two
-components carry the same lensing signal rotated by 45° relative to each other.
+The shear (γ1, γ2) is the spin-2 field obtained from κ with `kappa.get_shear()` — the forward Kaiser–Squires transform on the sphere (κ → E-mode → shear). It is what a galaxy survey actually measures; the two components carry the same lensing signal rotated by 45° relative to each other.
 
 ### Power spectra
 
-We validate the convergence against its Halofit weak-lensing prediction at the simulation cosmology
-(Planck18). The spectrum was already computed by the run and saved alongside the maps, so the check
-just loads it back and overlays the theory for the two source bins:
+We validate the convergence against its Halofit weak-lensing prediction at the simulation cosmology (Planck18). The spectrum was already computed by the run and saved alongside the maps, so the check just loads it back and overlays the theory for the two source bins:
 
 ```python
 import jax_fli as jfli, jax_cosmo as jc, numpy as np
@@ -127,11 +102,4 @@ theory = jfli.compute_theory_cl(cosmo, np.asarray(cl_sim.wavenumber)[2:], z_sour
 
 ![Convergence power spectrum: jax-fli multi-host PM vs Halofit theory (Planck18)](11-multi-host-comparison.png)
 
-The simulated spectrum (blue) tracks the Halofit prediction (red dashed) across the whole resolved
-range for both source bins. The bottom panels show the ratio to theory: it sits near unity over the
-signal-dominated band, then climbs at high ℓ. That excess is **shot noise from the finite particle
-sampling**. This run evolves `1200³` particles in a `(4595 Mpc/h)³` box — only ≈ 0.018 particles per
-`(Mpc/h)³`, i.e. **one particle per `(3.8 Mpc/h)³`**. Below that mean inter-particle spacing the
-discrete particles merely Poisson-sample the density field, adding a near-white noise floor that
-lifts `C_ℓ` above the smooth theory; a denser sampling (a larger mesh at fixed box size) pushes the
-departure to higher ℓ.
+The simulated spectrum (blue) tracks the Halofit prediction (red dashed) across the whole resolved range for both source bins. The bottom panels show the ratio to theory: it sits near unity over the signal-dominated band, then climbs at high ℓ. That excess is **shot noise from the finite particle sampling**. This run evolves `1200³` particles in a `(4595 Mpc/h)³` box — only ≈ 0.018 particles per `(Mpc/h)³`, i.e. **one particle per `(3.8 Mpc/h)³`**. Below that mean inter-particle spacing the discrete particles merely Poisson-sample the density field, adding a near-white noise floor that lifts `C_ℓ` above the smooth theory; a denser sampling (a larger mesh at fixed box size) pushes the departure to higher ℓ.

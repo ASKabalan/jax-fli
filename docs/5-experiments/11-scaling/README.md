@@ -24,7 +24,7 @@ The runs, and the fixed forward-model configuration behind every one of them:
 | Weak (256³/GPU) | `(256·px, 256, 256)` | float32 | 4, 8, 16, 32, 64, 128, 256 |
 | Weak (256³/GPU) | `(256·px, 256, 256)` | float64 | 4, 8, 16, 32, 64, 128, 256 |
 
-Two hard limits shape which rungs exist. **Even halo:** the ghost zone `halo = int((M/px)·0.5)` must be even (odd halo crashes jaxpm `slice_unpad`), so at `halo_multiplier 0.5` a **1024³ slab tops out at 256 GPUs**. **Per-GPU memory:** each ladder starts at the smallest GPU count whose local volume fits (≈300³ cells/GPU in float64 for this heavier 5 Gpc/h model, ≈2× in float32). The weak grids are anisotropic by construction (the slab shards only X) — perf/memory benchmarks, not science runs.
+Two hard limits shape which runs exist. **Even halo:** the ghost zone `halo = int((M/px)·0.5)` must be even (odd halo crashes jaxpm `slice_unpad`), so at `halo_multiplier 0.5` a **1024³ slab tops out at 256 GPUs**. **Per-GPU memory:** each ladder starts at the smallest GPU count whose local volume fits (≈300³ cells/GPU in float64 for this heavier 5 Gpc/h model, ≈2× in float32). The weak grids are anisotropic by construction (the slab shards only X) — perf/memory benchmarks, not science runs.
 
 ## Method
 
@@ -36,7 +36,7 @@ Slab `(N, 1)` shards the global mesh along X into `px = #GPUs` equal slabs of lo
 
 ![Strong scaling wall-time](assets/fig01-strong-time.svg)
 
-At 1024³ (top) the PM step gets faster with more GPUs but flattens well short of ideal 1/N scaling: float32 goes 4.6 s (32 GPUs) → 2.1 s (256 GPUs) — a **2.2× speedup for 8× the GPUs** (≈27% parallel efficiency), and float64 3.8 s → 3.0 s from 128→256 GPUs. The gap to a perfect 1/N is the slab's communication cost (the X-sharded FFT's all-to-all and the halo exchange), which grows with `px` and eventually dominates the shrinking per-GPU compute. float64 sits ≈1.5× above float32 throughout. The 2048³ panel (bottom) holds two landed points at different GPU counts — float32 at 256 GPUs (7.7 s) and float64 at 512 GPUs (7.65 s) — a cross-precision comparison rather than a scaling curve (the intermediate 2048³ rungs weren't run).
+At 1024³ (top) the PM step gets faster with more GPUs but flattens well short of ideal 1/N scaling: float32 goes 4.6 s (32 GPUs) → 2.1 s (256 GPUs) — a **2.2× speedup for 8× the GPUs** (≈27% parallel efficiency), and float64 3.8 s → 3.0 s from 128→256 GPUs. The gap to a perfect 1/N is the slab's communication cost (the X-sharded FFT's all-to-all and the halo exchange), which grows with `px` and eventually dominates the shrinking per-GPU compute. float64 sits ≈1.5× above float32 throughout. The 2048³ panel (bottom) holds two landed points at different GPU counts — float32 at 256 GPUs (7.7 s) and float64 at 512 GPUs (7.65 s) — a cross-precision comparison rather than a scaling curve (the intermediate 2048³ runs weren't run).
 
 ### Strong scaling — peak temporary memory
 
@@ -58,13 +58,13 @@ Memory weak-scales essentially perfectly: peak scratch is flat at **≈3.26 GB (
 
 ### Note on the 2048³ panel
 
-The 2048³ strong panel is a two-point cross-precision comparison, not a full scaling curve: only `M2048_g256_f32` and `M2048_g512_f64` completed (the intermediate 2048³ rungs, and the `g512_f32` / `g256_f64` counterparts, were not run or did not finish). `build.py` loads the CSV from HuggingFace and the strong query already spans both 1024³ and 2048³, so appending any further 2048³ rows to `perf_pm.csv` on HuggingFace and re-running `build.py` extends the panel with no code change.
+The 2048³ strong panel is a two-point cross-precision comparison, not a full scaling curve: only `M2048_g256_f32` and `M2048_g512_f64` completed (the intermediate 2048³ runs, and the `g512_f32` / `g256_f64` counterparts, were not run or did not finish). `build.py` loads the CSV from HuggingFace and the strong query already spans both 1024³ and 2048³, so appending any further 2048³ rows to `perf_pm.csv` on HuggingFace and re-running `build.py` extends the panel with no code change.
 
 ## How to run
 
 ```bash
 # (a) produce perf_pm.csv on the cluster (both precisions; --perf → wall-time + per-device memory)
-MODE=dryrun bash run.sh    # print the resolved fli-launcher commands + skipped rungs (submit nothing)
+MODE=dryrun bash run.sh    # print the resolved fli-launcher commands + skipped runs (submit nothing)
 bash run.sh                # submit to SLURM → writes perf_pm.csv rows under results/exp11/
 
 # (b) render the four SVGs locally from the HuggingFace copy of perf_pm.csv (CPU-only, no GPU)

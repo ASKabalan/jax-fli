@@ -1,10 +1,6 @@
 # `Configurations` — forward & probabilistic model options
 
-Every option consumed by the full-field forward model
-(`make_full_field_model`) and the probabilistic model
-(`full_field_probmodel`) lives on the `Configurations` dataclass
-(`jax_fli.probabilistic_models.config`). This page lists them by section
-with their types and defaults.
+Every option consumed by the full-field forward model (`make_full_field_model`) and the probabilistic model (`full_field_probmodel`) lives on the `Configurations` dataclass (`jax_fli.probabilistic_models.config`). This page lists them by section with their types and defaults.
 
 ```python
 import jax_fli as jfli
@@ -58,10 +54,7 @@ model = jfli.ppl.full_field_probmodel(config)
 
 ## N-body solver
 
-`DoubleKickDrift` (reversible, uniform a-stepping) is the default; the
-correction kernel is fixed to `NoCorrection` (no PGD/Sharpening), the
-interpolation is `DriftInterp` when `drift_on_lightcone=True` else
-`NoInterp` (OnionTiler / TelephotoInterp are not exposed here).
+`DoubleKickDrift` (reversible, uniform a-stepping) is the default; the correction kernel is fixed to `NoCorrection` (no PGD/Sharpening), the interpolation is `DriftInterp` when `drift_on_lightcone=True` else `NoInterp` (OnionTiler / TelephotoInterp are not exposed here).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -91,8 +84,7 @@ interpolation is `DriftInterp` when `drift_on_lightcone=True` else
 
 ## Lensing & output
 
-Lensing is **born only** (`raytrace` raises). The output observable is
-selected by `lensing_output`.
+Lensing is **born only** (`raytrace` raises). The output observable is selected by `lensing_output`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -105,13 +97,8 @@ selected by `lensing_output`.
 
 Two independent masks:
 
-- **Visibility mask** — built from `observer_position` (when off-center) via
-  `jaxpm.spherical.spherical_visibility_mask`, apodized with
-  `apodization_scale_deg`, and multiplied into the observable
-  (KS-then-×apodize). Spherical geometry only.
-- **Survey mask `mask`** (e.g. DES Y3) — used **only in the likelihood**: the
-  per-pixel σ is inflated to `sigma_unobserved` where `mask == 0`, so
-  unobserved pixels do not constrain the fit (map shapes stay fixed).
+- **Visibility mask** — built from `observer_position` (when off-center) via `jaxpm.spherical.spherical_visibility_mask`, apodized with `apodization_scale_deg`, and multiplied into the observable (KS-then-×apodize). Spherical geometry only.
+- **Survey mask `mask`** (e.g. DES Y3) — used **only in the likelihood**: the per-pixel σ is inflated to `sigma_unobserved` where `mask == 0`, so unobserved pixels do not constrain the fit (map shapes stay fixed).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

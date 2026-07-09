@@ -1,5 +1,7 @@
 # Experiment 12 — IC-gradient: strong & weak scaling
 
+**This is WIP waiting for runs with 20 checkpoints** ⚠️
+
 **Goal.** [Experiment 09](../09-gradient-validation/README.md) established that the lightcone initial-condition gradient is **correct**; this experiment measures what it **costs at scale**. We strong- and weak-scale the IC gradient (forward + backward) under a **slab `(N, 1)`** decomposition and capture **min wall-time *and* peak per-device temporary memory** (`fli-simulate --perf`, XLA `memory_analysis`) for **five reverse-mode adjoints**, so you can read off which adjoint to pick and how large a *differentiable* simulation fits at a given GPU count. The gradient is bit-identical across all five (Exp 09) — this is a pure time↔memory trade.
 
 The five adjoint variants (`--grad`), and the fixed forward model they differentiate:
@@ -27,7 +29,7 @@ The five adjoint variants (`--grad`), and the fixed forward model they different
 | Strong | 1024³ | 64, 128, 256 |
 | Weak (256³/GPU) | `(256·px, 256, 256)` | 4, 8, 16, 32, 64, 128, 256 |
 
-Strong scaling is 1024³ only (2048³ gradient runs are out of scope). Same slab constraints as [Exp 11](../11-scaling/README.md) — even halo caps 1024³ at 256 GPUs — plus a gradient memory penalty: differentiating roughly doubles the forward working set, so the strong ladder starts at 64 GPUs (no `g512` rung landed).
+Strong scaling is 1024³ only (2048³ gradient runs are out of scope). Same slab constraints as [Exp 11](../11-scaling/README.md) — even halo caps 1024³ at 256 GPUs — plus a gradient memory penalty: differentiating roughly doubles the forward working set, so the strong ladder starts at 64 GPUs (no `g512` run landed).
 
 ## Method
 
@@ -78,7 +80,7 @@ The XLA HLO for the two 128-GPU programs confirms this directly. Both have the *
 
 ```bash
 # (a) produce perf_pm.csv on the cluster (float64; --perf → wall-time + per-device memory + HLO markdown)
-MODE=dryrun bash run.sh    # print the resolved commands + skipped rungs (submit nothing)
+MODE=dryrun bash run.sh    # print the resolved commands + skipped runs (submit nothing)
 bash run.sh                # submit to SLURM → writes perf_pm.csv rows + per-run HLO .md under results/exp12/
 
 # (b) render the four SVGs locally from the HuggingFace copy of perf_pm.csv (CPU-only, no GPU)
