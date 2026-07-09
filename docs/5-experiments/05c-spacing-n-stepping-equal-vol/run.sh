@@ -54,11 +54,11 @@ else
       launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
         fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
         --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature midpoint \
-        --name "kappa_midpoint_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/born_midpoint_${KIND}_${NB_S}"
+        --name "kappa_midpoint_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/kappa_midpoint/born_midpoint_${KIND}_${NB_S}"
       launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
         fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
         --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
-        --name "kappa_gl_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/born_gl_${KIND}_${NB_S}"
+        --name "kappa_gl_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/kappa_gl/born_gl_${KIND}_${NB_S}"
     done
   done
 fi
