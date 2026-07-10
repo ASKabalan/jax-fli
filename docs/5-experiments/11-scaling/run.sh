@@ -53,6 +53,7 @@ for pc in "f32:" "f64:--enable-x64"; do
 
   # (b) weak scaling — fixed 256³/GPU (slab): global = (256·px, 256, 256), local 256³, halo 128 (always even)
   for g in $GPUS; do
+    [ "$g" = 512 ] && continue   # weak g512 never landed (OOM at 512 GPUs) — strong M2048 g512 still runs above
     px=$g; py=1; nodes=$(( g / 4 ))
     gx=$(( 256 * px ))
     launch "$nodes" 4 "$px" "$py" 00:30:00 -- $PERF $pflag --nside 256 --mesh-size $gx 256 256 --box-size $BOX5 \

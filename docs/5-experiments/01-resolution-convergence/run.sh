@@ -1,6 +1,6 @@
 #!/bin/bash
 # Experiment 01 — resolution convergence.
-# Per-shell spherical C_ℓ vs particle count, 512³ → 4096³ at fixed box/steps. float64 throughout.
+# Per-shell spherical C_ℓ vs particle count, 512³ → 3072³ at fixed box/steps. float64 throughout.
 source "$(dirname "$0")/../_launch_common.sh"
 
 echo "### Exp 01 — resolution convergence  (MODE=$MODE)"
@@ -27,10 +27,6 @@ launch  32  4  128  1  00:45:00 -- $COMMON --mesh-size 2560 2560 2560 \
 launch  64  4  256  1  00:45:00 -- $COMMON --mesh-size 3072 3072 3072 \
   --output "$RESULTS/exp1/m3072.parquet" --name "$NAME"    #  12    6
 launch  32  4  32  4  00:45:00 -- $COMMON --mesh-size 2560 2560 2560 \
-  --output "$RESULTS/exp1/m2560_pencils.parquet" --name "$NAME"    #  20   10   (was 256/64: odd halo 5)
+  --output "$RESULTS/exp1/m2560_pencils.parquet" --name "$NAME"    #  80   40  (pencil px=32)
 launch  64  4  64  4  00:45:00 -- $COMMON --mesh-size 3072 3072 3072 \
-  --output "$RESULTS/exp1/m3072_pencils.parquet" --name "$NAME"    #  12    6
-launch 112  4  448  1  00:45:00 -- $COMMON --mesh-size 3584 3584 3584 \
-  --output "$RESULTS/exp1/m3584.parquet" --name "$NAME"    #   8    4   (was 256/64: odd halo 7 + 728³ padded)
-launch 128  4  512  1  00:45:00 -- $COMMON --mesh-size 4096 4096 4096 \
-  --output "$RESULTS/exp1/m4096.parquet" --name "$NAME"    #   8    4   (was 256/64: OOM at 813³ padded)
+  --output "$RESULTS/exp1/m3072_pencils.parquet" --name "$NAME"    #  48   24  (pencil px=64)

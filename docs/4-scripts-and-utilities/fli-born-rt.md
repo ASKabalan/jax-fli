@@ -1,9 +1,6 @@
 # fli-born-rt
 
-Post-process an existing spherical density lightcone with the **Born approximation**, writing a
-`SphericalKappaField` convergence catalog. This is the batch equivalent of `jfli.born` (see the
-[Lensing notebook](../2-advanced-usage/09-Lensing.ipynb)). Fully JAX, runs distributed like the
-rest of the pipeline.
+Post-process an existing spherical density lightcone with the **Born approximation**, writing a `SphericalKappaField` convergence catalog. This is the batch equivalent of `jfli.born` (see the [Lensing notebook](../2-advanced-usage/09-Lensing.ipynb)). Fully JAX, runs distributed like the rest of the pipeline.
 
 ## Usage
 
@@ -18,9 +15,7 @@ fli-born-rt --repo ASKabalan/jax-fli-experiments \
 
 ## Arguments
 
-The density source is the shared source interface — **either** a local `--input` file/glob **or**
-a HuggingFace `--repo` + `--data-files` (mutually exclusive). The output is written to a
-**directory** (`--output`, default `.`) with an auto-generated name `BORN_<name or M…_B…_N…>.parquet`.
+The density source is the shared source interface — **either** a local `--input` file/glob **or** a HuggingFace `--repo` + `--data-files` (mutually exclusive). The output is written to a **directory** (`--output`, default `.`) with an auto-generated name `BORN_<name or M…_B…_N…>.parquet`.
 
 | Flag | Default | Meaning |
 |------|---------|---------|
@@ -36,7 +31,4 @@ a HuggingFace `--repo` + `--data-files` (mutually exclusive). The output is writ
 | `--enable-x64` | off | double precision |
 | `--pdim PX PY` / `--nodes` / `--gpus-per-node` | `1 1` / `1` / — | distributed Born process mesh |
 
-`--quadrature` matters most for coarse or equal-volume shells, where wide near shells make the
-midpoint rectangle over-weight the true kernel — see `jfli.plot_born_windows` and
-[Exp 05c](../5-experiments/05c-spacing-n-stepping-equal-vol/README.md). For the post-Born
-ray-traced version use [`fli-dorian-rt`](fli-dorian-rt.md).
+`--quadrature` matters most for coarse or equal-volume shells, where wide near shells make the midpoint rectangle over-weight the true kernel — see `jfli.plot_born_windows` and [Exp 05c](../5-experiments/05c-spacing-n-stepping-equal-vol/README.md). For the post-Born ray-traced version use [`fli-dorian-rt`](fli-dorian-rt.md).
