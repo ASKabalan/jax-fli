@@ -23,7 +23,7 @@ What it does (all on CPU):
      shell's scale factor + comoving edges.
   4. Select the shells that fall inside each box and emit the ``--ts-near`` / ``--ts-far`` edge
      lists (CosmoGrid scale-factor edges) that reproduce them.
-  5. Size the mesh + GPU layout: full sky 2560^3; quadrant packs the SAME ~2560^3 cell budget into its
+  5. Size the mesh + GPU layout: full sky 2048^3; quadrant packs the SAME ~2048^3 cell budget into its
      smaller volume at isotropic, finer dx, with a mesh chosen so it is valid under BOTH the slab and
      pencil device grids. Both on 128 GPUs.
   6. Save the geometry + visibility-mask figures (assets/exp06-*.svg) and write geometry.sh for run.sh.
@@ -82,7 +82,7 @@ OBS_FULL = (0.5, 0.5, 0.5)  # full-sky observer (box centre) -> isotropic 2r cub
 # X/Y-reoriented this to (0.5,0.1,0.9) to keep the long axis first; that reflected the footprint across
 # x=y and no longer matched Exp 08 — fixed here.
 OBS_QUAD = (0.1, 0.5, 0.9)
-MESH_FULL = 2560  # full-sky cubic mesh side (the m2560 template), float64 on 128 GPUs
+MESH_FULL = 2048  # full-sky cubic mesh side, float64 on 128 GPUs
 N_GPUS = 128  # h100: 4 GPU/node -> 32 nodes
 GPUS_PER_NODE = 4
 BOX_STEP = 200  # round 2r up to a multiple of this for tidy box sides (4200, 5000)

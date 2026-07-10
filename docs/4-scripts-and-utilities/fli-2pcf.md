@@ -1,8 +1,6 @@
 # fli-2pcf
 
-Power-spectrum-level (two-point) MCMC inference. The map is compressed to its angular power
-spectrum once, then the cosmology is sampled against a Gaussian (Knox) likelihood — far cheaper
-than [`fli-infer`](fli-infer.md) because no forward simulation runs inside the MCMC loop.
+Power-spectrum-level (two-point) MCMC inference. The map is compressed to its angular power spectrum once, then the cosmology is sampled against a Gaussian (Knox) likelihood — far cheaper than [`fli-infer`](fli-infer.md) because no forward simulation runs inside the MCMC loop.
 
 ## Usage
 
@@ -26,6 +24,4 @@ fli-2pcf --observable kappa.parquet --path chains/ \
 | `--num-warmup` / `--num-samples` / `--batch-count` / `--chain-index` | sampler iterations / chain shard |
 | `--sampler {NUTS,MCLMC}` | inference kernel |
 
-Plus the shared **lensing** (`--nz-shear --min-z --max-z --n-integrate --quadrature`) and **prior**
-groups — there is no cosmology group here; the sampled cosmology comes from the priors over a
-Planck18 fiducial.
+Plus the shared **lensing** (`--nz-shear --min-z --max-z --n-integrate --quadrature`) and **prior** groups — there is no cosmology group here; the sampled cosmology comes from the priors over a Planck18 fiducial.

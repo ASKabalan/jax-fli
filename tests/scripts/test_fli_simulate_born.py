@@ -81,7 +81,7 @@ _COMMON_BORN_CLI = [
 # ---------------------------------------------------------------------------
 
 
-def _api_born(cosmo, initial_field, *, painting):
+def _api_born(cosmo, initial_field, *, painting, quadrature="midpoint"):
     """Run LPT → nbody → born via the jax_fli API, matching run_simulations()."""
     solver = jfli.BullFrog(
         interp_kernel=jfli.NoInterp(painting=painting),
@@ -112,7 +112,7 @@ def _api_born(cosmo, initial_field, *, painting):
     )
     nz_shear = jnp.array(_NZ_SHEAR, dtype=jnp.float32)
     return jfli.born(
-        cosmo, lightcone, nz_shear, min_z=_MIN_Z, max_z=_MAX_Z, n_integrate=_N_INTEGRATE, quadrature="simpson"
+        cosmo, lightcone, nz_shear, min_z=_MIN_Z, max_z=_MAX_Z, n_integrate=_N_INTEGRATE, quadrature=quadrature
     )
 
 
@@ -169,8 +169,9 @@ def test_born_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
 # ---------------------------------------------------------------------------
 
 
-def test_born_flatsky_script_vs_api(tmp_path, cosmo):
-    """fli-simulate lensing --flatsky-npix must match direct jax_fli born pipeline."""
+@pytest.mark.parametrize("quadrature", ["midpoint", "gauss_legendre"])
+def test_born_flatsky_script_vs_api(tmp_path, cosmo, quadrature):
+    """fli-simulate lensing --flatsky-npix must match direct jax_fli born pipeline (both quadratures)."""
     out_file = str(tmp_path / "output.parquet")
     npix = str(_FLATSKY_NPIX)
     fsize = str(_FIELD_SIZE)
@@ -180,7 +181,7 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
         ["fli-simulate", "--sim-mode", "lensing", "--flatsky-npix", npix, npix, "--field-size", fsize, fsize]
         + _BASE_CLI
         + _COMMON_BORN_CLI
-        + ["--output", out_file]
+        + ["--quadrature", quadrature, "--output", out_file]
     )
     run_sim(cmd)
 
@@ -202,14 +203,14 @@ def test_born_flatsky_script_vs_api(tmp_path, cosmo):
         halo_size=_HALO_SIZE,
     )
     painting = jfli.PaintingOptions(target="flat")
-    kappa = _api_born(cosmo, initial_field, painting=painting)
+    kappa = _api_born(cosmo, initial_field, painting=painting, quadrature=quadrature)
     api_kappa = kappa.array
 
     # --- compare ---
     compare_fields(
         script_kappa,
         api_kappa,
-        label=f"born flatsky {_FLATSKY_NPIX}x{_FLATSKY_NPIX}/{_FIELD_SIZE}deg",
+        label=f"born flatsky {_FLATSKY_NPIX}x{_FLATSKY_NPIX}/{_FIELD_SIZE}deg/{quadrature}",
         rtol=1e-5,
         atol=1e-10,
         mean_atol=1e-12,

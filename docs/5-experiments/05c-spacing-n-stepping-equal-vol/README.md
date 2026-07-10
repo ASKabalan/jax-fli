@@ -1,5 +1,7 @@
 # Experiment 05c — Spacing & stepping: equal-volume shells
 
+**This is still a work in progress waiting for gauss_legendre kappa maps** ⚠️
+
 **Goal.** Experiment [05a](../05a-spacing-n-stepping-drift/README.md) established the *drift on the lightcone*: moving each particle to the scale factor at which it actually crosses the lightcone removes the frozen-epoch error of a thick shell, so a coarse *drifted* lightcone matches a much finer undrifted one. 05a used **scale-factor** shell spacing, which makes the near-observer shells thin — thin shells hold few particles, so their per-shell `C_ℓ` is shot-noise dominated. This experiment swaps the spacing to **equal volume** (`--shell-spacing equal_vol`): every shell then encloses the same comoving volume, hence the same particle count, so no near shell is starved. The geometric price is that the innermost shell becomes a **fat ball** (here `[0, 1160]` Mpc/h) while the outer shells get thin and are floored to `--min-width 60`. That concentrates the frozen-epoch error into the fat inner shell — precisely where the drift buys the most. The question 05c answers is whether equal-volume spacing *plus* drift gives clean per-region `C_ℓ` across the whole lightcone.
 
 | sweep | values |
@@ -87,6 +89,8 @@ Since the shells themselves are fine, the only post-paint lever is the **lens-si
 ![Shell-inferred Born weights on the 10-shell run](assets/fig13-born-weights.svg)
 
 The winner is implemented as a **drop-in modified `born()`** (`born_exact` in the script — identical pipeline to `jax_fli.lensing.born`, with the single change that the midpoint factor `Δχ·χᵢ/aᵢ·clip(1−χᵢ/χₛ)` becomes the exact per-shell integral `∫_shell dχ (χ/a)·clip(1−χ/χₛ)`), run end-to-end on the drifted 10-shell lightcone. **Top row:** against theory, all runs share the PM-resolution roll-off — the 40-shell black curve *is* the ceiling any 2560³ run can reach — and the modified born (blue) sits on it for bins 2–3 while the midpoint born (red) bulges far above. **Bottom row**, the metric the fix targets — the 10-shell run over the 40-shell run (median `ℓ∈[50,300]` | `[300,800]`): bin 2 goes from **1.77|1.91 (midpoint) to 1.02|1.09**, bin 3 from 1.38|1.41 to 1.10|1.13, i.e. the coarse equal-volume run now reproduces the fine one to ~2–13%. **Bin 1 cannot be rescued**: its sources (`χₛ ≈ 856` Mpc/h) sit *inside* the `[0, 1160]` fat ball, so the midpoint overshoots (1.53|1.82) while the exact kernel undershoots (0.79|0.94) — a shell cannot lens sources it contains, and that radial information was destroyed at painting time. The practical rule: with the exact per-shell kernel, equal-volume shells are usable for Born lensing for every source bin whose lensing kernel lies *in front of* the fat inner shell; for lower bins (or fewer shells) the geometry must change at paint time. Upstream, this suggests replacing `born()`'s midpoint weight with the per-shell kernel integral — a strict improvement for thick shells and a numerical no-op for thin ones (05b and CosmoGrid are unchanged at their ≲1% level).
+
+## TODO
 
 ## How to run
 

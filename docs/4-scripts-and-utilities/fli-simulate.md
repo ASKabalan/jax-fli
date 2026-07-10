@@ -1,7 +1,6 @@
 # fli-simulate
 
-Run the core `jax_fli` pipeline — initial conditions → LPT / PM N-body → lightcone painting
-(optionally lensing) — and write the result as a Parquet `Catalog`.
+Run the core `jax_fli` pipeline — initial conditions → LPT / PM N-body → lightcone painting (optionally lensing) — and write the result as a Parquet `Catalog`.
 
 ## Usage
 
@@ -39,6 +38,4 @@ Run `fli-simulate --help` for the full list and defaults.
 
 ## Distributed
 
-Launch one process per GPU; field sharding and halo exchange are automatic. See
-[multi-host PM](../2-advanced-usage/11-multi-host-pm.md) and the
-[Distributed PM notebook](../1-introduction-and-basics/05-Distributed-PM.ipynb).
+Launch one process per GPU; field sharding and halo exchange are automatic. See [multi-host PM](../2-advanced-usage/11-multi-host-pm.md) and the [Distributed PM notebook](../1-introduction-and-basics/05-Distributed-PM.ipynb).

@@ -1,8 +1,6 @@
 # fli-extract
 
-Stream MCMC sample catalogs (from [`fli-infer`](fli-infer.md) / [`fli-2pcf`](fli-2pcf.md)) and
-compute **per-chain summary statistics** without loading everything into memory. Uses Welford's
-online algorithm, so it scales to large chains of high-resolution fields.
+Stream MCMC sample catalogs (from [`fli-infer`](fli-infer.md) / [`fli-2pcf`](fli-2pcf.md)) and compute **per-chain summary statistics** without loading everything into memory. Uses Welford's online algorithm, so it scales to large chains of high-resolution fields.
 
 ## Usage
 
@@ -20,12 +18,7 @@ fli-extract --repo user/repo \
 
 ## Arguments
 
-The source is the shared `add_source_args` interface — local `--input` **XOR** HuggingFace `--repo` +
-`--data-files`, same as [`fli-born-rt`](fli-born-rt.md) / [`fli-dorian-rt`](fli-dorian-rt.md). Here it
-is **multi-pattern**: **each pattern is one MCMC chain**, streamed and accumulated independently so the
-per-chain statistics stay separate (a single pooled glob would mix chains and compute a *different*,
-wrong statistic). A single local `--input` root directory auto-expands its `chain_N/samples/*.parquet`
-subdirectories.
+The source is the shared `add_source_args` interface — local `--input` **XOR** HuggingFace `--repo` + `--data-files`, same as [`fli-born-rt`](fli-born-rt.md) / [`fli-dorian-rt`](fli-dorian-rt.md). Here it is **multi-pattern**: **each pattern is one MCMC chain**, streamed and accumulated independently so the per-chain statistics stay separate (a single pooled glob would mix chains and compute a *different*, wrong statistic). A single local `--input` root directory auto-expands its `chain_N/samples/*.parquet` subdirectories.
 
 | Flag | Meaning |
 |------|---------|
