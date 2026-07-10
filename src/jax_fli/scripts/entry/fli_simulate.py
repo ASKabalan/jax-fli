@@ -570,7 +570,7 @@ def main() -> None:
             "adjoint": grad_adjoint,
             "checkpoints": grad_checkpoints,
             "compute_grad": compute_grad,
-            "quadrature": getattr(args, "quadrature", "midpoint"),
+            "quadrature": getattr(args, "quadrature", "simpson"),
         }
 
     if args.perf:

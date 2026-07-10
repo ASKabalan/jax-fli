@@ -347,10 +347,11 @@ def add_lensing_args(p):
     g.add_argument("--n-integrate", type=int, default=32, help="Number of integration points for n(z) (default: 32)")
     g.add_argument(
         "--quadrature",
-        choices=["midpoint", "gauss_legendre"],
-        default="midpoint",
-        help="Born per-shell weight quadrature: 'midpoint' evaluates the lensing kernel at shell centers "
-        "(historic); 'gauss_legendre' integrates it exactly over each shell (default: midpoint)",
+        choices=["midpoint", "simpson", "gauss_legendre"],
+        default="simpson",
+        help="Born quadrature, applied to the per-shell weights AND the n(z) integral: 'simpson' = composite "
+        "Simpson over each shell + Simpson n(z) grid; 'gauss_legendre' = GL-16 over each shell + GL n(z) nodes; "
+        "'midpoint' = the historic legacy route (kernel at shell centers + Simpson n(z)) (default: simpson)",
     )
 
 

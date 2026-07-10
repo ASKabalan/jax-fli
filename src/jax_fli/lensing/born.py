@@ -22,7 +22,7 @@ def born(
     max_z=1.5,
     n_integrate=32,
     normalization="global",
-    quadrature="midpoint",
+    quadrature="simpson",
 ):
     if nz_shear is None:
         raise ValueError("nz_shear must be provided for lensing")
@@ -115,16 +115,17 @@ def plot_born_windows(
 ):
     """Diagnose the shell quadrature of the Born lensing integral for one or more radial schemes.
 
-    A single-panel figure whose content is chosen by ``quadrature`` (all three share the exact shell
+    A single-panel figure whose content is chosen by ``quadrature`` (all views share the exact shell
     weights ``born`` itself uses, :func:`jax_fli._src.lensing._born._born_windows`):
 
-    - ``"midpoint"`` / ``"gauss_legendre"``: the continuous lensing kernel
+    - ``"midpoint"`` / ``"simpson"`` / ``"gauss_legendre"``: the continuous lensing kernel
       ``w(chi) = chi (1+z) (1 - chi/chi_s)`` for a source at ``z_kernel`` (black curve, exact area
       shaded), overlaid with that quadrature's shell **windows** drawn as boxes. Each box spans its
       shell width ``Delta chi`` and its **area is the shell's Born weight** (so box height =
       weight / Delta chi). Midpoint boxes are flat at the kernel's shell-center value and poke above
-      the exact area on wide near shells; Gauss-Legendre boxes carry the exact per-shell integral, so
-      they tile the shaded area. The title reports the net ``sum of windows`` vs the exact total.
+      the exact area on wide near shells; Simpson and Gauss-Legendre boxes carry the (near-)exact
+      per-shell integral, so they tile the shaded area. The title reports the net ``sum of windows``
+      vs the exact total.
     - ``"both"`` (default): the per-shell ratio ``midpoint / exact``, collapsed over the source n(z)
       (or per source redshift for scalar sources), one line per tomographic bin. Thin shells sit at
       1; wide near shells overshoot. ``z_kernel`` is ignored here (the ratio uses ``nz_shear``).
@@ -144,7 +145,7 @@ def plot_born_windows(
         The n(z) integration grid for ``quadrature="both"`` — keep identical to the ``born`` call.
     z_kernel : float, default=0.6
         Source redshift of the kernel curve + windows in the single-quadrature views.
-    quadrature : {"both", "midpoint", "gauss_legendre"}, default="both"
+    quadrature : {"both", "midpoint", "simpson", "gauss_legendre"}, default="both"
         Which view to draw (see above).
 
     Returns
@@ -164,8 +165,8 @@ def plot_born_windows(
         density_width = {None: density_width}
     if set(comoving_centers) != set(density_width):
         raise ValueError("comoving_centers and density_width must carry the same scheme labels")
-    if quadrature not in ("both", "midpoint", "gauss_legendre"):
-        raise ValueError(f"quadrature must be 'both', 'midpoint', or 'gauss_legendre', got {quadrature!r}")
+    if quadrature not in ("both", "midpoint", "simpson", "gauss_legendre"):
+        raise ValueError(f"quadrature must be 'both', 'midpoint', 'simpson', or 'gauss_legendre', got {quadrature!r}")
 
     cm = plt.get_cmap("tab10")
 
@@ -175,7 +176,11 @@ def plot_born_windows(
         if source_kind == "distribution":
             z_grid = jnp.linspace(min_z, max_z, n_integrate + 1)
             # (K, Z): n(z) x Simpson weights — the same collapse born applies to the kappa grid.
-            collapse = jnp.stack([nz(z_grid) for nz in sources]) * _simps_weights(min_z, max_z, n_integrate)
+            collapse = (
+                jnp.stack([nz(z_grid) for nz in sources])
+                * _simps_weights(n_integrate)
+                * ((max_z - min_z) / n_integrate)
+            )
         else:
             z_grid = jnp.atleast_1d(sources)
             collapse = jnp.eye(z_grid.shape[0])  # scalar sources: one column per source redshift
@@ -253,7 +258,11 @@ def plot_born_windows(
         pre = "" if label is None else f"{label}: "
         ax.plot([], [], " ", label=f"{pre}Σ windows {tot:.3g} ({bias:+.1f}% vs exact)")
 
-    qname = "midpoint (rectangle rule)" if quadrature == "midpoint" else "Gauss–Legendre (exact)"
+    qname = {
+        "midpoint": "midpoint (rectangle rule)",
+        "simpson": "composite Simpson",
+        "gauss_legendre": "Gauss–Legendre (exact)",
+    }[quadrature]
     ax.set_xlim(0, chi_k * 1.02)
     ax.set_ylim(bottom=0)
     ax.set_xlabel(r"$\chi$ [$h^{-1}\mathrm{Mpc}$]")
