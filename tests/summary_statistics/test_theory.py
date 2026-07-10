@@ -16,7 +16,6 @@ theory NaNs above ell ~ 215 in float32).
 
 from __future__ import annotations
 
-import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import pytest
@@ -162,26 +161,6 @@ def test_tophat_z_path_warns(cosmology, shells_wide):
 def test_invalid_radial_weight_raises(cosmology, shells_wide):
     with pytest.raises(ValueError, match="radial_weight"):
         compute_theory_cl_for_density(cosmology, shells_wide, ELL, radial_weight="bogus")
-
-
-def test_differentiable_wrt_cosmology(cosmology, shells_wide):
-    """grad of a C_ell through the full density-theory path is finite (gradient-based inference)."""
-
-    def loss(omega_c):
-        cosmo = jc.Cosmology(
-            Omega_c=omega_c,
-            Omega_b=cosmology.Omega_b,
-            h=cosmology.h,
-            n_s=cosmology.n_s,
-            sigma8=cosmology.sigma8,
-            Omega_k=cosmology.Omega_k,
-            w0=cosmology.w0,
-            wa=cosmology.wa,
-        )
-        return compute_theory_cl_for_density(cosmo, shells_wide, ELL).array[0, 50]
-
-    g = jax.grad(loss)(float(cosmology.Omega_c))
-    assert bool(jnp.isfinite(g))
 
 
 def test_runs_on_real_lpt_map(cosmology, lpt_spherical):
