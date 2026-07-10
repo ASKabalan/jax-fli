@@ -6,7 +6,7 @@ requires = ["hatchling", "hatch-vcs"]
 dev = [
   "prek==0.4.8",
   "pyright==1.1.411",
-  "ruff==0.15.20",
+  "ruff==0.15.21",
   "toml-sort==0.24.4"
 ]
 docs = [
