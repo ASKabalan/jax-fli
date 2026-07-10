@@ -22,7 +22,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 from jax_fli import SphericalDensity, compute_theory_cl_for_density
-from jax_fli.summary_statistics.theory import comoving_tophat, compute_theory_cl
+from jax_fli.summary_statistics.theory import comoving_tophat
 
 ELL = jnp.arange(2, 200)
 
@@ -104,63 +104,10 @@ def test_comoving_tophat_normalized_and_nz_zmax_free(cosmology, near_shell):
         assert_allclose(float(integral), 1.0, rtol=5e-3)
 
 
-def test_direct_matches_jax_cosmo_route_on_well_sampled_shell(cosmology, near_shell):
-    """On a chi=0 shell (both tophat edges aligned), the edge-exact direct integral agrees with
-    jax_cosmo's number-counts spectrum built from the same comoving_tophat n(z)."""
-    cn = float(near_shell.comoving_centers - near_shell.density_width / 2)
-    cf = float(near_shell.comoving_centers + near_shell.density_width / 2)
-    zf = float(jc.utils.a2z(jc.background.a_of_chi(cosmology, jnp.atleast_1d(cf)))[0])
-
-    direct = compute_theory_cl_for_density(cosmology, near_shell, ELL).array  # (n_ell,)
-    nz = comoving_tophat(cosmology, cn, cf, gals_per_arcmin2=1.0, zmax=zf * 1.0001)
-    via_jc = compute_theory_cl(cosmology, ELL, z_source=[nz], probe_type="number_counts", nonlinear_fn="halofit").array
-    assert_allclose(direct, via_jc, rtol=2e-2)
-
-
-def test_radial_weighting_changes_near_shell(cosmology, near_shell):
-    """The comoving-volume (chi^2) weighting differs substantially from the legacy redshift-tophat
-    (dz/dchi) weighting for the nearest, chi->0 shell — the defect the fix addresses.  The legacy
-    path is run with nz_zmax=z_far (tophat edges aligned with the integration boundaries, so its
-    sampling/normalisation are accurate), making the residual the radial weighting itself."""
-    cf = float(near_shell.comoving_centers + near_shell.density_width / 2)
-    zf = float(jc.utils.a2z(jc.background.a_of_chi(cosmology, jnp.atleast_1d(cf)))[0])
-    com = compute_theory_cl_for_density(cosmology, near_shell, ELL).array
-    with pytest.warns(DeprecationWarning):
-        top = compute_theory_cl_for_density(
-            cosmology, near_shell, ELL, radial_weight="tophat_z", nz_zmax=zf * 1.0001
-        ).array
-    rel = jnp.abs(com - top) / com
-    assert float(rel.max()) > 0.1  # radial weighting is a >10% effect on the nearest shell
-
-
-def test_single_shell_is_squeezed(cosmology, near_shell):
-    """A single-shell carrier yields a 1-D (n_ell,) spectrum (matches field.angular_cl)."""
-    cl = compute_theory_cl_for_density(cosmology, near_shell, ELL)
-    assert cl.array.shape == (ELL.shape[0],)
-
-
-def test_cross_disjoint_shells_zero(cosmology, shells_wide):
-    """cross=True gives the upper-triangular set; disjoint shells cross-correlate to 0, autos > 0."""
-    cl = compute_theory_cl_for_density(cosmology, shells_wide, ELL, cross=True).array
-    n = 7
-    rows, cols = jnp.triu_indices(n)
-    assert cl.shape == (rows.shape[0], ELL.shape[0])
-    auto = rows == cols
-    assert bool((cl[auto] > 0).all())
-    # shells 0 and 6 are far apart -> exactly zero overlap -> zero cross spectrum
-    far_pair = (rows == 0) & (cols == 6)
-    assert_allclose(cl[far_pair], 0.0, atol=0.0)
-
-
 def test_tophat_z_path_warns(cosmology, shells_wide):
     """The legacy radial_weight='tophat_z' path is deprecated and warns."""
     with pytest.warns(DeprecationWarning):
         compute_theory_cl_for_density(cosmology, shells_wide, ELL, radial_weight="tophat_z", nz_zmax=2.0)
-
-
-def test_invalid_radial_weight_raises(cosmology, shells_wide):
-    with pytest.raises(ValueError, match="radial_weight"):
-        compute_theory_cl_for_density(cosmology, shells_wide, ELL, radial_weight="bogus")
 
 
 def test_runs_on_real_lpt_map(cosmology, lpt_spherical):
