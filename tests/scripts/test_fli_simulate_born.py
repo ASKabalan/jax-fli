@@ -71,6 +71,8 @@ _COMMON_BORN_CLI = [
     str(_MAX_Z),
     "--n-integrate",
     str(_N_INTEGRATE),
+    "--quadrature",
+    "simpson",
 ]
 
 
@@ -109,7 +111,9 @@ def _api_born(cosmo, initial_field, *, painting):
         min_width=50.0,
     )
     nz_shear = jnp.array(_NZ_SHEAR, dtype=jnp.float32)
-    return jfli.born(cosmo, lightcone, nz_shear, min_z=_MIN_Z, max_z=_MAX_Z, n_integrate=_N_INTEGRATE)
+    return jfli.born(
+        cosmo, lightcone, nz_shear, min_z=_MIN_Z, max_z=_MAX_Z, n_integrate=_N_INTEGRATE, quadrature="simpson"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -279,10 +279,51 @@ def test_born_windows_fat_shell_direction(cosmology):
     assert w_gl > 0.0
 
 
+def test_born_windows_simpson_matches_gl(cosmology):
+    """Composite-Simpson windows agree with GL-16 down to the a_of_chi interpolation floor."""
+    r = jnp.linspace(150.0, 2850.0, 10)
+    d_r = jnp.full(10, 300.0)
+    a = jc.background.a_of_chi(cosmology, r)
+    z_s = jnp.asarray([0.3, 0.6, 1.0])
+    chi_s = jc.background.radial_comoving_distance(cosmology, jc.utils.z2a(z_s)).reshape(-1)
+
+    w_sim = np.asarray(_born_windows(cosmology, r, a, d_r, chi_s, "simpson"))
+    w_gl = np.asarray(_born_windows(cosmology, r, a, d_r, chi_s, "gauss_legendre"))
+    assert np.max(np.abs(w_sim - w_gl)) / np.max(np.abs(w_gl)) < 1e-5
+    assert np.all(w_sim[w_gl == 0.0] == 0.0)  # shells fully behind the source get exactly zero weight
+
+
 def test_born_quadrature_invalid_raises(cosmology, lensing_lightcone):
     """An unknown quadrature name raises."""
     with pytest.raises(ValueError, match="quadrature"):
-        jfli.born(cosmology, lensing_lightcone, nz_shear=[0.5], quadrature="simpson")
+        jfli.born(cosmology, lensing_lightcone, nz_shear=[0.5], quadrature="trapezoid")
+
+
+def test_born_simpson_default_and_close_to_gl(cosmology, lensing_lightcone):
+    """The default quadrature is simpson, and it matches GL at the map level (multi-node rules tie)."""
+    sim = jfli.born(cosmology, lensing_lightcone, nz_shear=[0.5, 1.0], normalization="global", quadrature="simpson")
+    default = jfli.born(cosmology, lensing_lightcone, nz_shear=[0.5, 1.0], normalization="global")
+    gl = jfli.born(
+        cosmology, lensing_lightcone, nz_shear=[0.5, 1.0], normalization="global", quadrature="gauss_legendre"
+    )
+    sim_arr, gl_arr = np.asarray(sim.array), np.asarray(gl.array)
+    assert np.array_equal(np.asarray(default.array), sim_arr)
+    assert np.all(np.isfinite(sim_arr))
+    assert np.max(np.abs(sim_arr - gl_arr)) / np.max(np.abs(gl_arr)) < 1e-3
+
+
+def test_born_simpson_flat_runs(cosmology, lensing_flat_lightcone):
+    """Flat-sky simpson Born runs, is finite, and matches the flat GL maps."""
+    sim = jfli.born(
+        cosmology, lensing_flat_lightcone, nz_shear=[0.5, 1.0], normalization="global", quadrature="simpson"
+    )
+    gl = jfli.born(
+        cosmology, lensing_flat_lightcone, nz_shear=[0.5, 1.0], normalization="global", quadrature="gauss_legendre"
+    )
+    sim_arr, gl_arr = np.asarray(sim.array), np.asarray(gl.array)
+    assert sim_arr.shape == gl_arr.shape
+    assert np.all(np.isfinite(sim_arr))
+    assert np.max(np.abs(sim_arr - gl_arr)) / np.max(np.abs(gl_arr)) < 1e-3
 
 
 def test_born_gl_flat_runs(cosmology, lensing_flat_lightcone, born_flat_kappa_multi):

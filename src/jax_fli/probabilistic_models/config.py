@@ -52,7 +52,9 @@ class Configurations:
     min_redshift: float = 0.01
     max_redshift: float = 1.5
     n_integrate: int = 32  # number of points for the lensing integral along the line of sight
-    quadrature: str = "midpoint"  # Born per-shell weight quadrature: "midpoint" | "gauss_legendre"
+    quadrature: str = (
+        "simpson"  # Born quadrature (shell weights + n(z) rule): "midpoint" | "simpson" | "gauss_legendre"
+    )
     apodization_scale_deg: float = 1.0  # C2 apodization scale for the observer visibility mask
 
     # Geometry / painting (spherical only for now)
