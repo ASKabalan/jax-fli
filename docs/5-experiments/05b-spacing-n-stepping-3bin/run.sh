@@ -43,11 +43,11 @@ else
   for NB_S in "${NB_SHELLS[@]}"; do
     echo "Launching 3-bin Born lensing (drift vs none) for NB_S=$NB_S"
     launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
-      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05b-3bin-a/density/exp5b_drift_${NB_S}/shell*.parquet" \
+      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05b-3bins/density/exp5b_drift_${NB_S}/shell*.parquet" \
       --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --name "kappa_drift_3bin_$NB_S" \
       --output "$RESULTS/exp5b/born_drift_${NB_S}"
     launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
-      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05b-3bin-a/density/exp5b_nodrift_${NB_S}/shell*.parquet" \
+      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05b-3bins/density/exp5b_nodrift_${NB_S}/shell*.parquet" \
       --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --name "kappa_nodrift_3bin_$NB_S" \
       --output "$RESULTS/exp5b/born_nodrift_${NB_S}"
   done

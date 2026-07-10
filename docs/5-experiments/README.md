@@ -30,7 +30,7 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 
   [![Density vs Limber theory, pixel-window corrected](00-cosmogrid-reference/assets/fig04-convergence-pixwin.svg)](00-cosmogrid-reference/README.md)
 
-- **01 — [Resolution convergence](01-resolution-convergence/README.md)** ✅ — per-shell spherical `C_ℓ` converging with particle count, 512³ → 4096³.
+- **01 — [Resolution convergence](01-resolution-convergence/README.md)** ✅ — per-shell spherical `C_ℓ` converging with particle count, 512³ → 3072³.
 
   [![Resolution convergence](01-resolution-convergence/assets/fig03-convergence.svg)](01-resolution-convergence/README.md)
 

@@ -151,11 +151,26 @@ DEBUGGING/**
 
 # IDE
 .vscode/
+
+# tex
+*.aux
+*.bbl
+*.blg
+*.brf
+*.fls
+*.fdb_latexmk
+*.log
+*.out
+*.toc
+*.pdf
+*.synctex.gz
+
+# Project specific
 EXPERIMENT_TO_SEE
 HANDOUTS
 000_RUNS
 DEL
-TRASH
-_diag
 results
 rosenbrock_samples*
+WORK_IN_PROGRESS
+UNTRACKED

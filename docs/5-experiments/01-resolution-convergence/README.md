@@ -12,7 +12,7 @@ The five resolution runs — one PM sim each, identical but for the mesh (and th
 | 2560³ | 128 | 32 | 7.8 Mpc/h |
 | 3072³ | 256 | 64 | 3.9 Mpc/h |
 
-Fixed across all five: BullFrog (`bf`), `--nb-steps 50` (`a = 0.001 → 1`), `--paint-order cic`, `--scheme ngp`, `--nside 512`, `--nb-shells 10`, `--shell-spacing comoving`, box `2000³` Mpc/h, CosmoGrid fiducial cosmology, `--seed 0`, **float64**, `--halo-multiplier 0.5`. Two **pencil** re-runs (2560³ and 3072³ at `--pdim 32 4`) test the fix — see [§ The runs](#the-runs) for the per-run sizing and the measured intermediate-ℓ ratios.
+Fixed across all five: BullFrog (`bf`), `--nb-steps 50` (`a = 0.001 → 1`), `--paint-order cic`, `--scheme ngp`, `--nside 512`, `--nb-shells 10`, `--shell-spacing comoving`, box `2000³` Mpc/h, CosmoGrid fiducial cosmology, `--seed 0`, **float64**, `--halo-multiplier 0.5`. Two **pencil** re-runs (2560³ at `--pdim 32 4` and 3072³ at `--pdim 64 4`) test the fix — see [§ The runs](#the-runs) for the per-run sizing and the measured intermediate-ℓ ratios.
 
 ## Method
 
@@ -45,7 +45,7 @@ This is the leading, quantitatively-matched explanation — and the next figures
 
 ### Switching slab → pencil restores convergence
 
-The halo scales as `box/2pₓ` along the **sharded** axis, so re-running 2560³ and 3072³ as a **2-D pencil** (`--pdim 32 4`) instead of a **1-D slab** (`--pdim 128 1` / `256 1`) splits each axis fewer ways and **enlarges the ghost zone** — 7.8 → 31.2 Mpc/h (2560³) and 3.9 → 15.6 Mpc/h (3072³) — at the *same* mesh and GPU count. The recovered power, per shell vs comoving distance:
+The halo scales as `box/2pₓ` along the **sharded** axis, so re-running 2560³ and 3072³ as a **2-D pencil** (`--pdim 32 4` / `64 4`) instead of a **1-D slab** (`--pdim 128 1` / `256 1`) splits each axis fewer ways and **enlarges the ghost zone** — 7.8 → 31.2 Mpc/h (2560³) and 3.9 → 15.6 Mpc/h (3072³) — at the *same* mesh and GPU count. The recovered power, per shell vs comoving distance:
 
 ![m2560 slab vs pencil: measured/theory vs distance](assets/fig04-slab-vs-pencil-2560.svg)
 ![m3072 slab vs pencil: measured/theory vs distance](assets/fig05-slab-vs-pencil-3072.svg)

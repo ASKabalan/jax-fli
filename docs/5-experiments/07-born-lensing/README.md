@@ -80,7 +80,7 @@ Here both sides use the **same Born method** — the reference integrates CosmoG
 MODE=dryrun bash run.sh    # resolve the launches without submitting
 bash run.sh
 
-# 2. Build the figures (fig01–fig08) from the published κ products (CPU; float64; loads two ~1.2 GB
+# 2. Build the figures (fig01–fig10) from the published κ products (CPU; float64; loads two ~1.2 GB
 #    nside-2048 κ maps from the HF cache). Starlet figures (fig03/04/08/09) need `uv sync --extra starlet`.
 JAX_PLATFORMS=cpu uv run --no-sync python build.py
 ```
