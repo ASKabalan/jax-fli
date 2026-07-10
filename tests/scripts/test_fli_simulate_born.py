@@ -156,7 +156,9 @@ def test_born_spherical_script_vs_api(tmp_path, cosmo, scheme, kernel_width):
         halo_size=_HALO_SIZE,
     )
     painting = jfli.PaintingOptions(target="spherical", scheme=scheme, kernel_width_arcmin=kernel_width)
-    kappa = _api_born(cosmo, initial_field, painting=painting)
+    # _COMMON_BORN_CLI runs the script with --quadrature simpson; match it on the API side
+    # (_api_born defaults to midpoint) so this test isolates the scheme/painting hookup, not the quadrature.
+    kappa = _api_born(cosmo, initial_field, painting=painting, quadrature="simpson")
     api_kappa = kappa.array
 
     # --- compare ---
