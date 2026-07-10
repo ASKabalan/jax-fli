@@ -136,7 +136,7 @@ def analyze(
                     std_c = std_field.replace(array=std_field.array[c])
                     std_c.project().plot(ax=axes[c, 2], titles="Std")
                     diff_c = ce.true_ic - mean_c
-                    diff_c.project().plot(ax=axes[c, 3], title="Diff")
+                    diff_c.project().plot(ax=axes[c, 3], titles="Diff")
                 else:
                     mean_c = mean_field.replace(array=mean_field.array[c])
                     mean_c.project().plot(ax=axes[c, 0], titles="Mean")
