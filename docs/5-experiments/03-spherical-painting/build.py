@@ -276,7 +276,7 @@ def plot_udsample_grid(native_nside, title, stem):
             axr.set_xlabel(r"$\ell$")
     handles = [
         Line2D([], [], color=C_NATIVE, ls=":", lw=1.6, label=f"native nside {native_nside}"),
-        Line2D([], [], color=C_UD, ls="-", lw=1.6, label="paint@2048 → ud_grade → 1024"),
+        Line2D([], [], color=C_UD, ls="-", lw=1.6, label=r"paint@2048 $\rightarrow$ ud_grade $\rightarrow$ 1024"),
         Line2D([], [], color="k", ls="--", lw=1.4, label=rf"Limber theory $\times\,w_\ell^2$({native_nside})"),
     ]
     if native_nside != 1024:

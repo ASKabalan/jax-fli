@@ -272,7 +272,7 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(15.8, 5.4))
 
     # left: measured/theory - 1 over the CV-clean band, per outer shell, vs resolution
-    axL.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"±5%")
+    axL.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"$\pm5\%$")
     axL.axhline(0.0, color="0.4", ls="--", lw=1.0)
     for i in kept:
         axL.plot(
@@ -363,7 +363,7 @@ def plot_slab_pencil(m, stem):
     r_slab, _ = band_ratio(ell_full, raw_s[m], theory_pw_arr, lo, hi)
     r_pencil, _ = band_ratio(ell_full, spectra_pencil[m], theory_pw_arr, lo, hi)
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
-    ax.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"±5%")
+    ax.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"$\pm5\%$")
     ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
     ax.plot(
         chi_shells,

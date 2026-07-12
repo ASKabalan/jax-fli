@@ -95,29 +95,31 @@ deconv_b = {k: np.asarray(v.bin(nlb=NLB, lmin=2).array) for k, v in deconv.items
 # fig01 / fig02 — per-shell binned C_ell vs theory (top) + ratio (bottom), CIC vs TSC vs PCS (raw)
 # =============================================================================
 def plot_schemes_batch(data_b, shell_idxs, title, stem):
+    dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
+    dl = leff * (leff + 1) / (2 * np.pi)
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
-        ax_s.plot(ell_full[2:], theory_pw_arr[sh][2:], color="k", ls="--", lw=1.3, zorder=5)
+        ax_s.plot(ell_full[2:], (dl_full * theory_pw_arr[sh])[2:], color="k", ls="--", lw=1.3, zorder=5)
         for k in SCHEME_COLORS:
-            ax_s.plot(leff, data_b[k][sh], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, zorder=4)
+            ax_s.plot(leff, dl * data_b[k][sh], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, zorder=4)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
         ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for k in SCHEME_COLORS:
-            ax_r.plot(leff, data_b[k][sh] / theory_b[sh], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.4)
+            ax_r.plot(leff, data_b[k][sh] / theory_b[sh] - 1.0, color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.4)
         ax_r.set_xscale("log")
-        ax_r.set_ylim(0.4, 1.25)
+        ax_r.set_ylim(-0.6, 0.25)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / theory")
+            ax_r.set_ylabel("meas / theory - 1")
     handles = [
         Line2D([], [], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, label=SCHEME_LABEL[k]) for k in SCHEME_COLORS
     ]
@@ -135,31 +137,33 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
 # =============================================================================
 def plot_deconv_grid(scheme, stem):
     rb, db = raw_b[scheme], deconv_b[scheme]
+    dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
+    dl = leff * (leff + 1) / (2 * np.pi)
     fig = plt.figure(figsize=(20, 9.5))
     gs = fig.add_gridspec(2, 5, hspace=0.32, wspace=0.22)
     for i in range(n_shells):
         cell = gs[i // 5, i % 5].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.0)
         ax_cl = fig.add_subplot(cell[0])
         ax_r = fig.add_subplot(cell[1], sharex=ax_cl)
-        ax_cl.plot(ell_full[2:], theory_pw_arr[i][2:], "k--", lw=1.2, zorder=5)
-        ax_cl.plot(leff, rb[i], color=C_RAW, ls=":", lw=1.5, zorder=3)
-        ax_cl.plot(leff, db[i], color=C_DECONV, ls="-", lw=1.5, zorder=4)
+        ax_cl.plot(ell_full[2:], (dl_full * theory_pw_arr[i])[2:], "k--", lw=1.2, zorder=5)
+        ax_cl.plot(leff, dl * rb[i], color=C_RAW, ls=":", lw=1.5, zorder=3)
+        ax_cl.plot(leff, dl * db[i], color=C_DECONV, ls="-", lw=1.5, zorder=4)
         ax_cl.set_xscale("log")
         ax_cl.set_yscale("log")
         ax_cl.set_title(f"shell {i}:  z = {z_shells[i]:.3f}", fontsize=10)
         ax_cl.grid(alpha=0.2, which="both")
         ax_cl.tick_params(labelbottom=False)
         if i % 5 == 0:
-            ax_cl.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
-        ax_r.plot(leff, rb[i] / theory_b[i], color=C_RAW, ls=":", lw=1.4)
-        ax_r.plot(leff, db[i] / theory_b[i], color=C_DECONV, ls="-", lw=1.4)
+            ax_cl.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
+        ax_r.plot(leff, rb[i] / theory_b[i] - 1.0, color=C_RAW, ls=":", lw=1.4)
+        ax_r.plot(leff, db[i] / theory_b[i] - 1.0, color=C_DECONV, ls="-", lw=1.4)
         ax_r.set_xscale("log")
-        ax_r.set_ylim(0.5, 1.2)
+        ax_r.set_ylim(-0.5, 0.2)
         ax_r.grid(alpha=0.2, which="both")
         if i % 5 == 0:
-            ax_r.set_ylabel("meas/thy", fontsize=8)
+            ax_r.set_ylabel("meas/thy - 1", fontsize=8)
         if i >= 5:
             ax_r.set_xlabel(r"$\ell$")
     handles = [

@@ -235,68 +235,186 @@ KAPPA_5B_DRIFT_40 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_
 
 # fmt: off  (one HF spectra file per line — kept single-line so the loaded files are glanceable)
 # midpoint
-kappa_mid_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_5}", split="train"))
-kappa_mid_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_8}", split="train"))
-kappa_mid_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_10}", split="train"))
-kappa_mid_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_12}", split="train"))
-kappa_mid_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_16}", split="train"))
-kappa_mid_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_20}", split="train"))
-kappa_mid_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_25}", split="train"))
-kappa_mid_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_30}", split="train"))
-kappa_mid_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_40}", split="train"))
-kappa_mid_nodrift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_5}", split="train"))
-kappa_mid_nodrift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_8}", split="train"))
-kappa_mid_nodrift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_10}", split="train"))
-kappa_mid_nodrift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_12}", split="train"))
-kappa_mid_nodrift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_16}", split="train"))
-kappa_mid_nodrift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_20}", split="train"))
-kappa_mid_nodrift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_25}", split="train"))
-kappa_mid_nodrift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_30}", split="train"))
-kappa_mid_nodrift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_40}", split="train"))
+kappa_mid_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_5}", split="train")
+)
+kappa_mid_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_8}", split="train")
+)
+kappa_mid_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_10}", split="train")
+)
+kappa_mid_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_12}", split="train")
+)
+kappa_mid_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_16}", split="train")
+)
+kappa_mid_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_20}", split="train")
+)
+kappa_mid_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_25}", split="train")
+)
+kappa_mid_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_30}", split="train")
+)
+kappa_mid_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_40}", split="train")
+)
+kappa_mid_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_5}", split="train")
+)
+kappa_mid_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_8}", split="train")
+)
+kappa_mid_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_10}", split="train")
+)
+kappa_mid_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_12}", split="train")
+)
+kappa_mid_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_16}", split="train")
+)
+kappa_mid_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_20}", split="train")
+)
+kappa_mid_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_25}", split="train")
+)
+kappa_mid_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_30}", split="train")
+)
+kappa_mid_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_40}", split="train")
+)
 # Simpson
-kappa_simp_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_5}", split="train"))
-kappa_simp_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_8}", split="train"))
-kappa_simp_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_10}", split="train"))
-kappa_simp_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_12}", split="train"))
-kappa_simp_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_16}", split="train"))
-kappa_simp_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_20}", split="train"))
-kappa_simp_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_25}", split="train"))
-kappa_simp_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_30}", split="train"))
-kappa_simp_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_40}", split="train"))
-kappa_simp_nodrift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_5}", split="train"))
-kappa_simp_nodrift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_8}", split="train"))
-kappa_simp_nodrift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_10}", split="train"))
-kappa_simp_nodrift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_12}", split="train"))
-kappa_simp_nodrift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_16}", split="train"))
-kappa_simp_nodrift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_20}", split="train"))
-kappa_simp_nodrift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_25}", split="train"))
-kappa_simp_nodrift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_30}", split="train"))
-kappa_simp_nodrift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_40}", split="train"))
+kappa_simp_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_5}", split="train")
+)
+kappa_simp_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_8}", split="train")
+)
+kappa_simp_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_10}", split="train")
+)
+kappa_simp_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_12}", split="train")
+)
+kappa_simp_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_16}", split="train")
+)
+kappa_simp_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_20}", split="train")
+)
+kappa_simp_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_25}", split="train")
+)
+kappa_simp_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_30}", split="train")
+)
+kappa_simp_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_40}", split="train")
+)
+kappa_simp_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_5}", split="train")
+)
+kappa_simp_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_8}", split="train")
+)
+kappa_simp_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_10}", split="train")
+)
+kappa_simp_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_12}", split="train")
+)
+kappa_simp_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_16}", split="train")
+)
+kappa_simp_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_20}", split="train")
+)
+kappa_simp_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_25}", split="train")
+)
+kappa_simp_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_30}", split="train")
+)
+kappa_simp_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_40}", split="train")
+)
 # Gauss-Legendre
-kappa_gl_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_5}", split="train"))
-kappa_gl_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_8}", split="train"))
-kappa_gl_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_10}", split="train"))
-kappa_gl_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_12}", split="train"))
-kappa_gl_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_16}", split="train"))
-kappa_gl_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_20}", split="train"))
-kappa_gl_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_25}", split="train"))
-kappa_gl_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_30}", split="train"))
-kappa_gl_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_40}", split="train"))
-kappa_gl_nodrift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_5}", split="train"))
-kappa_gl_nodrift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_8}", split="train"))
-kappa_gl_nodrift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_10}", split="train"))
-kappa_gl_nodrift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_12}", split="train"))
-kappa_gl_nodrift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_16}", split="train"))
-kappa_gl_nodrift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_20}", split="train"))
-kappa_gl_nodrift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_25}", split="train"))
-kappa_gl_nodrift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_30}", split="train"))
-kappa_gl_nodrift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_40}", split="train"))
+kappa_gl_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_5}", split="train")
+)
+kappa_gl_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_8}", split="train")
+)
+kappa_gl_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_10}", split="train")
+)
+kappa_gl_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_12}", split="train")
+)
+kappa_gl_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_16}", split="train")
+)
+kappa_gl_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_20}", split="train")
+)
+kappa_gl_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_25}", split="train")
+)
+kappa_gl_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_30}", split="train")
+)
+kappa_gl_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_40}", split="train")
+)
+kappa_gl_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_5}", split="train")
+)
+kappa_gl_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_8}", split="train")
+)
+kappa_gl_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_10}", split="train")
+)
+kappa_gl_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_12}", split="train")
+)
+kappa_gl_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_16}", split="train")
+)
+kappa_gl_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_20}", split="train")
+)
+kappa_gl_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_25}", split="train")
+)
+kappa_gl_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_30}", split="train")
+)
+kappa_gl_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_40}", split="train")
+)
 # scale-factor spacing (05b), midpoint
-kappa_5b_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_12}", split="train"))
-kappa_5b_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_20}", split="train"))
-kappa_5b_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_25}", split="train"))
-kappa_5b_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_30}", split="train"))
-kappa_5b_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_40}", split="train"))
+kappa_5b_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_12}", split="train")
+)
+kappa_5b_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_20}", split="train")
+)
+kappa_5b_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_25}", split="train")
+)
+kappa_5b_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_30}", split="train")
+)
+kappa_5b_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_40}", split="train")
+)
 # fmt: on
 
 for _c in (
@@ -879,8 +997,8 @@ def lensing_spacing(n_shells, stem):
     ax_r.grid(True, which="both", ls=":", alpha=0.4)
     handles = [Line2D([], [], color=bincol[b], lw=2.0, label=f"bin {b + 1}") for b in range(3)]
     handles += [
-        Line2D([], [], color="0.3", ls="-", lw=1.8, label=f"equal-volume (GL, N={n_shells})"),
-        Line2D([], [], color="0.3", ls="--", lw=1.8, label=f"scale-factor (05b, N={n_shells})"),
+        Line2D([], [], color="0.3", ls="-", lw=1.8, label=f"Equal-volume spacing (N={n_shells})"),
+        Line2D([], [], color="0.3", ls="--", lw=1.8, label=f"Uniform scale-factor spacing (N={n_shells})"),
         Line2D([], [], color="0.3", ls=":", lw=1.5, label="Limber theory"),
     ]
     ax_s.legend(handles=handles, loc="lower center", fontsize=8.5, ncol=2, frameon=False)
@@ -903,11 +1021,13 @@ def main():
     lensing_vs_ref40(kappa_simp_no, kappa_simp_dr, "fig11-lensing-simpson")
     lensing_vs_ref40(kappa_gl_no, kappa_gl_dr, "fig12-lensing-gauss-legendre")
     fig13_lensing_theory()
-    lensing_spacing(30, "fig14-lensing-spacing")
-    lensing_spacing(40, "fig15-lensing-spacing")
-    lensing_spacing(20, "fig16-lensing-spacing")
-    lensing_spacing(12, "fig17-lensing-spacing")
-    lensing_spacing(25, "fig18-lensing-spacing")
+    lensing_spacing(10, "fig14-lensing-spacing-10")
+    lensing_spacing(12, "fig15-lensing-spacing-12")
+    lensing_spacing(16, "fig16-lensing-spacing-16")
+    lensing_spacing(20, "fig17-lensing-spacing-20")
+    lensing_spacing(25, "fig18-lensing-spacing-25")
+    lensing_spacing(30, "fig18-lensing-spacing-30")
+    lensing_spacing(40, "fig18-lensing-spacing-40")
     print(f"assets written to {ASSETS}")
 
 

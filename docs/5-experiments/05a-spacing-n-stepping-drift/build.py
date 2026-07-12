@@ -340,7 +340,9 @@ def fig02_density_shells():
         ax_s.loglog(bc, dl * ref_b, color="k", lw=1.6, label="40-shell reference")
         ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
         ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
-        ax_s.set_title(rf"{label} shell {sh}:  $\chi = {0.5 * (edges10[0, sh] + edges10[1, sh]):.0f}$ Mpc/h", fontsize=11)
+        ax_s.set_title(
+            rf"{label} shell {sh}:  $\chi = {0.5 * (edges10[0, sh] + edges10[1, sh]):.0f}$ Mpc/h", fontsize=11
+        )
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         # quantify the (sub-percent at 10 shells) frozen-epoch bias each run carries vs the reference
         inb = (bc >= 50) & (bc <= 800)

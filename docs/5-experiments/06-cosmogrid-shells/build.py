@@ -603,7 +603,7 @@ def fig10_starlet_maps(od_fs, cg_od, nscales=5):
     st_cg = np.asarray(_overdensity_shell(cg_od, sh).starlet_coefficients(nscales=nscales).array)
     # The two are INDEPENDENT realisations: the third row (sim − CosmoGrid) is not a residual but a
     # check that the fields are uncorrelated — it keeps the full per-scale amplitude (no cancellation).
-    rows = [("jax-fli 2-bin", st_sim), ("CosmoGrid", st_cg), ("difference (jax-fli − CosmoGrid)", st_sim - st_cg)]
+    rows = [("jax-fli 2-bin", st_sim), ("CosmoGrid", st_cg), (r"difference (jax-fli $-$ CosmoGrid)", st_sim - st_cg)]
     # per-scale symmetric scale: rows 0/1 share one (comparable textures), the diff gets its own
     vmax = [float(np.percentile(np.abs(st_cg[s]), 99)) for s in range(nscales)]
     vmax_d = [float(np.percentile(np.abs(st_sim[s] - st_cg[s]), 99)) for s in range(nscales)]

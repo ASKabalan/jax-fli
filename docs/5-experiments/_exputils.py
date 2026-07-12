@@ -20,23 +20,6 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 
-def _deprecated_set_style() -> None:
-    """Uniform, paper-ready matplotlib defaults for every experiment figure."""
-    plt.rcParams.update(
-        {
-            "figure.dpi": 120,
-            "savefig.bbox": "tight",
-            "savefig.dpi": 300,
-            "svg.fonttype": "none",  # keep SVG text as selectable/editable text
-            "font.size": 11,
-            "axes.titlesize": 12,
-            "axes.labelsize": 11,
-            "legend.fontsize": 9,
-            "axes.grid": False,
-        }
-    )
-
-
 def set_style() -> None:
     """Uniform, JCAP-ready matplotlib defaults for experiment figures."""
 
@@ -92,3 +75,4 @@ def savefig(stem: str | PathLike[str], fig: Figure | None = None, *, formats=("s
     for fmt in formats:
         fig.savefig(stem.with_suffix(f".{fmt}"), transparent=True)
     plt.close(fig)
+    print(f"✅ Saved figure: {stem}.[{', '.join(formats)}]")

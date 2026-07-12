@@ -196,7 +196,9 @@ def plot_born_windows(
     chi_line = jnp.linspace(0.0, chi_k, 512)
     w_line = chi_line / jc.background.a_of_chi(cosmo, chi_line) * (1.0 - chi_line / chi_k)
     ax.fill_between(np.asarray(chi_line), np.asarray(w_line), color="0.9", zorder=0, label="exact kernel area")
-    ax.plot(np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.9, zorder=6, label=rf"$w(\chi)$, $z_s={z_kernel}$")
+    ax.plot(
+        np.asarray(chi_line), np.asarray(w_line), color="k", lw=1.9, zorder=6, label=rf"$w(\chi)$, $z_s={z_kernel}$"
+    )
 
     chi_s_arr = jnp.atleast_1d(jnp.asarray(chi_k))
     for label in comoving_centers:
