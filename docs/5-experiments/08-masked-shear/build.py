@@ -29,10 +29,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datasets import load_dataset
 from jaxpm.spherical import spherical_visibility_mask
+from s2fft_lib import _s2fft
 
 import jax_fli as jfli
 from jax_fli.io.catalog import Catalog
-from s2fft_lib import _s2fft
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from _exputils import savefig, set_style
@@ -56,7 +56,7 @@ OBS_LARGE = (0.1, 0.5, 0.9)  # Case 3: pulled slightly inside -> DES sits entire
 kaiser_squires_method = "jax"
 GPU_AVAILABLE = jax.devices("gpu") != []
 if GPU_AVAILABLE:
-    if  _s2fft.COMPILED_WITH_CUDA:
+    if _s2fft.COMPILED_WITH_CUDA:
         print("GPU available and s2fft compiled with CUDA.")
         kaiser_squires_method = "jax_cuda"
     else:
@@ -132,9 +132,9 @@ def fig_observer_box(observer, fsky, title, stem):
         "ytick.minor.visible": False,
         # Optional: Revert to standard Matplotlib sans-serif fonts to fully match the second image
         "text.usetex": False,
-        "font.family": "sans-serif"
+        "font.family": "sans-serif",
     }
-    
+
     with plt.rc_context(rc_overrides):
         fig = plt.figure(figsize=(4.8, 4.8))
         ax = fig.add_subplot(111, projection="3d")
