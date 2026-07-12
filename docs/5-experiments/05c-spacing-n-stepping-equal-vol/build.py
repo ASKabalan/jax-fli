@@ -1040,8 +1040,8 @@ def main():
     lensing_spacing(16, "fig16-lensing-spacing-16")
     lensing_spacing(20, "fig17-lensing-spacing-20")
     lensing_spacing(25, "fig18-lensing-spacing-25")
-    lensing_spacing(30, "fig18-lensing-spacing-30")
-    lensing_spacing(40, "fig18-lensing-spacing-40")
+    lensing_spacing(30, "fig19-lensing-spacing-30")
+    lensing_spacing(40, "fig20-lensing-spacing-40")
     print(f"assets written to {ASSETS}")
 
 
