@@ -48,13 +48,13 @@ def plot_strong_time():
     """Strong scaling (fixed grid, more GPUs), min wall-time. Subplots 1024³ and 2048³."""
     plot_by_data_size(
         csv_files=[str(STRONG)],
-        data_size_queries=["global_1024x1024x1024", "global_2048x2048x2048"],
+        data_size_queries=["global_1024x1024x1024"],
         precisions=["float32", "float64"],
         plot_columns=["min_time"],
         label_text="%pr%",
         xlabel="Number of GPUs",
         title="Strong scaling —",
-        figure_size=(6.5, 8),
+        figure_size=(6, 4),
         xscale="log2",
         time_units="s",
         output=str(ASSETS / "fig01-strong-time.svg"),
@@ -65,14 +65,14 @@ def plot_strong_memory():
     """Strong scaling, peak per-device temporary (scratch) memory (each GPU holds ~1/N of the mesh)."""
     plot_by_data_size(
         csv_files=[str(STRONG)],
-        data_size_queries=["global_1024x1024x1024", "global_2048x2048x2048"],
+        data_size_queries=["global_1024x1024x1024"],
         precisions=["float32", "float64"],
         plot_columns=["temp_size"],
         memory_units="GB",
         label_text="%pr%",
         xlabel="Number of GPUs",
         title="Strong scaling —",
-        figure_size=(6.5, 8),
+        figure_size=(6, 4),
         xscale="log2",
         output=str(ASSETS / "fig02-strong-memory.svg"),
     )

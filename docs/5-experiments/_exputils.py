@@ -13,7 +13,7 @@ boxes are true vector in SVG.
 
 from __future__ import annotations
 
-from os import PathLike
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -63,13 +63,21 @@ def set_style() -> None:
     )
 
 
-def savefig(stem: str | PathLike[str], fig: Figure | None = None, *, formats=("svg",)) -> None:
+def savefig(stem: str | os.PathLike[str], fig: Figure | None = None, *, formats=("svg",)) -> None:
     """Save ``fig`` (default: the current figure) to ``stem.<fmt>`` for each format.
 
     ``stem`` is a path *without* extension; parent directories are created. The figure is
     closed afterwards so a long script doesn't accumulate open figures. Default is SVG only.
     """
+    PAPER_PATH = os.environ.get("FLI_PAPER_PATH", None)
+
     fig = fig or plt.gcf()
+    if PAPER_PATH is not None:
+        if "assets" in stem:
+            stem = stem.split("assets")[-1]
+        stem = Path(PAPER_PATH) / stem
+        formats = "pdf,"
+
     stem = Path(stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
     for fmt in formats:

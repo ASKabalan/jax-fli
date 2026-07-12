@@ -227,6 +227,8 @@ KAPPA_GL_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_lege
 # ---- scale-factor spacing (05b) at N=12,20,25,30,40 for the spacing comparison (fig14-fig18). 05b was only
 # run with the midpoint quadrature, but its thin scale-factor shells make the midpoint/GL quadrature difference
 # < ~0.2% on the total per-bin lensing weight (see fig09), so 05b midpoint stands in for 05b GL here. ----
+KAPPA_5B_DRIFT_10 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_10.parquet"
+KAPPA_5B_DRIFT_16 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_16.parquet"
 KAPPA_5B_DRIFT_12 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_12.parquet"
 KAPPA_5B_DRIFT_20 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_20.parquet"
 KAPPA_5B_DRIFT_25 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_25.parquet"
@@ -400,8 +402,14 @@ kappa_gl_nodrift_40_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_40}", split="train")
 )
 # scale-factor spacing (05b), midpoint
+kappa_5b_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_10}", split="train")
+)
 kappa_5b_drift_12_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_12}", split="train")
+)
+kappa_5b_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_16}", split="train")
 )
 kappa_5b_drift_20_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_20}", split="train")
@@ -536,7 +544,9 @@ kappa_gl_no = {
 
 # scale-factor spacing (05b), midpoint, drift only (fig14-fig18 spacing comparison).
 kappa_5b_dr = {
+    10: kappa_5b_drift_10_cat.field[0],
     12: kappa_5b_drift_12_cat.field[0],
+    16: kappa_5b_drift_16_cat.field[0],
     20: kappa_5b_drift_20_cat.field[0],
     25: kappa_5b_drift_25_cat.field[0],
     30: kappa_5b_drift_30_cat.field[0],
@@ -649,6 +659,10 @@ def fig02_density_shells():
     for col, (label, sh) in enumerate(COLUMNS):
         lo, hi = float(edges10[0, sh[0]]), float(edges10[1, sh[-1]])
         members40 = np.where((chi40 >= lo) & (chi40 <= hi))[0]  # whole 40-shells whose centre is inside the region
+        # These region C_ell are computed here (not loaded precomputed): each near/mid/far slab is the
+        # angular_cl of WHOLE nside-2048 shells summed in counts -> overdensity (see _region_cl). No
+        # precomputed region-slab spectrum exists, and it cannot be rebuilt from the per-shell spectra loaded
+        # above -- C_ell of summed maps != sum of per-shell C_ell (the inter-shell cross-power matters).
         ref_b_ps = _region_cl("exp5c_nodrift_40", members40, lo, hi).bin(nlb=32, lmin=2)
         no_b_ps = _region_cl("exp5c_nodrift_10", sh, lo, hi).bin(nlb=32, lmin=2)
         dr_b_ps = _region_cl("exp5c_drift_10", sh, lo, hi).bin(nlb=32, lmin=2)
