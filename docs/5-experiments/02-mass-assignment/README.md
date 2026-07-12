@@ -32,7 +32,7 @@ The physics under test is the **3D mass-assignment window**. An order-`p` deposi
 ![Per-shell C_ell, CIC vs TSC vs PCS (raw, no deconvolution), shells 0–4](assets/fig01-schemes-shells-0-4.svg)
 ![Per-shell C_ell, CIC vs TSC vs PCS (raw, no deconvolution), shells 5–9](assets/fig02-schemes-shells-5-9.svg)
 
-The three raw schemes **track each other closely** across the whole band — they overlap at low and intermediate ℓ and roll off below theory **together** at high ℓ, separating by at most a few percent at the very highest ℓ. So although a higher-order kernel does smooth the 3D force more in principle, by the time the field has been evolved and painted onto the nside-2048 shell that imprint is small: the high-ℓ deficit the ratio panels show is dominated by the HEALPix pixel window and the shell projection, which are common to all three. The practical message is that the force-assignment **order is not a lever** on the per-shell `C_ℓ` at this resolution.
+**Raw CIC / TSC / PCS spectra track together.** The three raw schemes **track each other closely** across the whole band — they overlap at low and intermediate ℓ and roll off below theory **together** at high ℓ, separating by at most a few percent at the very highest ℓ. So although a higher-order kernel does smooth the 3D force more in principle, by the time the field has been evolved and painted onto the nside-2048 shell that imprint is small: the high-ℓ deficit the ratio panels show is dominated by the HEALPix pixel window and the shell projection, which are common to all three. The practical message is that the force-assignment **order is not a lever** on the per-shell `C_ℓ` at this resolution.
 
 ### Deconvolution recovers little, and not cleanly
 
@@ -40,13 +40,13 @@ The three raw schemes **track each other closely** across the whole band — the
 ![PCS: raw vs force-window-deconvolved vs theory, all 10 shells](assets/fig04-pcs-deconv.svg)
 ![TSC: raw vs force-window-deconvolved vs theory, all 10 shells](assets/fig05-tsc-deconv.svg)
 
-Per scheme, the **deconvolved** spectrum (blue) sits **slightly above** the **raw** one (grey) — the force-window deconvolution does lift a little power back — but **both stay below theory** at high ℓ: the force window is not what dominates the roll-off there, so dividing it out cannot close the deficit. What deconvolution *does* add is noise: with no interlacing it lifts the aliased near-grid power along with the signal, so the blue curve is the rougher of the two near the grid scale. The gain is small and the recovery is not clean — exactly the un-interlaced-deconvolution behaviour this experiment is set up to see.
+**Force-window deconvolution vs raw, per scheme.** Per scheme, the **deconvolved** spectrum (blue) sits **slightly above** the **raw** one (grey) — the force-window deconvolution does lift a little power back — but **both stay below theory** at high ℓ: the force window is not what dominates the roll-off there, so dividing it out cannot close the deficit. What deconvolution *does* add is noise: with no interlacing it lifts the aliased near-grid power along with the signal, so the blue curve is the rougher of the two near the grid scale. The gain is small and the recovery is not clean — exactly the un-interlaced-deconvolution behaviour this experiment is set up to see.
 
 ### All three schemes deconvolved
 
 ![CIC / TSC / PCS deconvolved vs theory, shells 5–9](assets/fig06-schemes-deconv-shells-5-9.svg)
 
-Deconvolved and placed side by side on the outer shells, the three schemes **still nearly overlap** and still fall short of theory at the highest ℓ. No deconvolved variant is cleanly better than raw CIC across the band — which is the point.
+**All three schemes deconvolved, outer shells.** Deconvolved and placed side by side on the outer shells, the three schemes **still nearly overlap** and still fall short of theory at the highest ℓ. No deconvolved variant is cleanly better than raw CIC across the band — which is the point.
 
 **Conclusion.** The force-assignment order makes little difference to the spherical `C_ℓ`, and deconvolution buys back only a little power while adding aliasing noise (no interlacing). The simplest option is therefore as good as any: **raw CIC** is the reference 3D force assignment for Experiments 03–07. Recovering the residual small-scale power *cleanly* — with a higher order *and* deconvolution made safe by interlacing — is left to future work.
 

@@ -61,7 +61,7 @@ REPO = "ASKabalan/jax-fli-experiments"
 
 NSIDE_HI, NSIDE_LO = 2048, 512
 LMAX = 1500  # all published κ spectra stop here
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 NSCALES = 5  # starlet scales
 LENSED = "07-cosmogrid-lensing"
 
@@ -100,7 +100,7 @@ def pixwin_match(theory, nside):
 
 
 def binned(ps):
-    """(ell_eff, C_ℓ[n_bins, n_bp]) bandpower-binned at the shared edges (lmin=2, nlb=16)."""
+    """(ell_eff, C_ℓ[n_bins, n_bp]) bandpower-binned at the shared edges (lmin=2, nlb=32)."""
     b = ps.bin(nlb=NLB, lmin=2)
     return np.asarray(b.wavenumber), np.asarray(b.array)
 
@@ -130,9 +130,10 @@ def plot_spectra(s, stem):
     for i in range(n_show):
         axs, axr = axes[0, i], axes[1, i]
         for ns in nsides:
+            th = np.asarray(theory_m[ns].array)[i][2:]
             axs.plot(
                 ell_full[2:],
-                np.asarray(theory_m[ns].array)[i][2:],
+                ell_full[2:] * (ell_full[2:] + 1) / (2 * np.pi) * th,
                 color=C_TH,
                 ls=THEORY_LS[ns],
                 lw=1.1,
@@ -141,26 +142,27 @@ def plot_spectra(s, stem):
         for ser, (ell_b, cl_b) in series_b:
             if i >= cl_b.shape[0]:
                 continue
-            axs.plot(ell_b, cl_b[i], color=ser["color"], ls=ser["ls"], lw=1.6, label=ser["label"] if i == 0 else None)
+            dl = ell_b * (ell_b + 1) / (2 * np.pi) * cl_b[i]
+            axs.plot(ell_b, dl, color=ser["color"], ls=ser["ls"], lw=1.6, label=ser["label"] if i == 0 else None)
         axs.set(xscale="log", yscale="log")
         axs.set_title(rf"bin {i + 1}  ($z\approx{s['z'][i]:.2f}$)", fontsize=11)
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
-            axs.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
+            axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
             axs.legend(frameon=False, fontsize=7.5)
 
-        axr.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        axr.axhline(1.0, color="0.4", ls="--", lw=0.9)
+        axr.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        axr.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for ser, (ell_b, cl_b) in series_b:
             if i >= cl_b.shape[0]:
                 continue
             _, tb = theory_b[ser["nside"]]
-            axr.plot(ell_b, cl_b[i] / tb[i], color=ser["color"], ls=ser["ls"], lw=1.6)
-        axr.set(xscale="log", ylim=(0.6, 1.3))
+            axr.plot(ell_b, cl_b[i] / tb[i] - 1, color=ser["color"], ls=ser["ls"], lw=1.6)
+        axr.set(xscale="log", ylim=(-0.4, 0.3))
         axr.set_xlabel(r"multipole $\ell$")
         axr.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
-            axr.set_ylabel("data / theory")
+            axr.set_ylabel("data / theory - 1")
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -353,7 +355,7 @@ def main():
         "00-cosmogrid/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet",
         NSIDE_LO,
         "00-cosmogrid/kappa/cosmogrid_sample_kappa.parquet",
-        "CosmoGrid native κ",
+        r"CosmoGrid native $\kappa$",
         get_stage3_nz_shear(),
         "Stage-3 source n(z)",
     )
@@ -369,7 +371,7 @@ def main():
         "00-cosmogrid/kappa_spectra/spectra_kappa_born_des.parquet",
         NSIDE_HI,
         "00-cosmogrid/kappa/kappa_born_des_512.parquet",
-        "Born-on-CG-density κ",
+        r"Born-on-CG-density $\kappa$",
         get_des_y3_nz_shear(),
         "DES Y3 source n(z)",
     )

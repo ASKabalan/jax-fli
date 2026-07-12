@@ -71,7 +71,7 @@ REPO = "ASKabalan/jax-fli-experiments"
 
 NSIDE_HI = 2048  # native spherical-painting resolution (== CosmoGrid); spectra capped at ℓ = 1500
 NSIDE_LO = 512  # matched resolution for the maps + higher-order statistics
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 BOX = {2: 4200.0, 3: 5000.0}  # full-sky box side [Mpc/h] per source-depth set (README §2)
 NEAR, MID, FAR = 5, 25, 38  # representative shell indices (all inside the 2-bin set's 0..39)
 OBS_QUAD = (0.1, 0.5, 0.9)  # big-quadrant observer (same as Exp 08); footprint via threshold=1.0
@@ -265,24 +265,25 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
     z = np.asarray(cg_hi.z_sources)
     chi = np.asarray(cg_hi.comoving_centers)
 
-    # faint continuous Limber number-counts theory on the measured (×pixwin²) footing
+    # Limber number-counts theory on the measured (×pixwin²) footing, binned onto the same effective-ℓ
+    # grid as the measurement so D_ℓ and the ratio share one abscissa
     LMAX = int(np.asarray(cg_hi.wavenumber).max())
     ell = jnp.arange(LMAX + 1)
-    theory = compute_theory_cl_for_density(cosmo, cg_hi, ell)
     pw2 = hp.pixwin(NSIDE_HI, lmax=LMAX) ** 2
-    theory = np.asarray((theory * pw2).array)
-    ell_np = np.asarray(ell)
+    theory_b = (compute_theory_cl_for_density(cosmo, cg_hi, ell) * pw2).bin(nlb=NLB, lmin=2)
+    ell_th = np.asarray(theory_b.wavenumber)
+    theory = np.asarray(theory_b.array)
 
     binned = {nb: bandpowers(sim_fs[nb]) for nb in NBINS}  # nb -> (ell, cl)
 
     fig, axes = plt.subplots(2, 3, figsize=(16, 6.2), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shells):
         axs, axr = axes[0, col], axes[1, col]
-        axs.plot(ell_np[2:], theory[sh][2:], color=C_TH, ls="--", lw=1.2, zorder=2)
-        axs.plot(ell_cg, cg_b[sh], color=C_CG, ls="-", lw=1.8, zorder=4)
+        axs.plot(ell_th, ell_th * (ell_th + 1) / (2 * np.pi) * theory[sh], color=C_TH, ls="--", lw=1.2, zorder=2)
+        axs.plot(ell_cg, ell_cg * (ell_cg + 1) / (2 * np.pi) * cg_b[sh], color=C_CG, ls="-", lw=1.8, zorder=4)
         for nb in NBINS:
             ev, cv = binned[nb]
-            axs.plot(ev, cv[sh], color=NBIN_COLOR[nb], ls="-", lw=1.5, zorder=3)
+            axs.plot(ev, ev * (ev + 1) / (2 * np.pi) * cv[sh], color=NBIN_COLOR[nb], ls="-", lw=1.5, zorder=3)
         lmax_sh = ell_max_shell(2, chi[sh])
         for ax in (axs, axr):
             ax.axvline(lmax_sh, color="0.6", ls=":", lw=1.0)
@@ -290,18 +291,18 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
         axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}", fontsize=11)
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            axs.set_ylabel(r"$C_\ell$")
+            axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
 
-        axr.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        axr.axhline(1.0, color="0.4", ls="--", lw=0.9)
+        axr.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        axr.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for nb in NBINS:
             ev, cv = binned[nb]
-            axr.plot(ev, ratio_to_cg(ev, cv[[sh]], ell_cg, cg_b[[sh]])[0], color=NBIN_COLOR[nb], lw=1.5)
-        axr.set(xscale="log", ylim=(0.4, 1.25))
+            axr.plot(ev, ratio_to_cg(ev, cv[[sh]], ell_cg, cg_b[[sh]])[0] - 1.0, color=NBIN_COLOR[nb], lw=1.5)
+        axr.set(xscale="log", ylim=(-0.6, 0.3))
         axr.set_xlabel(r"multipole $\ell$")
         axr.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            axr.set_ylabel("sim / CosmoGrid")
+            axr.set_ylabel("sim / CosmoGrid - 1")
 
     handles = [Line2D([], [], color=NBIN_COLOR[nb], lw=1.6, label=f"jax-fli {nb}-bin (full sky, slab)") for nb in NBINS]
     handles += [
@@ -324,8 +325,8 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
 
     fig, axes = plt.subplots(1, len(targets), figsize=(5.2 * len(targets), 4.8), sharey=True)
     for ax, lt in zip(axes, targets):
-        ax.axhspan(0.95, 1.05, color="0.82", lw=0, zorder=0)
-        ax.axhline(1.0, color="0.4", ls="--", lw=1.0)
+        ax.axhspan(-0.05, 0.05, color="0.82", lw=0, zorder=0)
+        ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
         for nb in NBINS:
             for geom in GEOMS:
                 col = GEOMKEY_COLOR[(nb, geom)]
@@ -334,7 +335,7 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
                     ev, cv = bandpowers(ps)
                     chi = np.asarray(ps.comoving_centers)
                     j = int(np.argmin(np.abs(ev - lt)))
-                    r = np.array([cv[i, j] / np.interp(ev[j], ell_cg, cg_b[i]) for i in range(cv.shape[0])])
+                    r = np.array([cv[i, j] / np.interp(ev[j], ell_cg, cg_b[i]) - 1.0 for i in range(cv.shape[0])])
                     ax.plot(
                         chi,
                         r,
@@ -345,9 +346,9 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
                     )
         ax.set_title(rf"$\ell \approx {lt}$ (nearest bandpower)", fontsize=11)
         ax.set_xlabel(r"comoving distance $\chi$  [Mpc/$h$]")
-        ax.set_ylim(0.4, 1.2)
+        ax.set_ylim(-0.6, 0.2)
         ax.grid(alpha=0.25)
-    axes[0].set_ylabel(r"sim / CosmoGrid  ($(2\ell+1)$-weighted bandpower)")
+    axes[0].set_ylabel(r"sim / CosmoGrid $-\,1$  ($(2\ell+1)$-weighted bandpower)")
 
     handles = [
         Line2D([], [], color=GEOMKEY_COLOR[(nb, g)], lw=1.8, label=f"{nb}-bin {g}") for nb in NBINS for g in GEOMS
@@ -371,25 +372,25 @@ def fig03_nside512(sim_fs_512, cg_lo):
     fig, axes = plt.subplots(2, 3, figsize=(16, 6.0), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shells):
         axs, axr = axes[0, col], axes[1, col]
-        axs.plot(ell_cg, cg_b[sh], color=C_CG, lw=1.8)
+        axs.plot(ell_cg, ell_cg * (ell_cg + 1) / (2 * np.pi) * cg_b[sh], color=C_CG, lw=1.8)
         for nb in NBINS:
             ev, cv = binned[nb]
-            axs.plot(ev, cv[sh], color=NBIN_COLOR[nb], lw=1.5)
+            axs.plot(ev, ev * (ev + 1) / (2 * np.pi) * cv[sh], color=NBIN_COLOR[nb], lw=1.5)
         axs.set(xscale="log", yscale="log")
         axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}", fontsize=11)
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            axs.set_ylabel(r"$C_\ell$")
-        axr.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        axr.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        axr.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        axr.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for nb in NBINS:
             ev, cv = binned[nb]
-            axr.plot(ev, ratio_to_cg(ev, cv[[sh]], ell_cg, cg_b[[sh]])[0], color=NBIN_COLOR[nb], lw=1.5)
-        axr.set(xscale="log", ylim=(0.4, 1.25))
+            axr.plot(ev, ratio_to_cg(ev, cv[[sh]], ell_cg, cg_b[[sh]])[0] - 1.0, color=NBIN_COLOR[nb], lw=1.5)
+        axr.set(xscale="log", ylim=(-0.6, 0.3))
         axr.set_xlabel(r"multipole $\ell$")
         axr.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            axr.set_ylabel("sim / CosmoGrid")
+            axr.set_ylabel("sim / CosmoGrid - 1")
     handles = [Line2D([], [], color=NBIN_COLOR[nb], lw=1.6, label=f"jax-fli {nb}-bin (nside 512)") for nb in NBINS]
     handles += [
         Line2D([], [], color=C_CG, lw=1.8, label="CosmoGrid (nside 512)"),

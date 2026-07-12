@@ -63,7 +63,7 @@ NEAR_SHELL, MID_SHELL, FAR_SHELL = 1, 5, 9  # which 10-run shell each fig02 colu
 NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # Born-convergence shell-count sweep (fig09/fig10)
 LMAX = 1500  # the published spectra stop at ell 1500
 BOX, MESH = 5000.0, 2560.0  # per-shell PM-Nyquist line ell_max ~ pi*chi/dx, dx = box/mesh (5 Gpc/h box)
-CENSUS_RATIO_YLIM = (0.75, 1.25)  # density census ratio-to-theory strip range
+CENSUS_RATIO_YLIM = (-0.25, 0.25)  # density census ratio-to-theory strip range (centered on 0)
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
@@ -178,7 +178,7 @@ cosmogrid_kappa_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{COSMOGRID_KAPPA}", split="train")
 )
 cosmo_cg = cosmogrid_kappa_cat.cosmology[0]  # deliberately NOT asserted equal to `cosmo` (different sim)
-kappa_cosmogrid = np.asarray(cosmogrid_kappa_cat.field[0].array)[:3]  # first 3 of the 4 Stage-3 bins
+kappa_cosmogrid = cosmogrid_kappa_cat.field[0]  # 4 Stage-3 bins; fig11 uses the first 3
 
 cosmo = drift_10_cat.cosmology[0]  # one fiducial cosmology shared by every run
 for _c in (
@@ -211,11 +211,10 @@ drift_20, nodrift_20 = drift_20_cat.field[0], nodrift_20_cat.field[0]
 drift_25, nodrift_25 = drift_25_cat.field[0], nodrift_25_cat.field[0]
 drift_30, nodrift_30 = drift_30_cat.field[0], nodrift_30_cat.field[0]
 drift_40, nodrift_40 = drift_40_cat.field[0], nodrift_40_cat.field[0]
-ell_full = np.asarray(drift_10.wavenumber)
 
-# kappa C_ell keyed by shell count; each entry is (3, n_ell) — one auto spectrum per tomographic bin.
+# kappa C_ell keyed by shell count; each entry is the (3, n_ell) PowerSpectrum — one auto spectrum per bin.
 kappa_drift = {
-    n: np.asarray(c.field[0].array)
+    n: c.field[0]
     for n, c in zip(
         NSHELLS_KAPPA,
         [
@@ -232,7 +231,7 @@ kappa_drift = {
     )
 }
 kappa_nodrift = {
-    n: np.asarray(c.field[0].array)
+    n: c.field[0]
     for n, c in zip(
         NSHELLS_KAPPA,
         [
@@ -254,20 +253,6 @@ chi10 = np.asarray(nodrift_10.comoving_centers)
 w10 = np.asarray(nodrift_10.density_width)
 edges10 = np.stack([chi10 - 0.5 * w10, chi10 + 0.5 * w10], axis=0)
 chi40 = np.asarray(nodrift_40.comoving_centers)
-
-
-def _logbin(ell, y, nb=20):
-    """Geometric-mean bandpower binning of a 1-D C_ell for clean log-log curves and ratios."""
-    m = ell >= 2
-    e, yy = ell[m], np.asarray(y)[m]
-    edges = np.unique(np.round(np.logspace(np.log10(2), np.log10(e.max()), nb)).astype(int))
-    bc, bv = [], []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        s = (e >= lo) & (e < hi)
-        if s.any():
-            bc.append(np.sqrt(lo * hi))
-            bv.append(np.nanmean(yy[s]))
-    return np.asarray(bc), np.asarray(bv)
 
 
 # =============================================================================
@@ -340,7 +325,7 @@ def fig01_illustration():
 # fig02 — density C_ell: 10-shell drift / no-drift vs a 40-shell continuous-lightcone reference
 # =============================================================================
 def _thick_ref_cl(target_shell):
-    """Continuous-lightcone reference C_ell for one 10-run shell: sum the matching 40-run no-drift thin
+    """Continuous-lightcone reference PowerSpectrum for one 10-run shell: sum the matching 40-run no-drift thin
     shells in COUNTS (per-pixel volume cancels on conversion), then overdensity -> angular_cl."""
     lo, hi = edges10[0, target_shell], edges10[1, target_shell]
     members = np.where((chi40 > lo) & (chi40 < hi))[0]
@@ -356,23 +341,25 @@ def _thick_ref_cl(target_shell):
             density_width=jnp.asarray(hi - lo),
         )
     )
-    ps = thick.to(jfli.DensityUnit.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX)
-    return np.asarray(ps.array).reshape(-1)
+    return thick.to(jfli.DensityUnit.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX)
 
 
 def fig02_density_shells():
     cols = [("near", NEAR_SHELL), ("mid", MID_SHELL), ("far", FAR_SHELL)]
-    drift_arr, nodrift_arr = np.asarray(drift_10.array), np.asarray(nodrift_10.array)
+    drift_b_all = drift_10.bin(nlb=32, lmin=2)
+    nodrift_b_all = nodrift_10.bin(nlb=32, lmin=2)
+    bc = np.asarray(drift_b_all.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    drift_arr, nodrift_arr = np.asarray(drift_b_all.array), np.asarray(nodrift_b_all.array)
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, (label, sh) in enumerate(cols):
-        ref = _thick_ref_cl(sh)
-        bc, ref_b = _logbin(ell_full, ref)
-        _, no_b = _logbin(ell_full, nodrift_arr[sh])
-        _, dr_b = _logbin(ell_full, drift_arr[sh])
+        ref_b = np.asarray(_thick_ref_cl(sh).bin(nlb=32, lmin=2).array).reshape(-1)
+        no_b = nodrift_arr[sh]
+        dr_b = drift_arr[sh]
         ax_s, ax_r = axes[0, col], axes[1, col]
-        ax_s.loglog(bc, ref_b, color="k", lw=1.6, label="40-shell reference")
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
+        ax_s.loglog(bc, dl * ref_b, color="k", lw=1.6, label="40-shell reference")
+        ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
+        ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
         ax_s.set_title(
             rf"{label} shell {sh}:  $\chi = {0.5 * (edges10[0, sh] + edges10[1, sh]):.0f}$ Mpc/h", fontsize=11
         )
@@ -392,16 +379,16 @@ def fig02_density_shells():
             family="monospace",
         )
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
-        ax_r.semilogx(bc, no_b / ref_b, color="tab:red", lw=1.4)
-        ax_r.semilogx(bc, dr_b / ref_b, color="tab:blue", lw=1.4)
-        ax_r.set_ylim(0.95, 1.05)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
+        ax_r.semilogx(bc, no_b / ref_b - 1.0, color="tab:red", lw=1.4)
+        ax_r.semilogx(bc, dr_b / ref_b - 1.0, color="tab:blue", lw=1.4)
+        ax_r.set_ylim(-0.05, 0.05)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / 40-shell")
+            ax_r.set_ylabel("meas / 40-shell - 1")
     handles = [
         Line2D([], [], color="k", lw=1.8, label="40-shell reference (continuous lightcone)"),
         Line2D([], [], color="tab:red", lw=1.6, label="10-shell, no drift"),
@@ -422,11 +409,16 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
     strip. Theory is the comoving-volume Limber number-counts prediction x pixwin^2(nside=2048); drift and
     no-drift share the shell geometry, so it is computed once from the no-drift run. The shot noise in the
     measurement (absent from theory) lifts the ratio at high ell, so read the red<->blue gap (shared shot
-    noise cancels between the two runs) as the drift's frozen-epoch correction, not the distance from 1."""
+    noise cancels between the two runs) as the drift's frozen-epoch correction, not the distance from 0."""
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    theory = np.asarray((compute_theory_cl_for_density(cosmo, spec_no, jnp.arange(LMAX + 1)) * pw2).array)
-    no = np.asarray(spec_no.array)
-    dr = np.asarray(spec_dr.array)
+    theory_b = (compute_theory_cl_for_density(cosmo, spec_no, jnp.arange(LMAX + 1)) * pw2).bin(nlb=32, lmin=2)
+    no_b_all = spec_no.bin(nlb=32, lmin=2)
+    dr_b_all = spec_dr.bin(nlb=32, lmin=2)
+    bc = np.asarray(no_b_all.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    theory = np.asarray(theory_b.array)
+    no = np.asarray(no_b_all.array)
+    dr = np.asarray(dr_b_all.array)
     chi = np.asarray(spec_no.comoving_centers)
     dx = BOX / MESH
     gs = container.add_gridspec(
@@ -444,16 +436,14 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         r, c = divmod(i, ncols)
         ax_s = container.add_subplot(gs[2 * r, c])
         ax_r = container.add_subplot(gs[2 * r + 1, c], sharex=ax_s)
-        bc, th_b = _logbin(ell_full, theory[i])
-        _, no_b = _logbin(ell_full, no[i])
-        _, dr_b = _logbin(ell_full, dr[i])
-        ax_s.loglog(bc, th_b, "k--", lw=1.0)
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.0)
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.0)
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.8)
-        ax_r.semilogx(bc, no_b / th_b, color="tab:red", lw=1.0)
-        ax_r.semilogx(bc, dr_b / th_b, color="tab:blue", lw=1.0)
+        th_b, no_b, dr_b = theory[i], no[i], dr[i]
+        ax_s.loglog(bc, dl * th_b, "k--", lw=1.0)
+        ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.0)
+        ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.0)
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.8)
+        ax_r.semilogx(bc, no_b / th_b - 1.0, color="tab:red", lw=1.0)
+        ax_r.semilogx(bc, dr_b / th_b - 1.0, color="tab:blue", lw=1.0)
         ax_r.set_ylim(*CENSUS_RATIO_YLIM)
         lmax_sh = np.pi * chi[i] / dx  # PM Nyquist; beyond it the comparison is resolution-limited
         for ax in (ax_s, ax_r):
@@ -463,8 +453,8 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=8)
         ax_s.tick_params(labelbottom=False)
         if c == 0:
-            ax_s.set_ylabel(r"$C_\ell$", fontsize=8)
-            ax_r.set_ylabel("meas/th", fontsize=7)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=8)
+            ax_r.set_ylabel("meas/th - 1", fontsize=7)
         if r == nrows - 1:
             ax_r.set_xlabel(r"$\ell$", fontsize=8)
 
@@ -486,11 +476,8 @@ def fig03_density_census_small():
     subs = fig.subfigures(4, 1, height_ratios=[0.18, 1, 2, 2], hspace=0.05)
     _census_legend(subs[0], loc="center")  # dedicated legend strip on top
     _draw_census(subs[1], nodrift_5, drift_5, 1, 5, top=0.82, bottom=0.14)
-    subs[1].suptitle("5 shells", fontsize=12)
     _draw_census(subs[2], nodrift_8, drift_8, 2, 4, top=0.88, bottom=0.09)
-    subs[2].suptitle("8 shells", fontsize=12)
     _draw_census(subs[3], nodrift_10, drift_10, 2, 5, top=0.88, bottom=0.09)
-    subs[3].suptitle("10 shells", fontsize=12)
     savefig(ASSETS / "fig03-density-census-small", fig)
 
 
@@ -515,42 +502,46 @@ def fig09_lensing():
     convergence, in contrast to the equal-volume 05c where the fat inner shell defeats that averaging."""
     counts = [n for n in NSHELLS_KAPPA if n != 40]
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
-    nbins = kappa_nodrift[40].shape[0]
+    nodrift_b = {n: kappa_nodrift[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    drift_b = {n: kappa_drift[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    bc = np.asarray(nodrift_b[40].wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    nbins = np.asarray(nodrift_b[40].array).shape[0]
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
     for b in range(nbins):
         # data-driven ratio window shared by both columns of this source bin (bin 1 swings more than bin 3)
         rr = []
-        for kappa in (kappa_nodrift, kappa_drift):
-            bc, ref_b = _logbin(ell_full, kappa[40][b])
+        for kb in (nodrift_b, drift_b):
+            ref_b = np.asarray(kb[40].array)[b]
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                rr.append((c_b / ref_b)[bc >= 20])
+                c_b = np.asarray(kb[n].array)[b]
+                rr.append((c_b / ref_b - 1.0)[bc >= 20])
         rr = np.concatenate(rr)
-        lo = min(0.9, max(0.4, 0.95 * float(np.nanmin(rr))))
-        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
-        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+        lo = min(-0.1, max(-0.6, 1.05 * float(np.nanmin(rr))))
+        hi = max(0.1, min(2.2, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kb) in enumerate([("no drift", nodrift_b), ("with drift", drift_b)]):
             ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
-            bc, ref_b = _logbin(ell_full, kappa[40][b])
-            ax_s.loglog(bc, ref_b, color="k", lw=1.8)
+            ref_b = np.asarray(kb[40].array)[b]
+            ax_s.loglog(bc, dl * ref_b, color="k", lw=1.8)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
             ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
-                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-            ax_r.axhspan(0.97, 1.03, color="0.7", alpha=0.3)
-            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+                ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+            ax_r.axhspan(-0.03, 0.03, color="0.7", alpha=0.3)
+            ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_r.semilogx(bc, c_b / ref_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_r.semilogx(bc, c_b / ref_b - 1.0, color=colors[n], lw=1.2)
             ax_r.set_ylim(lo, hi)  # per-bin window (bin 1 swings more than bin 3)
             ax_r.grid(True, which="both", ls=":", alpha=0.4)
             if col == 0:
-                ax_r.set_ylabel("meas / 40 sh.")
+                ax_r.set_ylabel("meas / 40 sh. - 1")
             if b == nbins - 1:
                 ax_r.set_xlabel(r"multipole $\ell$")
             else:
@@ -576,43 +567,44 @@ def fig10_lensing_theory():
     counts = NSHELLS_KAPPA
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.9, len(counts))))}
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    theory = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    theory_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
+    theory = np.asarray(theory_b.array)
+    bc = np.asarray(theory_b.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    nodrift_b = {n: kappa_nodrift[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    drift_b = {n: kappa_drift[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
     nbins = theory.shape[0]
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
     for b in range(nbins):
-        bc, th_b = _logbin(ell_full, theory[b])
+        th_b = theory[b]
         # data-driven ratio window shared by both columns of this source bin
         rr = np.concatenate(
-            [
-                (_logbin(ell_full, kappa[n][b])[1] / th_b)[bc >= 20]
-                for kappa in (kappa_nodrift, kappa_drift)
-                for n in counts
-            ]
+            [(np.asarray(kb[n].array)[b] / th_b - 1.0)[bc >= 20] for kb in (nodrift_b, drift_b) for n in counts]
         )
-        lo = min(0.9, max(0.2, 0.95 * float(np.nanmin(rr))))
-        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
-        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+        lo = min(-0.1, max(-0.8, 1.05 * float(np.nanmin(rr))))
+        hi = max(0.1, min(2.2, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kb) in enumerate([("no drift", nodrift_b), ("with drift", drift_b)]):
             ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
-            ax_s.loglog(bc, th_b, color="k", ls="--", lw=1.8)
+            ax_s.loglog(bc, dl * th_b, color="k", ls="--", lw=1.8)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
             ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
-                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-            ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+                ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+            ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+            ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_r.semilogx(bc, c_b / th_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_r.semilogx(bc, c_b / th_b - 1.0, color=colors[n], lw=1.2)
             ax_r.set_ylim(lo, hi)  # per-bin window
             ax_r.grid(True, which="both", ls=":", alpha=0.4)
             if col == 0:
-                ax_r.set_ylabel("meas / theory")
+                ax_r.set_ylabel("meas / theory - 1")
             if b == nbins - 1:
                 ax_r.set_xlabel(r"multipole $\ell$")
             else:
@@ -645,35 +637,42 @@ def fig11_lensing_cosmogrid():
     track the CosmoGrid reference at low ell and depart only through the PM-resolution roll-off at high ell —
     the shelling itself is sound for lensing (contrast the equal-volume 05c fig11)."""
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    th_own = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
-    th_cg = np.asarray((compute_theory_cl(cosmo_cg, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    th_own_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
+    th_cg_b = (compute_theory_cl(cosmo_cg, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
+    th_own = np.asarray(th_own_b.array)
+    th_cg = np.asarray(th_cg_b.array)
+    cg_b_all = kappa_cosmogrid.bin(nlb=32, lmin=2)
+    no_b_all = kappa_nodrift[20].bin(nlb=32, lmin=2)
+    dr_b_all = kappa_drift[20].bin(nlb=32, lmin=2)
+    bc = np.asarray(th_own_b.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for b in range(3):
-        bc, cg_b = _logbin(ell_full, kappa_cosmogrid[b])
-        _, no_b = _logbin(ell_full, kappa_nodrift[20][b])
-        _, dr_b = _logbin(ell_full, kappa_drift[20][b])
-        _, tho_b = _logbin(ell_full, th_own[b])
-        _, thc_b = _logbin(ell_full, th_cg[b])
+        cg_b = np.asarray(cg_b_all.array)[b]
+        no_b = np.asarray(no_b_all.array)[b]
+        dr_b = np.asarray(dr_b_all.array)[b]
+        tho_b = th_own[b]
+        thc_b = th_cg[b]
         ax_s, ax_r = axes[0, b], axes[1, b]
-        ax_s.loglog(bc, cg_b, color="k", lw=1.6)
-        ax_s.loglog(bc, thc_b, color="k", ls=":", lw=1.1)
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.5)
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.5)
-        ax_s.loglog(bc, tho_b, color="0.45", ls="--", lw=1.1)
+        ax_s.loglog(bc, dl * cg_b, color="k", lw=1.6)
+        ax_s.loglog(bc, dl * thc_b, color="k", ls=":", lw=1.1)
+        ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5)
+        ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5)
+        ax_s.loglog(bc, dl * tho_b, color="0.45", ls="--", lw=1.1)
         ax_s.set_title(f"bin {b + 1}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if b == 0:
-            ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
-        ax_r.semilogx(bc, cg_b / thc_b, color="k", lw=1.5)
-        ax_r.semilogx(bc, no_b / tho_b, color="tab:red", lw=1.4)
-        ax_r.semilogx(bc, dr_b / tho_b, color="tab:blue", lw=1.4)
-        ax_r.set_ylim(0.3, 1.4)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
+        ax_r.semilogx(bc, cg_b / thc_b - 1.0, color="k", lw=1.5)
+        ax_r.semilogx(bc, no_b / tho_b - 1.0, color="tab:red", lw=1.4)
+        ax_r.semilogx(bc, dr_b / tho_b - 1.0, color="tab:blue", lw=1.4)
+        ax_r.set_ylim(-0.7, 0.4)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if b == 0:
-            ax_r.set_ylabel("meas / own theory")
+            ax_r.set_ylabel("meas / own theory - 1")
     handles = [
         Line2D([], [], color="k", lw=1.6, label="CosmoGrid Born (thin shells, N-body)"),
         Line2D([], [], color="tab:red", lw=1.6, label="20 scale-factor shells, no drift"),

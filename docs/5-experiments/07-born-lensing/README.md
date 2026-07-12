@@ -37,29 +37,29 @@ The convergence angular power spectrum, per tomographic bin, against CosmoGrid's
 
 ![Stage-3 convergence spectra](assets/fig01-s3-spectra.svg)
 
-CosmoGrid's native κ and our lensed PM-sim both track the theory through the intermediate band; the 2-bin and 3-bin runs overlie on their shared bins (the box depth does not bias the shared sources). The 512-downsampled lensed curve loses power earlier than the native-2048 one — the un-deconvolved CIC window and the lower-resolution map, exactly the high-`ℓ` story of experiment 06, now propagated through the Born integral. The headline caveat is the **nearest bin**: convergence is **worst in bin 1** (`z ≈ 0.31`), whose ratio scatters most and sits furthest from theory, while the deeper bins (2, 3) track it cleanly. That is expected — the low-redshift bin's lensing kernel weights the **near shells**, which experiment 06 showed are the least converged (the PM gravity is least accurate closest in), so the deepest, best-converged density feeds the best κ and the nearest, lowest-signal bin the worst.
+**Stage-3 convergence spectra.** CosmoGrid's native κ and our lensed PM-sim both track the theory through the intermediate band; the 2-bin and 3-bin runs overlie on their shared bins (the box depth does not bias the shared sources). The 512-downsampled lensed curve loses power earlier than the native-2048 one — the un-deconvolved CIC window and the lower-resolution map, exactly the high-`ℓ` story of experiment 06, now propagated through the Born integral. The headline caveat is the **nearest bin**: convergence is **worst in bin 1** (`z ≈ 0.31`), whose ratio scatters most and sits furthest from theory, while the deeper bins (2, 3) track it cleanly. That is expected — the low-redshift bin's lensing kernel weights the **near shells**, which experiment 06 showed are the least converged (the PM gravity is least accurate closest in), so the deepest, best-converged density feeds the best κ and the nearest, lowest-signal bin the worst.
 
 The one-point PDF (monopole removed, matched nside 512):
 
 ![Stage-3 convergence PDF](assets/fig02-s3-pdf.svg)
 
-Both peak just below `κ = 0` (the typical under-dense line of sight) with the characteristic positive lensing tail. CosmoGrid carries a **heavier high-κ tail** — a real N-body resolves more massive collapsed structures than our CIC-PM, the lensing echo of the density-PDF tail in experiment 06.
+**Stage-3 convergence PDF.** Both peak just below `κ = 0` (the typical under-dense line of sight) with the characteristic positive lensing tail. CosmoGrid carries a **heavier high-κ tail** — a real N-body resolves more massive collapsed structures than our CIC-PM, the lensing echo of the density-PDF tail in experiment 06.
 
 The starlet (spherical-wavelet) coefficients resolve that statement by scale, with the three tomographic bins stacked as rows:
 
 ![Stage-3 starlet coefficients](assets/fig03-s3-starlet.svg)
 
-The coarse scales agree; the divergence is confined to the finest scale, where the CIC window and the resolution gap live. The same coefficients as maps (deepest bin), per scale:
+**Stage-3 starlet coefficients.** The coarse scales agree; the divergence is confined to the finest scale, where the CIC window and the resolution gap live. The same coefficients as maps (deepest bin), per scale:
 
 ![Stage-3 starlet maps](assets/fig04-s3-starlet-maps.svg)
 
-fine scales (left) carry the small-scale detail, coarse scales (right) the smooth field; the bottom row is the lensed − reference difference, structureless at full amplitude (independent realisations).
+**Stage-3 starlet coefficient maps.** Fine scales (left) carry the small-scale detail, coarse scales (right) the smooth field; the bottom row is the lensed − reference difference, structureless at full amplitude (independent realisations).
 
 The convergence itself (magma; clusters bright, voids dark) — read for texture, not coincidence:
 
 ![Stage-3 convergence maps](assets/fig05-s3-maps.svg)
 
-Top row our lensed κ, middle CosmoGrid's, bottom their (diverging) difference. The textures match per bin; the difference is structureless at full amplitude — two uncorrelated fields sharing their statistics.
+**Stage-3 convergence maps.** Top row our lensed κ, middle CosmoGrid's, bottom their (diverging) difference. The textures match per bin; the difference is structureless at full amplitude — two uncorrelated fields sharing their statistics.
 
 ## Results — DES Y3: lensed PM-sim vs Born-on-CG-density
 
@@ -71,7 +71,7 @@ The same five panels for the DES Y3 sources, with the Born-on-CosmoGrid-density 
 ![DES Y3 starlet maps](assets/fig09-des-starlet-maps.svg)
 ![DES Y3 convergence maps](assets/fig10-des-maps.svg)
 
-Here both sides use the **same Born method** — the reference integrates CosmoGrid's density, our sim integrates its own PM density — so the comparison isolates the underlying density field. The spectra agree with theory over the intermediate band; the PDF and starlet again show the reference's heavier small-scale tail (CosmoGrid's N-body density vs our PM), and the map difference is again the full-amplitude, uncorrelated signature of independent realisations.
+**DES Y3 convergence: spectra, PDF, starlet, and maps.** Here both sides use the **same Born method** — the reference integrates CosmoGrid's density, our sim integrates its own PM density — so the comparison isolates the underlying density field. The spectra agree with theory over the intermediate band; the PDF and starlet again show the reference's heavier small-scale tail (CosmoGrid's N-body density vs our PM), and the map difference is again the full-amplitude, uncorrelated signature of independent realisations.
 
 ## How to run
 

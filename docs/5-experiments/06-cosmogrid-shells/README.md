@@ -49,6 +49,8 @@ The figure below records the whole geometry decision: the DES Y3 source `n(z)` a
 
 ![Experiment 06 geometry](assets/exp06-geometry.svg)
 
+**Experiment 06 geometry decision.**
+
 - **Top —** DES Y3 `n(z)` per bin (dotted = each bin's 10 %-of-peak end); the dashed lines are the 2-bin (`z = 0.82`) and 3-bin (`z = 1.06`) depths. The top axis is comoving distance `χ`.
 - **Middle —** weak-lensing efficiency `q(z)`: support ends at the source plane, confirming the box must reach the chosen depth.
 - **Bottom —** the CosmoGrid shell tessellation in `z`: 40 shells inside the 2-bin box (blue), 6 more added for the 3-bin box (orange), the rest excluded (grey).
@@ -56,6 +58,8 @@ The figure below records the whole geometry decision: the DES Y3 source `n(z)` a
 The big-quadrant observer's visibility footprint — built with the same `jaxpm.spherical.spherical_visibility_mask` that Exp 08 uses — is a clean centred cap: the Exp 08 corner geometry, **not** the earlier X/Y-reflected one. An earlier revision X/Y-reoriented the observer to `(0.5, 0.1, 0.9)` to keep the long box axis first; that reflected this footprint across the `x=y` plane and no longer matched Exp 08 — corrected to `(0.1, 0.5, 0.9)`.
 
 ![Big-quadrant visibility footprint](assets/exp06-mask.svg)
+
+**Big-quadrant visibility footprint.**
 
 **The four geometries** — each run as a slab (`--pdim 128 1`) and a pencil (`--pdim 32 4`), so **8 runs** in total, all on **128 GPUs** (32 nodes × 4):
 
@@ -82,13 +86,13 @@ The all-shell view confirms it and adds the two control axes:
 
 ![Spectra agreement vs distance](assets/fig02-band-vs-distance.svg)
 
-The `(2ℓ+1)`-weighted ratio sits near unity over an intermediate-`χ` plateau and degrades with `ℓ` (worst at `ℓ ≈ 800`). The **slab and pencil decompositions overlie** (the device layout does not bias the field), and the **decoupled quadrant tracks the full sky** (the masked measurement recovers the same spectrum). The finer-`dx` quadrant holds up better at high `ℓ` than the coarser full-sky mesh, as the resolution budget predicts.
+**Spectra agreement across distance.** The `(2ℓ+1)`-weighted ratio sits near unity over an intermediate-`χ` plateau and degrades with `ℓ` (worst at `ℓ ≈ 800`). The **slab and pencil decompositions overlie** (the device layout does not bias the field), and the **decoupled quadrant tracks the full sky** (the masked measurement recovers the same spectrum). The finer-`dx` quadrant holds up better at high `ℓ` than the coarser full-sky mesh, as the resolution budget predicts.
 
 Dropping both sides to the matched **nside 512** isolates the large/intermediate scales the higher-order statistics also live on:
 
 ![nside-512 cross-check](assets/fig03-nside512-crosscheck.svg)
 
-There the mid/far shells agree with CosmoGrid to within `±5 %` across a broad band — the clean, resolution-matched result.
+**nside-512 cross-check.** There the mid/far shells agree with CosmoGrid to within `±5 %` across a broad band — the clean, resolution-matched result.
 
 **The fields themselves.** Independent realisations cannot share structures, only their *statistics* — so the maps are read for **texture and geometry**, not coincidence:
 
@@ -97,6 +101,8 @@ There the mid/far shells agree with CosmoGrid to within `±5 %` across a broad b
 The near shell shows the same cosmic-web texture in our PM runs and in CosmoGrid (different web, same statistics); the thicker far shells are smoother. The big-quadrant runs paint only the observer's visibility cone, which **shrinks as the shell recedes** (near ≈ full sky, far ≈ a cap):
 
 ![Quadrant δ maps](assets/fig05-maps-quadrant.svg)
+
+**Big-quadrant δ maps.**
 
 **Higher-order statistics** are not self-normalising, so they are computed on the matched-nside `δ` maps. The one-point PDF:
 
