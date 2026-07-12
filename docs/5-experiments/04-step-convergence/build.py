@@ -59,7 +59,7 @@ SOLVERS = {
     "kdk": "DoubleKickDrift",
 }
 NEAR_SHELL, MID_SHELL, FAR_SHELL = 1, 5, 9
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 STEP_COLORS = {s: c for s, c in zip(STEPS, cm.viridis(np.linspace(0.0, 0.88, len(STEPS))))}
 SOLVER_COLORS = {"bfa": "tab:blue", "bfd": "tab:purple", "dkd": "tab:orange", "kdk": "tab:green"}
 STEP7_STYLES = {20: "-", 30: "--"}  # the comparison fig distinguishes the two step counts by line style
@@ -190,26 +190,28 @@ def plot_step_convergence(solver, shell_idxs, stem):
     for col, sh in enumerate(shell_idxs):
         ax_s, ax_r = axes[0, col], axes[1, col]
         for st in STEPS:
-            ax_s.plot(leff, meas_b_arr[solver][st][sh], color=STEP_COLORS[st], lw=1.5)
+            ax_s.plot(leff, leff * (leff + 1) / (2 * np.pi) * meas_b_arr[solver][st][sh], color=STEP_COLORS[st], lw=1.5)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
         ax_s.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
         ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        # bottom (3:1): each step's binned C_ell over the 50-step binned C_ell
-        ax_r.axhspan(0.98, 1.02, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        # bottom (3:1): each step's binned C_ell over the 50-step binned C_ell, minus 1
+        ax_r.axhspan(-0.02, 0.02, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for st in STEPS:
-            ax_r.plot(leff, meas_b_arr[solver][st][sh] / meas_b_arr[solver][50][sh], color=STEP_COLORS[st], lw=1.3)
+            ax_r.plot(
+                leff, meas_b_arr[solver][st][sh] / meas_b_arr[solver][50][sh] - 1.0, color=STEP_COLORS[st], lw=1.3
+            )
         ax_r.set_xscale("log")
         ax_r.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
-        ax_r.set_ylim(0.97, 1.03)
+        ax_r.set_ylim(-0.03, 0.03)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / 50-step")
+            ax_r.set_ylabel("meas / 50-step - 1")
     handles = [Line2D([], [], color=STEP_COLORS[st], lw=1.6, label=f"{st} steps") for st in STEPS]
     handles[-1].set_label("50 steps (reference)")
     handles += [Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm2\%$")]
@@ -226,36 +228,47 @@ def plot_solvers_near_mid_far(stem):
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, (label, sh) in enumerate(cols):
         ax_s, ax_r = axes[0, col], axes[1, col]
-        ax_s.plot(ell_full[2:], theory_pw_arr[sh][2:], color="k", ls=":", lw=1.4, zorder=5)
+        ell_th = ell_full[2:]
+        ax_s.plot(
+            ell_th, ell_th * (ell_th + 1) / (2 * np.pi) * theory_pw_arr[sh][2:], color="k", ls=":", lw=1.4, zorder=5
+        )
         for sol in SOLVERS:
             for st in (20, 30):
-                ax_s.plot(leff, meas_b_arr[sol][st][sh], color=SOLVER_COLORS[sol], ls=STEP7_STYLES[st], lw=1.5)
+                ax_s.plot(
+                    leff,
+                    leff * (leff + 1) / (2 * np.pi) * meas_b_arr[sol][st][sh],
+                    color=SOLVER_COLORS[sol],
+                    ls=STEP7_STYLES[st],
+                    lw=1.5,
+                )
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
         ax_s.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
-        ax_s.set_title(f"{label} shell {sh}:  z = {z_shells[sh]:.3f},  χ = {chi_shells[sh]:.0f} Mpc/h", fontsize=11)
+        ax_s.set_title(
+            rf"{label} shell {sh}:  z = {z_shells[sh]:.3f},  $\chi$ = {chi_shells[sh]:.0f} Mpc/h", fontsize=11
+        )
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        # bottom (3:1): binned measured / binned theory
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        # bottom (3:1): binned measured / binned theory, minus 1
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for sol in SOLVERS:
             for st in (20, 30):
                 ax_r.plot(
                     leff,
-                    meas_b_arr[sol][st][sh] / theory_b_arr[sh],
+                    meas_b_arr[sol][st][sh] / theory_b_arr[sh] - 1.0,
                     color=SOLVER_COLORS[sol],
                     ls=STEP7_STYLES[st],
                     lw=1.3,
                 )
         ax_r.set_xscale("log")
         ax_r.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
-        ax_r.set_ylim(0.7, 1.2)
+        ax_r.set_ylim(-0.3, 0.2)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / theory")
+            ax_r.set_ylabel("meas / theory - 1")
     handles = [Line2D([], [], color=SOLVER_COLORS[s], lw=1.8, label=f"{s} ({SOLVERS[s]})") for s in SOLVERS]
     handles += [
         Line2D([], [], color="0.3", ls="-", lw=1.6, label="20 steps"),

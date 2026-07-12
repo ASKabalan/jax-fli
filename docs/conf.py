@@ -13,6 +13,7 @@ extensions = [
 ]
 
 myst_enable_extensions = ["dollarmath"]
+myst_heading_anchors = 3
 
 # RTD builders have no GPU/cluster and hard resource/time limits — notebooks are
 # committed with their outputs (some from full-scale GPU/cluster runs) and must never
@@ -28,6 +29,9 @@ exclude_patterns = [
     "**/.ipynb_checkpoints",
     # agent-instructions files, not documentation content
     "**/CLAUDE.md",
+    # git-ignored notebook runtime artifacts, not documentation content
+    "3-sampling-and-inference/output",
+    "3-sampling-and-inference/rosenbrock_samples_nuts",
 ]
 
 html_theme = "sphinx_book_theme"

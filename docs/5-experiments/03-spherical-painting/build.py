@@ -51,7 +51,7 @@ REPO = "ASKabalan/jax-fli-experiments"
 SPEC = "03-spherical-painting/spectra"
 DENS = "03-spherical-painting/density"
 
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 NEAR, FAR = 2, 8  # the two highlighted shell indices (shell_0002, shell_0008)
 
 SCHEMES = ["ngp", "bilinear", "rbf08", "rbf15"]
@@ -138,7 +138,6 @@ spec2048 = {
 }
 
 LMAX = int(spec1024["ngp"].wavenumber.max())
-ell_full = np.asarray(spec1024["ngp"].wavenumber)
 z_shells = np.asarray(spec1024["ngp"].z_sources)
 n_shells = np.asarray(spec1024["ngp"].array).shape[0]
 
@@ -184,9 +183,9 @@ def _pixwin_match(nside):
 
 
 theory_pw = {1024: _pixwin_match(1024), 2048: _pixwin_match(2048)}
-theory_pw_arr = {ns: np.asarray(t.array) for ns, t in theory_pw.items()}
 theory_b = {ns: np.asarray(t.bin(nlb=NLB, lmin=2).array) for ns, t in theory_pw.items()}
 leff = np.asarray(theory_pw[1024].bin(nlb=NLB, lmin=2).wavenumber)
+dl = leff * (leff + 1) / (2 * np.pi)  # D_ell = l(l+1)C_l/2pi factor on the binned effective multipole
 
 spec_b = {
     1024: {s: np.asarray(spec1024[s].bin(nlb=NLB, lmin=2).array) for s in SCHEMES},
@@ -202,27 +201,31 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
-        ax_s.plot(ell_full[2:], theory_pw_arr[nside][sh][2:], color="k", ls="--", lw=1.3, zorder=5)
+        ax_s.plot(leff, dl * theory_b[nside][sh], color="k", ls="--", lw=1.3, zorder=5)
         for s in SCHEMES:
-            ax_s.plot(leff, spec_b[nside][s][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.5, zorder=4)
+            ax_s.plot(leff, dl * spec_b[nside][s][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.5, zorder=4)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
         ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for s in SCHEMES:
             ax_r.plot(
-                leff, spec_b[nside][s][sh] / theory_b[nside][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.3
+                leff,
+                spec_b[nside][s][sh] / theory_b[nside][sh] - 1.0,
+                color=SCHEME_COLORS[s],
+                ls=SCHEME_STYLE[s],
+                lw=1.3,
             )
         ax_r.set_xscale("log")
-        ax_r.set_ylim(0.3, 1.3)
+        ax_r.set_ylim(-0.7, 0.3)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / theory")
+            ax_r.set_ylabel("meas / theory - 1")
     handles = [
         Line2D([], [], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.6, label=SCHEME_LABEL[s]) for s in SCHEMES
     ]
@@ -247,31 +250,33 @@ def plot_udsample_grid(native_nside, title, stem):
             ax = fig.add_subplot(cell[0])
             axr = fig.add_subplot(cell[1], sharex=ax)
             # theory: native-nside footing (dashed); the ud map is on the 1024 footing (dotted)
-            ax.plot(ell_full[2:], theory_pw_arr[native_nside][sh][2:], "k--", lw=1.1, zorder=5)
+            ax.plot(leff, dl * theory_b[native_nside][sh], "k--", lw=1.1, zorder=5)
             if native_nside != 1024:
-                ax.plot(ell_full[2:], theory_pw_arr[1024][sh][2:], "k:", lw=1.1, zorder=5)
-            ax.plot(leff, spec_b[native_nside][s][sh], color=C_NATIVE, ls=":", lw=1.6, zorder=3)
-            ax.plot(leff, ud_b[(s, sh)], color=C_UD, ls="-", lw=1.6, zorder=4)
+                ax.plot(leff, dl * theory_b[1024][sh], "k:", lw=1.1, zorder=5)
+            ax.plot(leff, dl * spec_b[native_nside][s][sh], color=C_NATIVE, ls=":", lw=1.6, zorder=3)
+            ax.plot(leff, dl * ud_b[(s, sh)], color=C_UD, ls="-", lw=1.6, zorder=4)
             ax.set_xscale("log")
             ax.set_yscale("log")
             ax.set_title(f"{SCHEME_LABEL[s]} — shell {sh} (z={z_shells[sh]:.3f})", fontsize=10)
             ax.grid(alpha=0.2, which="both")
             ax.tick_params(labelbottom=False)
             if c == 0:
-                ax.set_ylabel(r"$C_\ell$")
-            axr.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-            axr.axhline(1.0, color="0.4", ls="--", lw=0.9)
-            axr.plot(leff, spec_b[native_nside][s][sh] / theory_b[native_nside][sh], color=C_NATIVE, ls=":", lw=1.4)
-            axr.plot(leff, ud_b[(s, sh)] / theory_b[1024][sh], color=C_UD, ls="-", lw=1.4)
+                ax.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+            axr.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+            axr.axhline(0.0, color="0.4", ls="--", lw=0.9)
+            axr.plot(
+                leff, spec_b[native_nside][s][sh] / theory_b[native_nside][sh] - 1.0, color=C_NATIVE, ls=":", lw=1.4
+            )
+            axr.plot(leff, ud_b[(s, sh)] / theory_b[1024][sh] - 1.0, color=C_UD, ls="-", lw=1.4)
             axr.set_xscale("log")
-            axr.set_ylim(0.3, 1.3)
+            axr.set_ylim(-0.7, 0.3)
             axr.grid(alpha=0.2, which="both")
             if c == 0:
-                axr.set_ylabel("meas/thy", fontsize=8)
+                axr.set_ylabel("meas/thy - 1", fontsize=8)
             axr.set_xlabel(r"$\ell$")
     handles = [
         Line2D([], [], color=C_NATIVE, ls=":", lw=1.6, label=f"native nside {native_nside}"),
-        Line2D([], [], color=C_UD, ls="-", lw=1.6, label="paint@2048 → ud_grade → 1024"),
+        Line2D([], [], color=C_UD, ls="-", lw=1.6, label=r"paint@2048 $\rightarrow$ ud_grade $\rightarrow$ 1024"),
         Line2D([], [], color="k", ls="--", lw=1.4, label=rf"Limber theory $\times\,w_\ell^2$({native_nside})"),
     ]
     if native_nside != 1024:
@@ -291,28 +296,28 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
-        ax_s.plot(ell_full[2:], theory_pw_arr[1024][sh][2:], "k:", lw=1.0, zorder=5)
-        ax_s.plot(ell_full[2:], theory_pw_arr[2048][sh][2:], "k--", lw=1.0, zorder=5)
+        ax_s.plot(leff, dl * theory_b[1024][sh], "k:", lw=1.0, zorder=5)
+        ax_s.plot(leff, dl * theory_b[2048][sh], "k--", lw=1.0, zorder=5)
         for s in schemes_sel:
             for ns in (1024, 2048):
-                ax_s.plot(leff, spec_b[ns][s][sh], color=SCHEME_COLORS[s], lw=1.5, zorder=4, **style[ns])
+                ax_s.plot(leff, dl * spec_b[ns][s][sh], color=SCHEME_COLORS[s], lw=1.5, zorder=4, **style[ns])
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
         ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for s in schemes_sel:
             for ns in (1024, 2048):
-                ax_r.plot(leff, spec_b[ns][s][sh] / theory_b[ns][sh], color=SCHEME_COLORS[s], lw=1.4, **style[ns])
+                ax_r.plot(leff, spec_b[ns][s][sh] / theory_b[ns][sh] - 1.0, color=SCHEME_COLORS[s], lw=1.4, **style[ns])
         ax_r.set_xscale("log")
-        ax_r.set_ylim(0.3, 1.3)
+        ax_r.set_ylim(-0.7, 0.3)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / theory")
+            ax_r.set_ylabel("meas / theory - 1")
     handles = []
     for s in schemes_sel:
         for ns in (1024, 2048):

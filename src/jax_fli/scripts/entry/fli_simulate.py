@@ -390,6 +390,7 @@ def run_lpt(
         "adjoint",
         "checkpoints",
         "compute_grad",
+        "quadrature",
     ],
 )
 def run_simulations(
@@ -415,6 +416,7 @@ def run_simulations(
     adjoint="checkpointed",
     checkpoints=None,
     compute_grad=False,
+    quadrature="midpoint",
 ):
     def _forward(ic):
         # LPT to particles snapshot at t0, then run NBody
@@ -453,7 +455,9 @@ def run_simulations(
         # Run lensing (Born) -> convergence. Shear is a forward-model concern only (fli-infer);
         # fli-simulate emits density (pm) or convergence (born), never shear.
         if sim_type == "born":
-            return jfli.born(cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate)
+            return jfli.born(
+                cosmo, lightcone, nz_shear, min_z=min_z, max_z=max_z, n_integrate=n_integrate, quadrature=quadrature
+            )
         raise ValueError(f"Unknown sim_type: {sim_type}")
 
     if not compute_grad:
@@ -566,6 +570,7 @@ def main() -> None:
             "adjoint": grad_adjoint,
             "checkpoints": grad_checkpoints,
             "compute_grad": compute_grad,
+            "quadrature": getattr(args, "quadrature", "simpson"),
         }
 
     if args.perf:
@@ -581,7 +586,8 @@ def main() -> None:
         if sim_type == "lpt":
             _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13)
         else:
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21)
+            # 22 = quadrature (appended last in run_simulations so earlier indices are stable)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

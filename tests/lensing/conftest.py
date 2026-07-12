@@ -118,14 +118,18 @@ def glass_cosmo(cosmology):
 
 @pytest.fixture(scope="session")
 def born_kappa_single(cosmology, lensing_lightcone):
-    """Born convergence map at z_source=0.5, global normalization."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global")
+    """Born convergence map at z_source=0.5, global normalization, midpoint quadrature (glass/dorian-tuned)."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global", quadrature="midpoint"
+    )
 
 
 @pytest.fixture(scope="session")
 def born_kappa_multi(cosmology, lensing_lightcone):
-    """Born convergence maps at z_source=[0.5, 1.0], global normalization."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global")
+    """Born convergence maps at z_source=[0.5, 1.0], global normalization, midpoint quadrature."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global", quadrature="midpoint"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -168,26 +172,42 @@ def lensing_flat_lightcone(cosmology, lensing_flat_initial_field):
 
 @pytest.fixture(scope="session")
 def born_flat_kappa_single(cosmology, lensing_flat_lightcone):
-    """Flat Born convergence map at z_source=0.5, global normalization."""
-    return jfli.born(cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global")
+    """Flat Born convergence map at z_source=0.5, global normalization, midpoint quadrature."""
+    return jfli.born(
+        cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="global", quadrature="midpoint"
+    )
 
 
 @pytest.fixture(scope="session")
 def born_flat_kappa_multi(cosmology, lensing_flat_lightcone):
-    """Flat Born convergence maps at z_source=[0.5, 1.0], global normalization."""
-    return jfli.born(cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global")
+    """Flat Born convergence maps at z_source=[0.5, 1.0], global normalization, midpoint quadrature."""
+    return jfli.born(
+        cosmology, lensing_flat_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="global", quadrature="midpoint"
+    )
 
 
 @pytest.fixture(scope="session")
 def born_kappa_single_per_plane(cosmology, lensing_lightcone):
-    """Born convergence map at z_source=0.5, per-plane normalization."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="per_plane")
+    """Born convergence map at z_source=0.5, per-plane normalization, midpoint quadrature."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_SINGLE, normalization="per_plane", quadrature="midpoint"
+    )
 
 
 @pytest.fixture(scope="session")
 def born_kappa_multi_per_plane(cosmology, lensing_lightcone):
-    """Born convergence maps at z_source=[0.5, 1.0], per-plane normalization."""
-    return jfli.born(cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="per_plane")
+    """Born convergence maps at z_source=[0.5, 1.0], per-plane normalization, midpoint quadrature."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="per_plane", quadrature="midpoint"
+    )
+
+
+@pytest.fixture(scope="session")
+def born_kappa_multi_per_plane_gl(cosmology, lensing_lightcone):
+    """Born convergence maps at z_source=[0.5, 1.0], per-plane normalization, Gauss-Legendre quadrature."""
+    return jfli.born(
+        cosmology, lensing_lightcone, nz_shear=Z_SOURCES_MULTI, normalization="per_plane", quadrature="gauss_legendre"
+    )
 
 
 @pytest.fixture(scope="session")

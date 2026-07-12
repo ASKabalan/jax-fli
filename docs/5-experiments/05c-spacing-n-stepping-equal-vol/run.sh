@@ -43,15 +43,27 @@ else
       --pdim "$px" "$py" -- "$@"
   }
 
+  # Two quadratures per run: 'gauss_legendre' (GL-16 per-shell kernel integral + GL n(z) nodes) and
+  # 'simpson' (composite Simpson per shell + Simpson n(z) grid) — the multi-node rules are numerically
+  # interchangeable (docs/WORK_IN_PROGRESS/23-born-inner-outer-quadrature.ipynb); the historic
+  # 'midpoint' runs stay published under kappa_midpoint/ + spectra_midpoint/. Published layout:
+  # kappa_gauss_legendre/ + spectra_gauss_legendre/ and kappa_simpson/ + spectra_simpson/. NOTE: this
+  # GL rerun differs from the previously published GL by the n(z) rule (GL nodes now, Simpson before;
+  # expected shift ≲3e-4). --perf times the jitted born call (perf_born.csv next to each kappa_* dir).
   for NB_S in "${NB_SHELLS[@]}"; do
-    echo "Launching 3-bin Born lensing (drift vs none) for NB_S=$NB_S"
-    launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
-      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05c-3bin-equalvol/density/exp5c_drift_${NB_S}/shell*.parquet" \
-      --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --name "kappa_drift_3bin_$NB_S" \
-      --output "$RESULTS/exp5c/born_drift_${NB_S}"
-    launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
-      fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "05-spacing-n-stepping/05c-3bin-equalvol/density/exp5c_nodrift_${NB_S}/shell*.parquet" \
-      --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --name "kappa_nodrift_3bin_$NB_S" \
-      --output "$RESULTS/exp5c/born_nodrift_${NB_S}"
+    for KIND in drift nodrift; do
+      echo "Launching 3-bin Born lensing ($KIND, gauss_legendre + simpson) for NB_S=$NB_S"
+      DATA="05-spacing-n-stepping/05c-equal-volume/density/exp5c_${KIND}_${NB_S}/shell*.parquet"
+      launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
+        fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
+        --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
+        --perf --iterations 3 \
+        --name "kappa_gl_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/kappa_gl/born_gl_${KIND}_${NB_S}"
+      launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 01:00:00 -- \
+        fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
+        --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature simpson \
+        --perf --iterations 3 \
+        --name "kappa_simpson_${KIND}_3bin_$NB_S" --output "$RESULTS/exp5c/kappa_simpson/born_simpson_${KIND}_${NB_S}"
+    done
   done
 fi

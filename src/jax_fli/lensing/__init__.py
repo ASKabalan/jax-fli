@@ -1,4 +1,4 @@
-from .born import born
+from .born import born, plot_born_windows
 from .raytrace import raytrace
 
-__all__ = ["born", "raytrace"]
+__all__ = ["born", "plot_born_windows", "raytrace"]

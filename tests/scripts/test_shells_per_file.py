@@ -60,56 +60,41 @@ def _concat_meta(chunks, attr):
     return np.concatenate([np.atleast_1d(np.asarray(getattr(c, attr))) for c in chunks], axis=0)
 
 
-@pytest.mark.parametrize("shells_per_file", [1, 2, 5])
-def test_save_result_per_shell_matches_single_file(tmp_path, batched_lightcone, shells_per_file):
-    """Chunked per-shell save reloads to the SAME data as the single-file save.
+@pytest.mark.parametrize("shells_per_file", [0, 1, 2, 5])
+def test_save_result_shells_per_file(tmp_path, batched_lightcone, shells_per_file):
+    """``shells_per_file=0`` writes one parquet; ``k>0`` writes exactly ceil(N/k) per-shell parquets.
 
-    Both paths go through the identical HF parquet round-trip (which downcasts float64->float32 on
-    read), so comparing the two reloads is exact and isolates *chunking* correctness — array values
-    in shell order, per-shell metadata, and the ceil(N/k) file count — from float precision.
+    Both paths round-trip the array (in shell order) and per-shell metadata back to the field. The HF
+    parquet round-trip downcasts float64->float32 on read, hence the float32 tolerance.
     """
     field, cosmo = batched_lightcone
+    ref_arr = np.asarray(field.array)  # (N, npix)
 
-    # Reference: the established single-file path (validated elsewhere against the API).
-    single = tmp_path / "single.parquet"
-    _save_result(field, cosmo, Namespace(output=str(single), name=None, shells_per_file=0))
-    ref = Catalog.from_parquet(str(single)).field[0]
-    ref_arr = np.asarray(ref.array)  # (N, npix)
+    out = tmp_path / ("single.parquet" if shells_per_file == 0 else "lc")
+    _save_result(field, cosmo, Namespace(output=str(out), name=None, shells_per_file=shells_per_file))
 
-    # Per-shell directory.
-    out_dir = tmp_path / "lc"
-    _save_result(field, cosmo, Namespace(output=str(out_dir), name=None, shells_per_file=shells_per_file))
-    files = sorted(out_dir.glob("shell_*.parquet"))
-    assert len(files) == -(-_N_SHELLS // shells_per_file)  # ceil(N / k)
+    if shells_per_file == 0:
+        assert out.is_file()  # a single file, not a directory
+        chunks = [Catalog.from_parquet(str(out)).field[0]]
+    else:
+        files = sorted(out.glob("shell_*.parquet"))
+        assert len(files) == -(-_N_SHELLS // shells_per_file)  # exactly ceil(N / k) files
+        chunks = [Catalog.from_parquet(str(f)).field[0] for f in files]
 
-    chunks = [Catalog.from_parquet(str(f)).field[0] for f in files]
     # A 1-shell chunk reloads collapsed to (npix,); a multi-shell chunk stays (k, npix).
     arrays = [c.array if c.array.ndim == 2 else c.array[None] for c in chunks]
     got_arr = np.concatenate([np.asarray(a) for a in arrays], axis=0)
     assert got_arr.shape == ref_arr.shape
-    np.testing.assert_array_equal(got_arr, ref_arr)  # identical HF round-trip -> bit-exact
+    np.testing.assert_allclose(got_arr, ref_arr, rtol=1e-5, atol=1e-6)
 
     for attr in ("z_sources", "scale_factors", "comoving_centers", "density_width"):
-        np.testing.assert_array_equal(
+        np.testing.assert_allclose(
             _concat_meta(chunks, attr),
-            np.atleast_1d(np.asarray(getattr(ref, attr))),
+            np.atleast_1d(np.asarray(getattr(field, attr))),
+            rtol=1e-5,
+            atol=1e-6,
             err_msg=f"{attr} mismatch",
         )
-
-
-def test_save_result_single_file_when_flag_unset(tmp_path, batched_lightcone):
-    """``shells_per_file=0`` keeps the legacy single-file behavior (one parquet, one entry)."""
-    field, cosmo = batched_lightcone
-    out_file = tmp_path / "single.parquet"
-    args = Namespace(output=str(out_file), name=None, shells_per_file=0)
-
-    _save_result(field, cosmo, args)
-
-    assert out_file.is_file()  # a file, not a directory
-    reloaded = Catalog.from_parquet(str(out_file)).field[0]
-    assert reloaded.array.shape == field.array.shape
-    # float32 tolerance: HF's NumpyFormatter downcasts float64->float32 on read.
-    np.testing.assert_allclose(np.asarray(reloaded.array), np.asarray(field.array), rtol=1e-5, atol=1e-6)
 
 
 def test_shells_per_file_argparse_wiring():

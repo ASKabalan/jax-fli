@@ -16,7 +16,7 @@ from ..io import Catalog
 if TYPE_CHECKING:
     from ..probabilistic_models.config import Configurations
 
-__all__ = ["sample2catalog"]
+__all__ = ["sample2catalog", "colour_ic"]
 
 
 def _append_metrics_row(metrics: dict, batch_id: int, base_path: str) -> None:
@@ -52,6 +52,31 @@ def default_save(samples, path, batch_id, metrics=None):
     base_path = os.path.dirname(path)
     _append_metrics_row(metrics, batch_id, base_path)
     np.savez(os.path.join(path, f"samples_batch_{batch_id}.npz"), **samples)
+
+
+def colour_ic(config: Configurations):
+    """Build a per-sample ``post_process`` that colours the white ``initial_conditions`` field.
+
+    Mirrors :func:`sample2catalog`: a ``config``-closing factory. The returned transform is passed as
+    the ``post_process`` argument of :func:`~jax_fli.infer.batched_sampling` (applied once per sample
+    inside the sampling scan); it recolours the white ``initial_conditions`` to the physical density
+    field with the sample's own ``cosmo`` via :func:`~jax_fli.initial.interpolate_initial_conditions`.
+    """
+    from ..initial import interpolate_initial_conditions
+
+    def recolour(sample: dict) -> dict:
+        return {
+            **sample,
+            "initial_conditions": interpolate_initial_conditions(
+                sample["initial_conditions"],
+                config.mesh_size,
+                config.box_size,
+                cosmo=sample["cosmo"],
+                field_sharding=config.field_sharding,
+            ).array,
+        }
+
+    return recolour
 
 
 #

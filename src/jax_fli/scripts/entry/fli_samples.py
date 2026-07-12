@@ -58,8 +58,7 @@ def parser() -> argparse.ArgumentParser:
         help="Probabilistic model to sample from: 'full' or 'mock' (default: full)",
     )
 
-    # Samples-specific
-    g.add_argument("--sigma-e", type=float, default=0.26, help="Shape-noise dispersion (default: 0.26)")
+    # Samples-specific (--sigma-e now comes from the shared add_forward_model_args)
     g.add_argument("--num-samples", type=int, default=100, help="Number of prior-predictive samples (default: 100)")
     g.add_argument("--path", required=True, metavar="PATH", help="Output directory for samples and catalogs.")
     g.add_argument("--batch-id", type=int, default=0, help="Batch index written into output filenames (default: 0)")
@@ -155,6 +154,7 @@ def main() -> None:
         min_width=args.min_width,
         min_redshift=args.min_z,
         max_redshift=args.max_z,
+        quadrature=args.quadrature,
         # N-body / force / painting knobs (previously not forwarded from the CLI)
         sim_mode=args.sim_mode,
         nbody_solver=_resolve_solver_name(args.solver),
@@ -184,6 +184,16 @@ def main() -> None:
     samples = pred(rng_key)
 
     print(f"sharding {samples['initial_conditions'].array.sharding} samples with {config.field_sharding}...")
+    # Recolor the WHITE initial_conditions -> physical delta, one sample at a time (lax.map is
+    # sequential; never vmap a field-sized batch), using each sample's stored cosmology.
+    samples["initial_conditions"] = jax.lax.map(
+        lambda wc: (
+            jfli.interpolate_initial_conditions(
+                wc[0], config.mesh_size, config.box_size, cosmo=wc[1], field_sharding=config.field_sharding
+            ).array
+        ),
+        (samples["initial_conditions"].array, samples["cosmo"]),
+    )
     # --- save via sample2catalog ---
     saving_fn = jfli.infer.sample2catalog(config)
     saving_fn(samples, args.path, args.batch_id)

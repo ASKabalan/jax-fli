@@ -63,15 +63,17 @@ def _make_solver(solver_name, target):
 
 
 # ---------------------------------------------------------------------------
-# Gradient sharding tests
+# Gradient sharding tests (density only — the spherical/flat/born gradients get the same
+# sharding/finite/non-zero checks folded into their value-equivalence tests below; density has no
+# value-equivalence test, so it keeps a dedicated sharding check here).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.distributed
-@pytest.mark.parametrize("target", ["density", "spherical", "flat"])
+@pytest.mark.parametrize("target", ["density"])
 @pytest.mark.parametrize("pdims", _PDIMS)
 def test_distributed_lpt_gradient_sharding(single_device_ics, cosmo, target, pdims):
-    """LPT gradient has correct sharding and is finite/non-zero."""
+    """LPT density gradient has correct sharding and is finite/non-zero."""
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     painting = jfli.PaintingOptions(target=target, paint_nside=PAINT_NSIDE)
 
@@ -100,11 +102,11 @@ def test_distributed_lpt_gradient_sharding(single_device_ics, cosmo, target, pdi
 
 
 @pytest.mark.distributed
-@pytest.mark.parametrize("target", ["density", "spherical", "flat"])
+@pytest.mark.parametrize("target", ["density"])
 @pytest.mark.parametrize("solver_name", ["KKD", "DKD", "BullFrog"])
 @pytest.mark.parametrize("pdims", _PDIMS)
 def test_distributed_nbody_gradient_sharding(single_device_ics, cosmo, solver_name, target, pdims):
-    """N-body gradient has correct sharding and is finite/non-zero."""
+    """N-body density gradient has correct sharding and is finite/non-zero."""
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     solver = _make_solver(solver_name, target)
 
@@ -138,40 +140,6 @@ def test_distributed_nbody_gradient_sharding(single_device_ics, cosmo, solver_na
 
 
 @pytest.mark.distributed
-@pytest.mark.parametrize("pdims", _PDIMS)
-def test_distributed_born_gradient_sharding(single_device_ics, cosmo, pdims):
-    """Born lensing gradient has correct sharding and is finite/non-zero."""
-    sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
-    solver = _make_solver("KKD", "spherical")
-
-    @jax.jit
-    def forward(ic_array):
-        ic = sharded_ics.replace(array=ic_array)
-        dx, p = jfli.lpt(cosmo, ic, ts=T0, order=1)
-        lc = jfli.nbody(
-            cosmo,
-            dx,
-            p,
-            solver=solver,
-            nb_shells=NB_SHELLS,
-            adjoint="checkpointed",
-            shell_spacing="growth",
-            min_width=1.0,
-        )
-        kappa = jfli.born(cosmo, lc, nz_shear=Z_SOURCE_BORN)
-        return jnp.sum(kappa.array**2)
-
-    grads = jax.grad(forward)(sharded_ics.array)
-
-    assert grads.sharding.is_equivalent_to(sharding, ndim=3), (
-        f"Gradient sharding {grads.sharding} doesn't match input sharding {sharding}"
-    )
-    assert jnp.all(jnp.isfinite(grads)), "Gradients contain non-finite values"
-    assert float(jnp.linalg.norm(grads)) > 0, "Gradients are all zero"
-    print(f"Born gradient pdims={pdims}: OK, norm={float(jnp.linalg.norm(grads)):.6f}")
-
-
-@pytest.mark.distributed
 @pytest.mark.parametrize("target", ["spherical", "flat"])
 @pytest.mark.parametrize("pdims", _PDIMS)
 def test_distributed_lpt_gradient_equivalence(single_device_ics, cosmo, target, pdims):
@@ -197,6 +165,12 @@ def test_distributed_lpt_gradient_equivalence(single_device_ics, cosmo, target, 
     # Multi-device gradient
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     grad_multi = jax.grad(forward)(sharded_ics)
+    # (folds in the old sharding test) the multi-device gradient is correctly sharded, finite, non-zero
+    assert grad_multi.array.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grad_multi.array.sharding} doesn't match input sharding {sharding}"
+    )
+    assert jnp.all(jnp.isfinite(grad_multi.array)), "Gradients contain non-finite values"
+    assert float(jnp.linalg.norm(grad_multi.array)) > 0, "Gradients are all zero"
     gathered_grad = process_allgather(grad_multi, tiled=True)
 
     tols = dict(
@@ -242,6 +216,12 @@ def test_distributed_nbody_gradient_equivalence(single_device_ics, cosmo, solver
     # Multi-device gradient
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     grad_multi = jax.grad(forward)(sharded_ics)
+    # (folds in the old sharding test) the multi-device gradient is correctly sharded, finite, non-zero
+    assert grad_multi.array.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grad_multi.array.sharding} doesn't match input sharding {sharding}"
+    )
+    assert jnp.all(jnp.isfinite(grad_multi.array)), "Gradients contain non-finite values"
+    assert float(jnp.linalg.norm(grad_multi.array)) > 0, "Gradients are all zero"
     gathered_grad = process_allgather(grad_multi, tiled=True)
 
     tols = dict(
@@ -286,6 +266,12 @@ def test_distributed_born_gradient_equivalence(single_device_ics, cosmo, pdims):
     # Multi-device gradient
     sharded_ics, mesh, sharding = make_sharded_ics(single_device_ics, pdims)
     grad_multi = jax.grad(forward)(sharded_ics)
+    # (folds in the old sharding test) the multi-device gradient is correctly sharded, finite, non-zero
+    assert grad_multi.array.sharding.is_equivalent_to(sharding, ndim=3), (
+        f"Gradient sharding {grad_multi.array.sharding} doesn't match input sharding {sharding}"
+    )
+    assert jnp.all(jnp.isfinite(grad_multi.array)), "Gradients contain non-finite values"
+    assert float(jnp.linalg.norm(grad_multi.array)) > 0, "Gradients are all zero"
     gathered_grad = process_allgather(grad_multi, tiled=True)
 
     compare_fields(

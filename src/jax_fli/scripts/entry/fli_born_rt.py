@@ -7,10 +7,13 @@ Reads every matched density shell — a local glob (``--input``) or a HuggingFac
 
 Replaces ``docs/5-experiments/00-cosmogrid-reference/born_kappa.py`` for the post-processing path.
 Distributed Born is supported via ``--pdim`` (the lightcone is sharded ``P("x","y")``).
+``--perf`` benchmarks the jitted Born call (``--iterations`` timed runs, JaxTimer CSV one directory
+above ``--output``) and still writes the kappa parquet.
 """
 
 from __future__ import annotations
 
+import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -30,6 +33,15 @@ def parser() -> ArgumentParser:
         description="Stack a density lightcone and post-process it with Born lensing.",
     )
     p.add_argument("--name", default=None, help="Label stored as AbstractField.name inside the output catalog")
+    p.add_argument("--perf", action="store_true", help="Benchmark: warmup + N timed iterations")
+    p.add_argument(
+        "--iterations",
+        "-i",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of timed iterations for --perf (default: 5)",
+    )
 
     add_source_args(p)
     add_lensing_postproc_args(p)
@@ -60,24 +72,76 @@ def main() -> None:
     if lead:
         print(
             f"  density {type(lightcone).__name__} {tuple(lightcone.array.shape)} nside={lightcone.nside} "
-            f"| n(z)={len(nz_shear)} bin(s), normalization={args.normalization}"
+            f"| n(z)={len(nz_shear)} bin(s), normalization={args.normalization}, quadrature={args.quadrature}"
         )
 
-    kappa = jax.block_until_ready(
-        jfli.born(
+    base = lightcone.name or f"M{lightcone.mesh_size[0]}_B{int(lightcone.box_size[0])}_N{lightcone.nside}"
+
+    if args.perf:
+        try:
+            from jax_hpc_profiler import JaxTimer
+        except ImportError:
+            print("Error: jax-hpc-profiler not found. Please install it to use --perf.", file=sys.stderr)
+            sys.exit(1)
+
+        # born's static_argnames (n_integrate, normalization, quadrature) by positional index — the
+        # timer re-jits with static_argnums, so the call below must stay positional.
+        timer = JaxTimer(save_jaxpr=False, static_argnums=(5, 6, 7))
+        born_args = (
             cosmo,
             lightcone,
             nz_shear,
-            min_z=args.min_z,
-            max_z=args.max_z,
-            n_integrate=args.n_integrate,
-            normalization=args.normalization,
+            args.min_z,
+            args.max_z,
+            args.n_integrate,
+            args.normalization,
+            args.quadrature,
         )
-    )
+        print("Compiling and running first iteration...")
+        kappa = timer.chrono_jit(jfli.born, *born_args)
+        del kappa
+        print(f"Running {args.iterations} timed iterations...")
+        for i in range(args.iterations):
+            kappa = timer.chrono_fun(jfli.born, *born_args)
+            print(f"Iteration {i + 1}/{args.iterations} completed.")
+            if i < args.iterations - 1:
+                del kappa
+
+        metadata = {
+            "precision": "float64" if jax.config.jax_enable_x64 else "float32",
+            "x": str(lightcone.nside),
+            "y": str(lightcone.array.shape[0]),  # number of shells
+            "z": str(len(nz_shear)),  # tomographic bins
+            "px": str(args.pdim[0]),
+            "py": str(args.pdim[1]),
+            "nodes": str(args.nodes),
+        }
+        extra_info = {
+            "quadrature": args.quadrature,
+            "n_integrate": str(args.n_integrate),
+            "normalization": args.normalization,
+        }
+        report_file = str(Path(args.output).parent / "perf_born.csv")
+        timer.report(report_file, function=f"born_{args.name or base}", extra_info=extra_info, **metadata)
+        print(f"Performance report saved to {report_file}")
+        # Keep the last timed result and fall through to the save below, so one --perf run yields BOTH
+        # the perf CSV and the kappa parquet.
+    else:
+        kappa = jax.block_until_ready(
+            jfli.born(
+                cosmo,
+                lightcone,
+                nz_shear,
+                min_z=args.min_z,
+                max_z=args.max_z,
+                n_integrate=args.n_integrate,
+                normalization=args.normalization,
+                quadrature=args.quadrature,
+            )
+        )
 
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
-    base = lightcone.name or f"M{lightcone.mesh_size[0]}_B{int(lightcone.box_size[0])}_N{lightcone.nside}"
     out_path = out_dir / f"BORN_{base}.parquet"
     if lead:
         _save_args_log(args, str(out_dir), "fli-born-rt")

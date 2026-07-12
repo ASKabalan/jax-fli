@@ -1,10 +1,6 @@
 # `Configurations` — forward & probabilistic model options
 
-Every option consumed by the full-field forward model
-(`make_full_field_model`) and the probabilistic model
-(`full_field_probmodel`) lives on the `Configurations` dataclass
-(`jax_fli.probabilistic_models.config`). This page lists them by section
-with their types and defaults.
+Every option consumed by the full-field forward model (`make_full_field_model`) and the probabilistic model (`full_field_probmodel`) lives on the `Configurations` dataclass (`jax_fli.probabilistic_models.config`). This page lists them by section with their types and defaults.
 
 ```python
 import jax_fli as jfli
@@ -58,10 +54,7 @@ model = jfli.ppl.full_field_probmodel(config)
 
 ## N-body solver
 
-`DoubleKickDrift` (reversible, uniform a-stepping) is the default; the
-correction kernel is fixed to `NoCorrection` (no PGD/Sharpening), the
-interpolation is `DriftInterp` when `drift_on_lightcone=True` else
-`NoInterp` (OnionTiler / TelephotoInterp are not exposed here).
+`DoubleKickDrift` (reversible, uniform a-stepping) is the default; the correction kernel is fixed to `NoCorrection` (no PGD/Sharpening), the interpolation is `DriftInterp` when `drift_on_lightcone=True` else `NoInterp` (OnionTiler / TelephotoInterp are not exposed here).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -91,8 +84,7 @@ interpolation is `DriftInterp` when `drift_on_lightcone=True` else
 
 ## Lensing & output
 
-Lensing is **born only** (`raytrace` raises). The output observable is
-selected by `lensing_output`.
+Lensing is **born only** (`raytrace` raises). The output observable is selected by `lensing_output`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -105,13 +97,8 @@ selected by `lensing_output`.
 
 Two independent masks:
 
-- **Visibility mask** — built from `observer_position` (when off-center) via
-  `jaxpm.spherical.spherical_visibility_mask`, apodized with
-  `apodization_scale_deg`, and multiplied into the observable
-  (KS-then-×apodize). Spherical geometry only.
-- **Survey mask `mask`** (e.g. DES Y3) — used **only in the likelihood**: the
-  per-pixel σ is inflated to `sigma_unobserved` where `mask == 0`, so
-  unobserved pixels do not constrain the fit (map shapes stay fixed).
+- **Visibility mask** — built from `observer_position` (when off-center) via `jaxpm.spherical.spherical_visibility_mask`, apodized with `apodization_scale_deg`, and multiplied into the observable (KS-then-×apodize). Spherical geometry only.
+- **Survey mask `mask`** (e.g. DES Y3) — used **only in the likelihood**: the per-pixel σ is inflated to `sigma_unobserved` where `mask == 0`, so unobserved pixels do not constrain the fit (map shapes stay fixed).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -137,5 +124,5 @@ Observed per-pixel σ inside the footprint is `sigma_e / sqrt(n_gal · pixel_are
 | `nuts_target_accept` | `float` | `0.8` | NUTS window-adaptation target acceptance rate. |
 | `mclmc_desired_energy_var` | `float` | `1e-3` | MCLMC desired energy variance for `L`/`step_size` tuning. |
 | `mclmc_num_tune` | `int \| None` | `None` | MCLMC tuning steps; defaults to `num_warmup`. |
-| `mclmc_init_step_size_scale` | `float` | `1e-4` | MCLMC initial step scale factor: `sqrt(total_dim) * scale`. |
+| `mclmc_init_step_size` | `float` | `1e-4` | MCLMC initial step scale factor. |
 | `mclmc_diagonal_preconditioning` | `bool` | `False` | Enable diagonal preconditioning for MCLMC. |
