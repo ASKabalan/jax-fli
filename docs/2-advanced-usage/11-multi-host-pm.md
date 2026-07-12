@@ -2,7 +2,7 @@
 
 The single-GPU notebooks scale to **multiple nodes** with no change to the physics code — only the device mesh grows. This page shows how to launch the distributed pipeline on a SLURM cluster and how to validate the resulting convergence against its Halofit theory prediction.
 
-Two runnable scripts back this page: [`11-multi-host-pm.py`](11-multi-host-pm.py) runs the distributed simulation, and [`11-multi-host-validate.py`](11-multi-host-validate.py) renders the figures below from its outputs.
+A runnable script backs this page: [`11-multi-host-pm.py`](11-multi-host-pm.py) runs the distributed simulation.
 
 ---
 

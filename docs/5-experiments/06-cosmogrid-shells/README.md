@@ -2,14 +2,14 @@
 
 ## Goal
 
-Simulate, with jax-fli's PM engine, the **same radial density shells as CosmoGrid at nside 2048** (the reference of [Experiment 00](../00-cosmogrid-reference/)) — i.e. reproduce CosmoGrid's shell `z`-edges exactly — so the per-shell density `C_ℓ` and shell-to-shell cross-correlation can be compared directly, isolating **geometry** (shell placement) from resolution and painting effects.
+Simulate, with jax-fli's PM engine, the **same radial density shells as CosmoGrid at nside 2048** (the reference of [Experiment 00](../00-cosmogrid-reference/README.md)) — i.e. reproduce CosmoGrid's shell `z`-edges exactly — so the per-shell density `C_ℓ` and shell-to-shell cross-correlation can be compared directly, isolating **geometry** (shell placement) from resolution and painting effects.
 
 How *deep* in redshift we must simulate is set by the **DES Y3** weak-lensing source bins (not the Stage-3 forecast): the box only needs to contain the structure that lenses those sources. We size a grid over two source depths × two observer placements × two device decompositions — **8 runs**:
 
 - **2-bin set** — DES Y3 bins 1+2 (shallower, `z ≲ 0.82`).
 - **3-bin set** — DES Y3 bins 1+2+3 (deeper, `z ≲ 1.06`). Bin 4 is dropped (its sources sit too far, forcing a deeper, coarser box — see below).
 - **full sky** — observer at the box centre `(0.5, 0.5, 0.5)` → an isotropic `2r` cube.
-- **big quadrant** — **exactly** the [Experiment 08](../08-masked-shear/) corner geometry: observer `(0.1, 0.5, 0.9)`, so the lightcone visibility footprint is **identical** to Exp 08's and a later masking analysis recovers the same mask. The DES footprint sits entirely inside the visible cone.
+- **big quadrant** — **exactly** the [Experiment 08](../08-masked-shear/README.md) corner geometry: observer `(0.1, 0.5, 0.9)`, so the lightcone visibility footprint is **identical** to Exp 08's and a later masking analysis recovers the same mask. The DES footprint sits entirely inside the visible cone.
 - **slab / pencil** — each of the four geometries above is run under both a **1-D slab** (`--pdim 128 1`) and a **2-D pencil** (`--pdim 32 4`) device decomposition (see §4).
 
 | dimension | values |
@@ -148,6 +148,6 @@ bash run.sh
 JAX_PLATFORMS=cpu uv run --no-sync python build.py
 ```
 
-The wall-times in `run.sh` are first-guess estimates — tune after the first run. The catalogs are then published to HuggingFace and studied locally against the CosmoGrid reference, per the [experiments lifecycle](../CLAUDE.md). `build.py` loads only the published spectra/maps from the `ASKabalan/jax-fli-experiments` dataset — no GPU and no re-simulation.
+The wall-times in `run.sh` are first-guess estimates — tune after the first run. The catalogs are then published to HuggingFace and studied locally against the CosmoGrid reference, per the experiments lifecycle. `build.py` loads only the published spectra/maps from the `ASKabalan/jax-fli-experiments` dataset — no GPU and no re-simulation.
 
 > **Gate before cluster hours.** `MODE=dryrun` only *resolves* the eight commands — it does not run the simulator. The `m2560` template validated a *cubic* mesh, nside 512, centred observer, slab decomposition; these runs add several untested axes — a **non-cubic** `1792×2944×1792` mesh, **nside-2048** spherical painting, an **off-centre** observer, and a **2-D pencil** `--pdim 32 4` decomposition. Smoke-test the plumbing locally first (a small *cubic* run, then a small *non-cubic* run, both as a slab and a pencil, at tiny mesh/nside with a handful of `ts` edges) before committing 128-GPU hours; only non-cubic painting *under multi-host sharding* can't be reproduced locally.

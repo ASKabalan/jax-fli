@@ -2,7 +2,7 @@
 
 Weak-lensing surveys observe shear only inside a survey **footprint**. Recovering shear from a convergence map with a Kaiser–Squires (KS) κ → γ transform is a non-local, full-sky operation, so applying it on a **cut sky** leaks power across the mask boundary and biases the recovered shear near the edge. This experiment quantifies that leakage on a real CosmoGrid convergence map for three footprints, and checks that the **mask-decoupled** shear `EE` spectrum still tracks the full-sky truth.
 
-The runnable script is [`08-masked-shear.py`](08-masked-shear.py); it drives the `jax-fli` package end-to-end (no inline spherical-harmonic code) and saves every figure below as SVG.
+The runnable script is [`build.py`](build.py); it drives the `jax-fli` package end-to-end (no inline spherical-harmonic code) and saves every figure below as SVG.
 
 > Float64 is mandatory here: the masked spin-2 mode-coupling (decoupling) solve is ill-conditioned in float32 and silently returns **all-NaN** spectra. The script enables `jax_enable_x64` *before* importing `jax_fli`.
 

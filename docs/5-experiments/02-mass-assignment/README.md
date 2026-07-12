@@ -17,7 +17,7 @@ The six runs (only the 3D force deposit changes):
 | 5 | PCS | off |
 | 6 | PCS | on |
 
-Fixed across all six: `--sim-mode pm`, **2048³** mesh, **2000³ Mpc/h** box, BullFrog (`bf`), `--nb-steps 50`, growth-factor time stepping (`--time-stepping D`), a **nside 2048** spherical lightcone of **10 shells** (`--shell-spacing a`) painted with **NGP** (`--scheme ngp`), `--halo-multiplier 0.5`, CosmoGrid fiducial cosmology (Ω_c 0.2589, Ω_b 0.0486, h 0.6774, σ₈ 0.8159, n_s 0.9667), `--seed 0`, **float64**. Each run is **64 GPU** (16 nodes × 4, slab `pdim 64×1`). Crucially the spherical lightcone painting stays **NGP throughout** — only the 3D force deposit varies — so any `C_ℓ` difference is the force-assignment window, not the map painting (that is [Experiment 03](../03-spherical-painting/)).
+Fixed across all six: `--sim-mode pm`, **2048³** mesh, **2000³ Mpc/h** box, BullFrog (`bf`), `--nb-steps 50`, growth-factor time stepping (`--time-stepping D`), a **nside 2048** spherical lightcone of **10 shells** (`--shell-spacing a`) painted with **NGP** (`--scheme ngp`), `--halo-multiplier 0.5`, CosmoGrid fiducial cosmology (Ω_c 0.2589, Ω_b 0.0486, h 0.6774, σ₈ 0.8159, n_s 0.9667), `--seed 0`, **float64**. Each run is **64 GPU** (16 nodes × 4, slab `pdim 64×1`). Crucially the spherical lightcone painting stays **NGP throughout** — only the 3D force deposit varies — so any `C_ℓ` difference is the force-assignment window, not the map painting (that is [Experiment 03](../03-spherical-painting/README.md)).
 
 ## Method
 
