@@ -88,8 +88,6 @@ The density census above shows the drift is decisive *per shell* — it drags th
 
 **Gauss–Legendre convergence vs Limber theory (fig13).** With the exact quadrature the Gauss–Legendre convergence climbs onto the Limber weak-lensing theory as `N` grows — by `N ≈ 25–30` all three bins sit within a few percent of theory over `ℓ ≈ 30–150` (at `N = 30`, bin 1 is essentially on theory there, bins 2–3 a percent or two above) — then rolls off at small scales on the common **PM-resolution transfer**, the ceiling any 2560³ run hits (close to the roll-off the scale-factor [05b](../05b-spacing-n-stepping-3bin/README.md) runs land on — fig14–fig18 compare the two spacings directly). The no-drift and with-drift columns now agree, since the radial projection no longer carries a quadrature bias. **Bin 1 rolls off fastest**: its low-`z` sources (`χₛ ≈ 856` Mpc/h) sit *inside* the `[0, 1160]` Mpc/h fat inner ball, so it is both the slowest to climb onto theory at coarse `N` and the most suppressed at small scales — median `C_ℓ/theory ≈ 0.74` over `ℓ ∈ [250,300]` versus `≈ 0.88` for bin 3. The Gauss–Legendre weight for that shell is still exact — but the shell's map is a single volume-average that has already erased the radial `δ` profile at paint time, so no per-shell weight can encode that the near half of the ball lenses the source while the far half does not. This is a geometry limit, not a quadrature one: equal-volume cannot fix it without changing the shelling.
 
-![Equal-volume vs scale-factor spacing (Gauss–Legendre, drift, N=12 shells; fig17)](assets/fig17-lensing-spacing.svg)
-
 ![N=10 shells (fig14)](assets/fig14-lensing-spacing-10.svg)
 
 ![N=12 shells (fig15)](assets/fig15-lensing-spacing-12.svg)
