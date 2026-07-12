@@ -90,13 +90,22 @@ The density census above shows the drift is decisive *per shell* — it drags th
 
 ![Equal-volume vs scale-factor spacing (Gauss–Legendre, drift, N=12 shells; fig17)](assets/fig17-lensing-spacing.svg)
 
-![N=20 shells (fig16)](assets/fig16-lensing-spacing.svg)
+![N=10 shells (fig14)](assets/fig14-lensing-spacing-10.svg)
 
-![N=25 shells (fig18)](assets/fig18-lensing-spacing.svg)
+![N=12 shells (fig15)](assets/fig15-lensing-spacing-12.svg)
 
-![N=30 shells (fig14)](assets/fig14-lensing-spacing.svg)
+![N=16 shells (fig16)](assets/fig16-lensing-spacing-16.svg)
 
-![N=40 shells (fig15)](assets/fig15-lensing-spacing.svg)
+![N=20 shells (fig17)](assets/fig17-lensing-spacing-20.svg)
+
+![N=25 shells (fig18)](assets/fig18-lensing-spacing-25.svg)
+
+![N=30 shells (fig19)](assets/fig19-lensing-spacing-30.svg)
+
+![N=40 shells (fig20)](assets/fig20-lensing-spacing-40.svg)
+
+
+
 
 **Equal-volume vs scale-factor spacing across shell count (fig14–fig18).** With the quadrature pinned at Gauss–Legendre (drift), the equal-volume and scale-factor ([05b](../05b-spacing-n-stepping-3bin/README.md)) Born convergence are compared for all three tomographic bins across a shell-count ladder — `N` = 12, 20, 25, 30, 40 (fig17 / fig16 / fig18 / fig14 / fig15, shown here in increasing `N`). The top panel plots the `D_ℓ ≡ ℓ(ℓ+1) C_ℓ / 2π` power — solid = equal-volume, dashed = scale-factor, dotted = the Limber weak-lensing theory (× `w_ℓ²`) — and the bottom panel the fractional residual `C_ℓ / theory − 1` for each spacing, bandpower-binned in linear bins of `nlb` = 32 multipoles. Both spacings sit on theory around `ℓ ≈ 50–100` and roll off together below it at small scales on the shared PM-resolution transfer; the solid–dashed gap per colour is the spacing difference, and it **shrinks with shell count**. At `N` = 12 the equal-volume convergence carries the largest small-scale excess over 05b (its fat inner shell and floored-thin outer shells place the projected power differently from 05b's scale-factor shells); the gap narrows steadily through `N` = 20, 25, 30, and by `N` = 40 the two spacings overlay almost perfectly — the equal-volume geometry has converged onto the scale-factor result. Bin 1 sits lowest throughout, its low-`z` sources inside the fat inner ball. 05b was only run with the midpoint quadrature, but for its thin scale-factor shells midpoint and Gauss–Legendre agree to **< 0.2%** on the total per-bin lensing weight (individual shells deviate but cancel), so its midpoint spectra stand in for Gauss–Legendre here. The headline is the contrast with the midpoint runs of fig10: with the exact quadrature the two spacings differ modestly and converge with shell count, rather than the midpoint's 2–3× — the spacing was never the large lensing problem, the quadrature was.
 
