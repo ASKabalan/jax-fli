@@ -27,7 +27,7 @@ SHELLS_SPECTRA = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside20
 N_SHELLS = 56
 NSIDE = 2048
 
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 TARGETS = [200, 300, 400, 500, 600, 700]  # convergence-point multipoles
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
@@ -38,6 +38,10 @@ spectra, cosmo = spectra_cat.field[0], spectra_cat.cosmology[0]
 LMAX = spectra.wavenumber.max()
 
 theory_cls = compute_theory_cl_for_density(cosmo, spectra, jnp.arange(LMAX + 1))
+
+# multiply by ell (ell + 1) / (2 * jnp.pi) to get the dimensionless power spectrum
+spectra = spectra * spectra.wavenumber * (spectra.wavenumber + 1) / (2 * jnp.pi)
+theory_cls = theory_cls * spectra.wavenumber * (spectra.wavenumber + 1) / (2 * jnp.pi)
 
 # The data are HEALPix nside-2048 maps, so the measured C_ell is suppressed by the pixel
 # window. Multiply the continuous-sky theory by pixwin^2 to compare like-for-like.
@@ -57,12 +61,12 @@ C_TH = "k"  # Limber theory
 # Helper Function for Plotting
 # =============================================================================
 def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
-    # Bandpower-bin BOTH data and theory with the SAME operator (mode-weighted, nlb=16),
+    # Bandpower-bin BOTH data and theory with the SAME operator (mode-weighted, nlb=32),
     # so the bins line up exactly and the ratio is well-defined at each bin's effective ell.
     data_b = shells_data.bin(nlb=NLB)
     theory_b = shells_th.bin(nlb=NLB)
     leff = data_b.wavenumber  # shared bin centers (effective multipole per bin)
-    ratio = data_b.spectra / theory_b.spectra
+    ratio = data_b.spectra / theory_b.spectra - 1.0
 
     # 2 rows, 5 columns with a 3:1 height ratio (spectra over ratio)
     fig, axes = plt.subplots(
@@ -86,22 +90,22 @@ def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
         ax_spec.plot(leff, data_b.spectra[i], color=C_DATA, ls="-", lw=1.6, label=f"CosmoGrid (binned, nlb={NLB})")
         ax_spec.set_xscale("log")
         ax_spec.set_yscale("log")
-        ax_spec.set_ylabel(r"$C_\ell$")
+        ax_spec.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
         ax_spec.grid(True, which="both", ls=":", alpha=0.4)
         ax_spec.set_title(f"Shell {start_idx + i}")
         if i == 0:
             ax_spec.legend(frameon=False)
 
         # --- Second row: binned ratio (log-x) ---
-        ax_ratio.axhspan(0.95, 1.05, color="0.7", alpha=0.3, label=r"$\pm 5\%$")
-        ax_ratio.axhline(1.0, color="0.4", ls="--", lw=1.0)
+        ax_ratio.axhspan(-0.05, 0.05, color="0.7", alpha=0.3, label=r"$\pm 5\%$")
+        ax_ratio.axhline(0.0, color="0.4", ls="--", lw=1.0)
         ax_ratio.plot(leff, ratio[i], color=C_DATA, ls="-", lw=1.6)
         ax_ratio.set_xscale("log")
-        ax_ratio.set_ylim(0.8, 1.2)
+        ax_ratio.set_ylim(-0.2, 0.2)
         ax_ratio.set_xlabel(r"multipole $\ell$")
         ax_ratio.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
-            ax_ratio.set_ylabel("data / theory")
+            ax_ratio.set_ylabel("data / theory - 1")
             ax_ratio.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
@@ -164,16 +168,16 @@ axes = axes.flatten()
 for ax, ltarget in zip(axes, TARGETS):
     lo, hi = round(0.9 * ltarget), round(1.1 * ltarget)
     ratio, cv = band_ratio(lo, hi)
-    ax.axhspan(1 - 0.05, 1 + 0.05, color="orange", alpha=0.18, lw=0, label="±5%")
-    ax.axhspan(1 - cv, 1 + cv, color="0.8", lw=0, label=f"±1σ CV ({cv:.1%})")
-    ax.axhline(1.0, color="0.4", ls="--", lw=1.0)
-    ax.plot(chi, ratio, "-", color=C_DATA, lw=1.4)
-    ax.set_title(f"ℓ ≈ {ltarget}  (band {lo}–{hi})", fontsize=11)
+    ax.axhspan(-0.05, 0.05, color="orange", alpha=0.18, lw=0, label=r"$\pm5\%$")
+    ax.axhspan(-cv, cv, color="0.8", lw=0, label=rf"$\pm1\sigma$ CV ({cv:.1%})")
+    ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
+    ax.plot(chi, ratio - 1, "-", color=C_DATA, lw=1.4)
+    ax.set_title(rf"$\ell \approx$ {ltarget}  (band {lo}–{hi})", fontsize=11)
     ax.set_xlabel(r"comoving distance $\chi$  [Mpc/$h$]")
-    ax.set_ylim(0.8, 1.2)
+    ax.set_ylim(-0.2, 0.2)
     ax.grid(alpha=0.25)
     ax.legend(loc="lower right", fontsize=8)
-axes[0].set_ylabel(r"measured / theory  ($(2\ell+1)$-weighted)")
+axes[0].set_ylabel(r"measured / theory - 1  ($(2\ell+1)$-weighted)")
 fig.tight_layout()
 savefig(ASSETS / "fig04-convergence-pixwin", fig)
 

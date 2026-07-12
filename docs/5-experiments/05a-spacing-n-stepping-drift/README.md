@@ -29,15 +29,27 @@ The runs — nine shell counts × {no drift, drift} = 18 PM sims, each Born-inte
 
 ![Per-shell density census vs Limber theory — 5 / 8 / 10 shells](assets/fig03-density-census-small.svg)
 
+**Per-shell density census — 5 / 8 / 10 shells.**
+
 ![Per-shell density census vs Limber theory — 16 shells](assets/fig04-density-census-16.svg)
+
+**Per-shell density census — 16 shells.**
 
 ![Per-shell density census vs Limber theory — 20 shells](assets/fig05-density-census-20.svg)
 
+**Per-shell density census — 20 shells.**
+
 ![Per-shell density census vs Limber theory — 25 shells](assets/fig06-density-census-25.svg)
+
+**Per-shell density census — 25 shells.**
 
 ![Per-shell density census vs Limber theory — 30 shells](assets/fig07-density-census-30.svg)
 
+**Per-shell density census — 30 shells.**
+
 ![Per-shell density census vs Limber theory — 40 shells](assets/fig08-density-census-40.svg)
+
+**Per-shell density census — 40 shells.**
 
 **Born convergence is largely insensitive to the drift.** Ratioing each shell-count run to its own 40-shell run, the drifted and undrifted lensing spectra converge to the few-percent level at much the same rate — the radial `κ` projection averages over the per-shell redshift assignment, so the density-shell improvement barely carries into the convergence. The drift helps only at the coarsest counts (at 5 shells the bias improves from `+5.4%` to `+3.3%`) and is gone once converged (the drifted and undrifted `κ` agree to `0.01%` at 40 shells). The drift is a density-field tool, not a lensing one.
 

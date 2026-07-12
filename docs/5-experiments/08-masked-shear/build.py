@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datasets import load_dataset
 from jaxpm.spherical import spherical_visibility_mask
+from s2fft_lib import _s2fft
 
 import jax_fli as jfli
 from jax_fli.io.catalog import Catalog
@@ -51,6 +52,17 @@ REPO = "ASKabalan/jax-fli-experiments"
 
 OBS_QUAD = (0.0, 0.5, 1.0)  # Case 2: observer on a box edge -> quadrant footprint
 OBS_LARGE = (0.1, 0.5, 0.9)  # Case 3: pulled slightly inside -> DES sits entirely inside the footprint
+
+kaiser_squires_method = "jax"
+GPU_AVAILABLE = jax.devices("gpu") != []
+if GPU_AVAILABLE:
+    if _s2fft.COMPILED_WITH_CUDA:
+        print("GPU available and s2fft compiled with CUDA.")
+        kaiser_squires_method = "jax_cuda"
+    else:
+        print("GPU available but s2fft not compiled with CUDA; using CPU fallback.")
+else:
+    print("No GPU available; using CPU fallback.")
 
 
 def load_kappa():
@@ -106,33 +118,45 @@ def fig_masks(masks):
     """fig01 — the three survey/visibility footprints side by side."""
     plt.figure(figsize=(13, 3.2))
     for k, (title, m) in enumerate(masks["binary"].items(), 1):
-        hp.mollview(m, sub=(1, 3, k), title=title, cbar=False)
+        hp.mollview(m, sub=(1, 3, k), title=title, cbar=False, bgcolor=(0.0,) * 4)
     savefig(ASSETS / "fig01-masks")
 
 
 def fig_observer_box(observer, fsky, title, stem):
     """A 3-D wireframe of the unit box [0,1]^3 with the observer position marked."""
-    fig = plt.figure(figsize=(4.8, 4.8))
-    ax = fig.add_subplot(111, projection="3d")
-    corners = list(itertools.product([0, 1], repeat=3))
-    for a, b in itertools.combinations(corners, 2):
-        if sum(ai != bi for ai, bi in zip(a, b)) == 1:  # cube edge: differ in exactly one coord
-            ax.plot3D(*zip(a, b), color="0.55", lw=1.0)
-    ox, oy, oz = observer
-    ax.plot([ox, ox], [oy, oy], [0, oz], color="crimson", ls=":", lw=0.9)  # drop line to the base
-    ax.scatter([ox], [oy], [oz], color="crimson", s=80, depthshade=False, zorder=6)
-    ax.text(ox, oy, oz + 0.07, f"observer\n{observer}", color="crimson", fontsize=8, ha="center")
-    ax.set(xlim=(0, 1), ylim=(0, 1), zlim=(0, 1), xlabel="x", ylabel="y", zlabel="z")
-    ax.set_box_aspect((1, 1, 1))
-    ax.view_init(elev=18, azim=-52)
-    ax.set_title(f"{title}\n$f_\\mathrm{{sky}}$ = {fsky:.3f}", fontsize=10)
-    savefig(stem, fig)
+    # Temporarily override the styling applied by set_style()
+    rc_overrides = {
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+        "xtick.minor.visible": False,
+        "ytick.minor.visible": False,
+        # Optional: Revert to standard Matplotlib sans-serif fonts to fully match the second image
+        "text.usetex": False,
+        "font.family": "sans-serif",
+    }
+
+    with plt.rc_context(rc_overrides):
+        fig = plt.figure(figsize=(4.8, 4.8))
+        ax = fig.add_subplot(111, projection="3d")
+        corners = list(itertools.product([0, 1], repeat=3))
+        for a, b in itertools.combinations(corners, 2):
+            if sum(ai != bi for ai, bi in zip(a, b)) == 1:  # cube edge: differ in exactly one coord
+                ax.plot3D(*zip(a, b), color="0.55", lw=1.0)
+        ox, oy, oz = observer
+        ax.plot([ox, ox], [oy, oy], [0, oz], color="crimson", ls=":", lw=0.9)  # drop line to the base
+        ax.scatter([ox], [oy], [oz], color="crimson", s=80, depthshade=False, zorder=6)
+        ax.text(ox, oy, oz + 0.07, f"observer\n{observer}", color="crimson", fontsize=8, ha="center")
+        ax.set(xlim=(0, 1), ylim=(0, 1), zlim=(0, 1), xlabel="x", ylabel="y", zlabel="z")
+        ax.set_box_aspect((1, 1, 1))
+        ax.view_init(elev=18, azim=-52)
+        ax.set_title(f"{title}\n$f_\\mathrm{{sky}}$ = {fsky:.3f}", fontsize=10)
+        savefig(stem, fig)
 
 
 def masked_estimate(kappa, apo_mask):
     """KS on the apodized footprint → (kappa_masked, g1_masked, g2_masked). The expensive step."""
     k_masked = kappa.replace(array=kappa.array * apo_mask)
-    g1m, g2m = np.asarray(k_masked.get_shear().array)
+    g1m, g2m = np.asarray(k_masked.get_shear(method=kaiser_squires_method).array)
     return np.asarray(k_masked.array), g1m, g2m
 
 
@@ -148,15 +172,15 @@ def panel(full, est, score_region, title, stem):
         return r
 
     rows = [
-        ("K", kap, km, res(km, kap)),
-        ("γ1", g1_full, g1m, res(g1m, g1_full)),
-        ("γ2", g2_full, g2m, res(g2m, g2_full)),
+        (r"$\kappa$", kap, km, res(km, kap)),
+        (r"$\gamma_1$", g1_full, g1m, res(g1m, g1_full)),
+        (r"$\gamma_2$", g2_full, g2m, res(g2m, g2_full)),
     ]
     plt.figure(figsize=(13, 9))
     for i, (name, full_m, masked, residual) in enumerate(rows):
         for j, (m, col) in enumerate([(full_m, "full sky"), (masked, "masked"), (residual, "residual on DES")]):
             cmap = "RdBu_r" if "residual" in col else "magma"
-            hp.mollview(m, sub=(3, 3, 3 * i + j + 1), title=f"{name} — {col}", cbar=True, cmap=cmap)
+            hp.mollview(m, sub=(3, 3, 3 * i + j + 1), title=f"{name} — {col}", cbar=True, cmap=cmap, bgcolor=(0.0,) * 4)
     plt.suptitle(title, y=1.02, fontsize=14)
     savefig(ASSETS / stem)
 
@@ -195,7 +219,7 @@ def fig_gamma1_residual_pdf(full, ests, des_binary, stem):
     ax.set(
         xlabel=r"$\gamma_1$ residual (truth $-$ recon) on DES",
         ylabel="probability density",
-        title="γ1 residual distribution on DES",
+        title=r"$\gamma_1$ residual distribution on DES",
     )
     ax.legend()
     savefig(stem, fig)
@@ -283,7 +307,7 @@ def main():
     fig_observer_box(OBS_QUAD, masks["fsky"]["quad"], f"Case 2 observer {OBS_QUAD}", ASSETS / "fig02-observer-quad")
     fig_observer_box(OBS_LARGE, masks["fsky"]["large"], f"Case 3 observer {OBS_LARGE}", ASSETS / "fig03-observer-large")
 
-    shear_full = kappa.get_shear()  # SphericalShearField, (2, npix)
+    shear_full = kappa.get_shear(method=kaiser_squires_method)  # SphericalShearField, (2, npix)
     g1_full, g2_full = np.asarray(shear_full.array)
     kap = np.asarray(kappa.array)
     full = (kap, g1_full, g2_full)

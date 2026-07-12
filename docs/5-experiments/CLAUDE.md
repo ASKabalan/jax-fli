@@ -38,6 +38,7 @@ In goal, I also want in the Goal section a table of the runs with their paramete
 - **Use a grid** and clean styling; the figure should be pleasant to look at.
 - **Legends must stand alone** — spell out every abbreviation in the legend or caption (e.g. "kdk (DoubleKickDrift)", "bf (BullFrog)"), never bare acronyms.
 - **Compare float32 *and* float64** wherever precision matters (e.g. adjoint stability): show both, so the precision dependence is explicit.
+- **No titles on figures** — a figure carries no `set_title`/`suptitle` (paper style: figures are titled by their caption, not on the canvas). Instead give every figure a short **bold title** in its README caption, on its own line directly under (or just above) the embedded image, followed by the explanatory prose. E.g. `**Born shell windows.** The exact lensing kernel …`.
 
 ## Algorithms / LaTeX
 

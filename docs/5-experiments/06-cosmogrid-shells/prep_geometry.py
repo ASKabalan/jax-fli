@@ -18,9 +18,9 @@ What it does (all on CPU):
   2. Size each box from the observer factors 1 + 2*min(f, 1-f) (cf.
      ``jax_fli.compute_box_size_from_redshift``): round 2r(z_max) up to a tidy side L; the quadrant is
      (0.6L, L, 0.6L), i.e. (1.2r, 2.0r, 1.2r) for observer (0.1, 0.5, 0.9).
-  3. Pull the published CosmoGrid nside-2048 density back from HuggingFace, **downsample every
-     shell to nside 4** (memory only — we just want the per-shell metadata), and read each
-     shell's scale factor + comoving edges.
+  3. Pull the published CosmoGrid nside-2048 density shells from HuggingFace (one parquet per shell)
+     and read each shell's scale factor + comoving edges from its metadata (the map itself is not
+     needed, so we never materialise it past the two scalars).
   4. Select the shells that fall inside each box and emit the ``--ts-near`` / ``--ts-far`` edge
      lists (CosmoGrid scale-factor edges) that reproduce them.
   5. Size the mesh + GPU layout: full sky 2048^3; quadrant packs the SAME ~2048^3 cell budget into its
@@ -39,12 +39,10 @@ import os
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import gc  # noqa: E402
-import re  # noqa: E402
 import sys  # noqa: E402
 from math import lcm  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import jax_cosmo as jc  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
@@ -64,8 +62,7 @@ from _exputils import savefig, set_style  # noqa: E402
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
-DENSITY_PREFIX = "00-cosmogrid-density"
-UD_NSIDE = 4  # downsample the nside-2048 shells to this purely to save memory (metadata only)
+DENSITY_SHELLS = "00-cosmogrid/density/cosmogrid_density_nside2048_shell_*.parquet"  # one parquet per shell
 
 # n(z) "effective end" = last z where n(z) >= THRESH_FRAC * peak. The DES Y3 bins carry a thin
 # (~0.5-1% of peak) high-z noise floor, so a 1-2% cut clips to the grid edge and inverts the bin
@@ -125,27 +122,30 @@ def nz_summary(nz_list):
 # 2. CosmoGrid shells from HuggingFace, downsampled to nside 4 -> per-shell scale factors / edges
 # --------------------------------------------------------------------------------------------------
 def load_cosmogrid_shells():
-    from datasets import get_dataset_config_names, load_dataset
+    from datasets import load_dataset
+    from huggingface_hub import snapshot_download
 
-    # Matches the single ``00-cosmogrid-density`` config (current layout, per-shell parquet files) and the
-    # older ``00-cosmogrid-density-NN`` split, whichever the dataset currently ships.
-    cfgs = sorted(n for n in get_dataset_config_names(REPO) if re.fullmatch(re.escape(DENSITY_PREFIX) + r"(-\d+)?", n))
-    if not cfgs:
-        raise RuntimeError(f"no {DENSITY_PREFIX}[-NN] configs on {REPO}")
-    print(f"[shells] loading {len(cfgs)} CosmoGrid density configs {cfgs}, ud_sample -> nside {UD_NSIDE}")
-    fields, cosmo = [], None
-    for n in cfgs:
-        cat = jfli.io.Catalog.from_dataset(load_dataset(REPO, n, split="train").with_format("numpy"))
+    # One parquet per shell under ``00-cosmogrid/density/``. We only need each shell's comoving edges +
+    # scale factor (its metadata), so we read those two scalars per shell and free the map immediately —
+    # no downsampling, no field concatenation (each shell's field carries a distinct ``name``, which would
+    # break a tree.map concat anyway).
+    root = snapshot_download(REPO, repo_type="dataset", allow_patterns=DENSITY_SHELLS)
+    files = sorted(Path(root).glob(DENSITY_SHELLS))
+    if not files:
+        raise RuntimeError(f"no CosmoGrid density shells matched {DENSITY_SHELLS} on {REPO}")
+    print(f"[shells] reading per-shell metadata from {len(files)} CosmoGrid density shells")
+    com, width, cosmo = [], [], None
+    for fp in files:
+        cat = jfli.io.Catalog.from_dataset(
+            load_dataset("parquet", data_files=str(fp), split="train").with_format("numpy")
+        )
         f = cat.field[0]
-        fields.append(f.ud_sample(UD_NSIDE))  # keep only the tiny nside-4 map; the big array is freed below
+        com.append(float(np.asarray(f.comoving_centers).ravel()[0]))
+        width.append(float(np.asarray(f.density_width).ravel()[0]))
         cosmo = cosmo or cat.cosmology[0]
-        print(f"   {n}: {tuple(f.array.shape)} {f.array.dtype} nside={f.nside} -> nside {UD_NSIDE}")
         del cat, f
         gc.collect()
-    full = jax.tree.map(lambda *a: jnp.concatenate(a, axis=0), *fields) if len(fields) > 1 else fields[0]
-
-    com = np.asarray(full.comoving_centers)
-    width = np.asarray(full.density_width)
+    com, width = np.array(com), np.array(width)
     near, far = com - width / 2.0, com + width / 2.0
     order = np.argsort(com)  # ascending comoving distance
     com, near, far = com[order], near[order], far[order]

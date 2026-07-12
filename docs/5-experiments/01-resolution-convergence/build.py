@@ -6,7 +6,7 @@ two pencil re-runs (precomputed ``spectra_m*_pencils.parquet``), and the density
 (``m*.parquet`` / ``m*_pencils.parquet``). Each shell's measured C_ell is compared to the
 analytic Limber number-counts theory (``jax_fli.compute_theory_cl_for_density``), put on the
 same HEALPix pixel-window footing (× pixwin²(512)). Spectra are bandpower-binned with
-``.bin(nlb=16)``.
+``.bin(nlb=32)``.
 
 Figures (-> ``assets/``):
   fig01 / fig02   per-shell binned C_ell vs theory + ratio, first / last five shells, all 5 slabs.
@@ -61,7 +61,7 @@ PX = {512: 4, 1024: 8, 2048: 64, 2560: 128, 3072: 256}  # x-decomposition (GPUs)
 HALO = {m: 0.5 * BOX / PX[m] for m in MESHES}  # physical ghost-zone width = halo_multiplier*box/px
 COLORS = {m: c for m, c in zip(MESHES, cm.viridis(np.linspace(0.0, 0.9, len(MESHES))))}
 MESH_STYLES = ["-", "--", "-.", ":", "-"]  # per-mesh line style (no markers); fig01/fig02 only
-NLB = 16  # multipoles per bandpower bin
+NLB = 32  # multipoles per bandpower bin
 BAND = (270, 330)  # CV-clean convergence window (the [30,300] band is cosmic-variance dominated)
 LPLOT = 2 * NSIDE  # trust boundary: beyond ell = 2*nside the maps are pixel-noise/aliasing dominated
 
@@ -207,13 +207,15 @@ def _sigma_displacement(z):
 # =============================================================================
 def plot_spectra_batch(shell_idxs, title, stem):
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
+    dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
+    dl = leff * (leff + 1) / (2 * np.pi)
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
         ax_r = axes[1, col]
-        # top: continuous theory (×pixwin²) + the five binned slab spectra
-        ax_s.plot(ell_full[2:], theory_pw_arr[sh][2:], color="k", ls="--", lw=1.3, zorder=5)
+        # top: continuous theory (×pixwin²) + the five binned slab spectra, as D_ell = l(l+1)C_l/2pi
+        ax_s.plot(ell_full[2:], (dl_full * theory_pw_arr[sh])[2:], color="k", ls="--", lw=1.3, zorder=5)
         for mi, m in enumerate(MESHES):
-            ax_s.plot(leff, np.asarray(meas_b[m].array)[sh], color=COLORS[m], ls=MESH_STYLES[mi], lw=1.5, zorder=4)
+            ax_s.plot(leff, dl * np.asarray(meas_b[m].array)[sh], color=COLORS[m], ls=MESH_STYLES[mi], lw=1.5, zorder=4)
         ax_s.axvline(LPLOT, color="0.6", ls=":", lw=0.9)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
@@ -221,14 +223,14 @@ def plot_spectra_batch(shell_idxs, title, stem):
         ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        # bottom (3:1): binned measured / binned theory per resolution
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        # bottom (3:1): binned measured / binned theory - 1 per resolution
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
         for mi, m in enumerate(MESHES):
             ax_r.plot(
                 leff,
-                np.asarray(meas_b[m].array)[sh] / np.asarray(theory_b.array)[sh],
+                np.asarray(meas_b[m].array)[sh] / np.asarray(theory_b.array)[sh] - 1.0,
                 color=COLORS[m],
                 ls=MESH_STYLES[mi],
                 lw=1.3,
@@ -236,11 +238,11 @@ def plot_spectra_batch(shell_idxs, title, stem):
         ax_r.axvline(LPLOT, color="0.6", ls=":", lw=0.9)
         ax_r.set_xscale("log")
         ax_r.set_xlim(max(2.0, leff.min() * 0.8), LPLOT * 1.07)
-        ax_r.set_ylim(0.4, 1.4)
+        ax_r.set_ylim(-0.6, 0.4)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / theory")
+            ax_r.set_ylabel("meas / theory - 1")
     handles = [
         Line2D([], [], color=COLORS[m], ls=MESH_STYLES[mi], lw=1.6, label=f"m{m} (px={PX[m]})")
         for mi, m in enumerate(MESHES)
@@ -269,19 +271,20 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     xs = np.arange(len(MESHES))
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(15.8, 5.4))
 
-    # left: measured/theory over the CV-clean band, per outer shell, vs resolution
-    axL.axhspan(0.95, 1.05, color="0.82", lw=0, label=r"±5%")
-    axL.axhline(1.0, color="0.4", ls="--", lw=1.0)
+    # left: measured/theory - 1 over the CV-clean band, per outer shell, vs resolution
+    axL.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"$\pm5\%$")
+    axL.axhline(0.0, color="0.4", ls="--", lw=1.0)
     for i in kept:
-        axL.plot(xs, [ratios[m][i] for m in MESHES], "o-", color=cmap(norm(chi_shells[i])), lw=1.8, alpha=0.95, ms=4)
+        axL.plot(
+            xs, [ratios[m][i] - 1.0 for m in MESHES], "o-", color=cmap(norm(chi_shells[i])), lw=1.8, alpha=0.95, ms=4
+        )
     sm = cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=axL, pad=0.02)
     cbar.set_label(r"comoving distance $\chi$  [Mpc/$h$]")
     axL.set_xticks(xs)
     axL.set_xticklabels(labels)
-    axL.set_ylabel(rf"measured / theory  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
-    axL.set_title("Intermediate-ℓ agreement vs resolution (outer shells, χ ≥ 450 Mpc/h)")
+    axL.set_ylabel(rf"measured / theory - 1  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
     axL.grid(alpha=0.25)
     axL.legend(loc="lower left", fontsize=9)
     for ax_, ay, atext, acolor in annotations:
@@ -295,7 +298,7 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
         color="firebrick",
         alpha=0.13,
         lw=0,
-        label=f"rms particle displacement\n({s_lo:.1f}–{s_hi:.1f} Mpc/h)",
+        label=f"rms particle displacement\n({s_lo:.1f}--{s_hi:.1f} Mpc/h)",
     )
     for m in MESHES:
         ok = halo_map[m] > s_hi
@@ -320,7 +323,6 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     axR.set_xticks(xs)
     axR.set_xticklabels(labels)
     axR.set_ylabel(r"physical halo (ghost zone)  [Mpc/h]")
-    axR.set_title("Halo vs the displacement scale")
     axR.grid(alpha=0.25, which="both")
     axR.legend(loc="upper right", fontsize=9)
     fig.tight_layout()
@@ -334,7 +336,7 @@ def fig03_convergence():
         [f"m{m}\npx={PX[m]}" for m in MESHES],
         "Anti-convergence of the over-fine runs, and its cause: a starved distributed-PM ghost zone",
         "fig03-convergence",
-        [(1.5, 1.02, "converged", "green"), (3.5, 0.80, "power lost\n(finer → worse)", "firebrick")],
+        [(1.5, 0.02, "converged", "green"), (3.5, -0.20, "power lost\n(finer $\\rightarrow$ worse)", "firebrick")],
     )
 
 
@@ -349,7 +351,7 @@ def fig06_convergence_pencil():
         labels,
         "Pencil decomposition restores convergence: the larger ghost zone recovers the lost small-scale power",
         "fig06-convergence-pencil",
-        [(1.5, 1.02, "converged", "green"), (3.5, 1.02, "recovered\n(pencil halo)", "green")],
+        [(1.5, 0.02, "converged", "green"), (3.5, 0.02, "recovered\n(pencil halo)", "green")],
     )
 
 
@@ -361,15 +363,29 @@ def plot_slab_pencil(m, stem):
     r_slab, _ = band_ratio(ell_full, raw_s[m], theory_pw_arr, lo, hi)
     r_pencil, _ = band_ratio(ell_full, spectra_pencil[m], theory_pw_arr, lo, hi)
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
-    ax.axhspan(0.95, 1.05, color="0.82", lw=0, label=r"±5%")
-    ax.axhline(1.0, color="0.4", ls="--", lw=1.0)
-    ax.plot(chi_shells, r_slab, "o-", color="firebrick", lw=1.6, ms=5, label=f"slab — starved halo {HALO[m]:.1f} Mpc/h")
+    ax.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"$\pm5\%$")
+    ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
     ax.plot(
-        chi_shells, r_pencil, "o-", color="tab:blue", lw=1.6, ms=5, label=f"pencil — halo {PENCIL_HALO[m]:.1f} Mpc/h"
+        chi_shells,
+        r_slab - 1.0,
+        "o-",
+        color="firebrick",
+        lw=1.6,
+        ms=5,
+        label=f"slab -- starved halo {HALO[m]:.1f} Mpc/h",
+    )
+    ax.plot(
+        chi_shells,
+        r_pencil - 1.0,
+        "o-",
+        color="tab:blue",
+        lw=1.6,
+        ms=5,
+        label=f"pencil -- halo {PENCIL_HALO[m]:.1f} Mpc/h",
     )
     ax.set_xlabel(r"comoving distance $\chi$  [Mpc/$h$]")
-    ax.set_ylabel(rf"measured / theory  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
-    ax.set_ylim(0.4, 1.1)
+    ax.set_ylabel(rf"measured / theory - 1  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
+    ax.set_ylim(-0.6, 0.1)
     ax.grid(alpha=0.25)
     ax.legend(loc="lower left", fontsize=10)
     fig.tight_layout()

@@ -45,7 +45,7 @@ Per-shell `C_ℓ` for the four painting schemes against the pixel-window-matched
 ![Native nside 2048: schemes vs theory, shells 0–4](assets/fig03-schemes-native2048-shells-0-4.svg)
 ![Native nside 2048: schemes vs theory, shells 5–9](assets/fig04-schemes-native2048-shells-5-9.svg)
 
-The schemes separate exactly by sharpness. **NGP and RBF-0.8px overlie** and hold the most small-scale power, tracking theory furthest into high `ℓ`; **bilinear and RBF-1.5px smooth more**, peeling below theory earlier. The key reading is the NGP / RBF-0.8px coincidence: the **sub-pixel RBF reproduces NGP's spectrum** — and it does so *differentiably*. The effect is the same at both native resolutions, sharper at nside 2048 where the pixel scale is finer.
+**Four painting schemes vs theory, both native nsides.** The schemes separate exactly by sharpness. **NGP and RBF-0.8px overlie** and hold the most small-scale power, tracking theory furthest into high `ℓ`; **bilinear and RBF-1.5px smooth more**, peeling below theory earlier. The key reading is the NGP / RBF-0.8px coincidence: the **sub-pixel RBF reproduces NGP's spectrum** — and it does so *differentiably*. The effect is the same at both native resolutions, sharper at nside 2048 where the pixel scale is finer.
 
 ### Pixel window: paint fine, then down-grade
 
@@ -54,7 +54,7 @@ Undoing the HEALPix pixel window by *deconvolution* would amplify near-pixel noi
 ![paint@2048 vs paint@2048→ud_grade→1024 vs theory](assets/fig05-udsample-vs-native2048.svg)
 ![native nside 1024 vs paint@2048→ud_grade→1024 vs theory](assets/fig06-udsample-vs-native1024.svg)
 
-Painting fine and down-grading retains the small-scale power that native-1024 painting loses to its coarser pixel window — recovering it through resolution rather than a noise-amplifying deconvolution. (The crude 4-pixel `ud_grade` average is not an `alm` resample, so it slightly *over*-shoots at the highest `ℓ` — retained-plus-aliased power — which is the expected diagnostic framing.)
+**Paint-fine-then-downgrade vs native, near and far shells.** Painting fine and down-grading retains the small-scale power that native-1024 painting loses to its coarser pixel window — recovering it through resolution rather than a noise-amplifying deconvolution. (The crude 4-pixel `ud_grade` average is not an `alm` resample, so it slightly *over*-shoots at the highest `ℓ` — retained-plus-aliased power — which is the expected diagnostic framing.)
 
 ### NGP vs sub-pixel RBF, both resolutions
 
@@ -62,7 +62,7 @@ The headline coincidence, isolated — NGP vs RBF-0.8px at native nside 1024 and
 
 ![NGP vs RBF-0.8px, native 1024 vs 2048, shells 5–9](assets/fig07-nside-compare-ngp-rbf08-shells-5-9.svg)
 
-The NGP and RBF-0.8px spectra **track each other at both nsides**, across the whole band. That is the result: at sub-pixel width and high nside the differentiable RBF kernel is, for the spectrum, indistinguishable from NGP — so the production lightcone can be painted **differentiably with no loss of small-scale power**, with a controlled smoothing that direct NGP binning cannot provide.
+**NGP vs sub-pixel RBF at both nsides.** The NGP and RBF-0.8px spectra **track each other at both nsides**, across the whole band. That is the result: at sub-pixel width and high nside the differentiable RBF kernel is, for the spectrum, indistinguishable from NGP — so the production lightcone can be painted **differentiably with no loss of small-scale power**, with a controlled smoothing that direct NGP binning cannot provide.
 
 ## How to run
 

@@ -1,4 +1,4 @@
-"""Experiment 05c — equal-volume shells (density-shell C_ell): figures.
+"""Experiment 05c — equal-volume shells (density-shell C_ell + Born lensing): figures.
 
 Renders the SVG figures for ``docs/5-experiments/05c-spacing-n-stepping-equal-vol/README.md``. Equal-volume
 shell spacing gives every shell the same comoving volume: the innermost shell is a *fat ball* and the outer
@@ -13,22 +13,25 @@ crosses the lightcone) buys the most.
   fig03   per-shell density C_ell census vs Limber theory for the 5- / 8- / 10-shell runs (drift + no-drift,
           one subplot per shell: a log-log C_ell panel over a ratio-to-theory strip).
   fig04-fig08  the same census for the 16- / 20- / 25- / 30- / 40-shell runs.
-  fig09   Born convergence C_ell per tomographic bin (Stage-3 [:3]) vs the number of shells, drift vs no-drift,
-          each ratioed to its own 40-shell run (three source-bin row-pairs x no-drift / with-drift columns).
-  fig10   the same Born convergence ratioed to the Limber weak-lensing theory instead of the 40-shell run.
-  fig11   the 20-shell convergence against the CosmoGrid Born reference (thin shells, same born() code, its own
-          cosmology) — each measurement ratioed to the Limber theory at its own cosmology.
-  fig12   the diagnosis: measured kappa_N/kappa_40 vs the pure-Limber shell-quadrature prediction sum K_i^2 C^ii.
+  fig09   Born shell windows on the 10-shell geometry: the exact lensing kernel with each shell drawn as a box
+          whose area is its Born weight under midpoint vs Gauss-Legendre, equal-volume (5c) vs scale-factor (5b)
+          at z_s=1.2 — the midpoint box overshoots the fat inner shell.
+  fig10   Born convergence C_ell per tomographic bin (Stage-3 [:3]) vs the number of shells, ratioed to the own
+          40-shell run — midpoint quadrature (three source-bin row-pairs x no-drift / with-drift columns).
+  fig11   the same, composite-Simpson quadrature.
+  fig12   the same, Gauss-Legendre (exact-kernel) quadrature.
+  fig13   the Gauss-Legendre convergence ratioed to the Limber weak-lensing theory (the residual PM roll-off).
+  fig14-fig18  equal-volume vs scale-factor (05b) spacing at Gauss-Legendre (drift), all bins overlaid: the
+          D_ell power + the C_ell/theory-1 residual (nlb=32), at N = 30 / 40 / 20 / 12 / 25 shells.
 
-Every 05c run is published for both drift and no-drift up to 40 shells, so the census and the convergence cover
-both. The equal-volume convergence is strongly biased at coarse-to-moderate shell counts even though every
-per-shell density C_ell is fine. The cause (fig12) is NOT a bug in born() — born is verified to equal the
-kernel-weighted sum of its input shells to <= 4% — but the shell-discretization of the lensing integral itself:
-one midpoint kernel weight x one volume-averaged map per shell is a bad quadrature when the kernel varies
-strongly across a shell, and equal-volume spacing makes the inner shells (where the low-z lensing kernel lives)
-as fat as possible. The same sum fed with per-shell LIMBER theory reproduces the excess (1.4-1.7x at N=8-30,
-~1 at N=40) with no simulation input. The drift removes the shells' frozen-epoch error (~20%, the census story)
-but cannot fix the quadrature, which is structural to the shelling.
+Every 05c run is published for both drift and no-drift up to 40 shells. Equal-volume spacing is excellent for
+per-shell density statistics but its fat inner shell breaks the *midpoint* Born quadrature: one midpoint kernel
+weight x one volume-averaged map per shell is a bad rule when the lensing kernel varies strongly across a shell,
+and equal-volume makes the inner shells (where the low-z kernel lives) as fat as possible, so the coarse-N
+midpoint convergence overshoots badly (fig09/fig10). Integrating the kernel across each shell with composite
+Simpson or Gauss-Legendre removes the overshoot (fig11/fig12); the Gauss-Legendre runs then follow the
+PM-resolution roll-off, close to the scale-factor 05b runs (fig13-fig18). The drift removes the shells'
+frozen-epoch error (~20%, the census story), a separate effect from the quadrature.
 
 Run from the repo root (CPU is fine; fig01 runs a small sim, fig02 sums nside-2048 maps):
     JAX_PLATFORMS=cpu uv run --no-sync python docs/5-experiments/05c-spacing-n-stepping-equal-vol/build.py
@@ -58,6 +61,7 @@ from matplotlib.lines import Line2D
 import jax_fli as jfli
 from jax_fli import compute_theory_cl, compute_theory_cl_for_density
 from jax_fli.io import Catalog, get_stage3_nz_shear
+from jax_fli.lensing import plot_born_windows
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -68,8 +72,8 @@ REPO = "ASKabalan/jax-fli-experiments"
 
 LMAX = 1500  # the published spectra stop at ell 1500
 BOX, MESH = 5000.0, 2560.0  # per-shell PM-Nyquist line ell_max ~ pi*chi/dx, dx = box/mesh (equal-volume box)
-CENSUS_RATIO_YLIM = (0.7, 1.35)  # ratio-to-theory strip range (wide enough for the fat inner shell)
-NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # Born-convergence shell-count sweep (fig09/fig10)
+CENSUS_RATIO_YLIM = (-0.3, 0.35)  # ratio-to-theory strip range, centered on 0 (wide enough for the fat inner shell)
+NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # Born-convergence shell-count sweep (fig10-fig13)
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
 
@@ -138,7 +142,6 @@ drift_20, nodrift_20 = drift_20_cat.field[0], nodrift_20_cat.field[0]
 drift_25, nodrift_25 = drift_25_cat.field[0], nodrift_25_cat.field[0]
 drift_30, nodrift_30 = drift_30_cat.field[0], nodrift_30_cat.field[0]
 drift_40, nodrift_40 = drift_40_cat.field[0], nodrift_40_cat.field[0]
-ell_full = np.asarray(nodrift_10.wavenumber)
 
 # Equal-volume shell edges (near, far) from the spectra metadata. NOTE: reconstruct them from the stored
 # density_width (comoving_centers ± width/2) — the centre-reflection helper jax_fli.utils.edges assumes
@@ -150,131 +153,405 @@ chi30 = np.asarray(nodrift_30.comoving_centers)
 w30 = np.asarray(nodrift_30.density_width)
 chi40 = np.asarray(nodrift_40.comoving_centers)
 
+# 05b (scale-factor) 10-shell shell edges — for fig09's side-by-side window comparison against equal-volume.
+DENSITY_5B_10 = "05-spacing-n-stepping/05b-3bins/density_spectra/spectra_exp5b_nodrift_10.parquet"
+density_5b_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{DENSITY_5B_10}", split="train"))
+chi_5b = np.asarray(density_5b_10_cat.field[0].comoving_centers)
+w_5b = np.asarray(density_5b_10_cat.field[0].density_width)
+
 # Born-convergence (kappa) spectra: 3-bin tomographic (Stage-3 [:3]) auto C_ell per shell count, drift and
-# no-drift. Each parquet holds a (3, n_ell) array — one scalar auto spectrum per source bin. Feeds fig09/fig10.
-KAPPA_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_5.parquet"
-KAPPA_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_8.parquet"
-KAPPA_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_10.parquet"
-KAPPA_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_12.parquet"
-KAPPA_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_16.parquet"
-KAPPA_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_20.parquet"
-KAPPA_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_25.parquet"
-KAPPA_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_30.parquet"
-KAPPA_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_drift_40.parquet"
+# no-drift, under three quadrature schemes — midpoint (legacy), Simpson, and Gauss-Legendre (exact, the
+# reference). Each parquet holds a PowerSpectrum of (3, n_ell) — one auto spectrum per source bin. Feeds
+# fig10/fig11/fig12 (per quadrature, ratioed to each quadrature's own 40-shell run) and fig13 (GL vs theory).
 
-KAPPA_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_5.parquet"
-KAPPA_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_8.parquet"
-KAPPA_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_10.parquet"
-KAPPA_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_12.parquet"
-KAPPA_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_16.parquet"
-KAPPA_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_20.parquet"
-KAPPA_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_25.parquet"
-KAPPA_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_30.parquet"
-KAPPA_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_born_nodrift_40.parquet"
+# ---- midpoint quadrature ----
+KAPPA_MID_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_5.parquet"
+KAPPA_MID_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_8.parquet"
+KAPPA_MID_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_10.parquet"
+KAPPA_MID_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_12.parquet"
+KAPPA_MID_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_16.parquet"
+KAPPA_MID_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_20.parquet"
+KAPPA_MID_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_25.parquet"
+KAPPA_MID_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_30.parquet"
+KAPPA_MID_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_drift_40.parquet"
+KAPPA_MID_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_5.parquet"
+KAPPA_MID_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_8.parquet"
+KAPPA_MID_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_10.parquet"
+KAPPA_MID_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_12.parquet"
+KAPPA_MID_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_16.parquet"
+KAPPA_MID_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_20.parquet"
+KAPPA_MID_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_25.parquet"
+KAPPA_MID_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_30.parquet"
+KAPPA_MID_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_midpoint/spectra_midpoint_nodrift_40.parquet"
 
-kappa_drift_5_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_5}", split="train"))
-kappa_drift_8_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_8}", split="train"))
-kappa_drift_10_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_10}", split="train"))
-kappa_drift_12_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_12}", split="train"))
-kappa_drift_16_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_16}", split="train"))
-kappa_drift_20_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_20}", split="train"))
-kappa_drift_25_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_25}", split="train"))
-kappa_drift_30_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_30}", split="train"))
-kappa_drift_40_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{KAPPA_DRIFT_40}", split="train"))
+# ---- composite Simpson quadrature ----
+KAPPA_SIMP_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_5.parquet"
+KAPPA_SIMP_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_8.parquet"
+KAPPA_SIMP_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_10.parquet"
+KAPPA_SIMP_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_12.parquet"
+KAPPA_SIMP_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_16.parquet"
+KAPPA_SIMP_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_20.parquet"
+KAPPA_SIMP_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_25.parquet"
+KAPPA_SIMP_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_30.parquet"
+KAPPA_SIMP_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_drift_40.parquet"
+KAPPA_SIMP_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_5.parquet"
+KAPPA_SIMP_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_8.parquet"
+KAPPA_SIMP_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_10.parquet"
+KAPPA_SIMP_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_12.parquet"
+KAPPA_SIMP_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_16.parquet"
+KAPPA_SIMP_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_20.parquet"
+KAPPA_SIMP_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_25.parquet"
+KAPPA_SIMP_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_30.parquet"
+KAPPA_SIMP_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_simpson/spectra_simpson_nodrift_40.parquet"
 
-kappa_nodrift_5_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_5}", split="train")
-)
-kappa_nodrift_8_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_8}", split="train")
-)
-kappa_nodrift_10_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_10}", split="train")
-)
-kappa_nodrift_12_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_12}", split="train")
-)
-kappa_nodrift_16_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_16}", split="train")
-)
-kappa_nodrift_20_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_20}", split="train")
-)
-kappa_nodrift_25_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_25}", split="train")
-)
-kappa_nodrift_30_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_30}", split="train")
-)
-kappa_nodrift_40_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{KAPPA_NODRIFT_40}", split="train")
-)
+# ---- Gauss-Legendre quadrature (exact kernel; the reference) ----
+KAPPA_GL_DRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_5.parquet"
+KAPPA_GL_DRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_8.parquet"
+KAPPA_GL_DRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_10.parquet"
+KAPPA_GL_DRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_12.parquet"
+KAPPA_GL_DRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_16.parquet"
+KAPPA_GL_DRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_20.parquet"
+KAPPA_GL_DRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_25.parquet"
+KAPPA_GL_DRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_30.parquet"
+KAPPA_GL_DRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_drift_40.parquet"
+KAPPA_GL_NODRIFT_5 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_5.parquet"
+KAPPA_GL_NODRIFT_8 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_8.parquet"
+KAPPA_GL_NODRIFT_10 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_10.parquet"
+KAPPA_GL_NODRIFT_12 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_12.parquet"
+KAPPA_GL_NODRIFT_16 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_16.parquet"
+KAPPA_GL_NODRIFT_20 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_20.parquet"
+KAPPA_GL_NODRIFT_25 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_25.parquet"
+KAPPA_GL_NODRIFT_30 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_30.parquet"
+KAPPA_GL_NODRIFT_40 = "05-spacing-n-stepping/05c-equal-volume/spectra_gauss_legendre/spectra_gl_nodrift_40.parquet"
 
-for _c in (kappa_drift_5_cat, kappa_drift_40_cat, kappa_nodrift_5_cat, kappa_nodrift_40_cat):
+# ---- scale-factor spacing (05b) at N=12,20,25,30,40 for the spacing comparison (fig14-fig18). 05b was only
+# run with the midpoint quadrature, but its thin scale-factor shells make the midpoint/GL quadrature difference
+# < ~0.2% on the total per-bin lensing weight (see fig09), so 05b midpoint stands in for 05b GL here. ----
+KAPPA_5B_DRIFT_10 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_10.parquet"
+KAPPA_5B_DRIFT_16 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_16.parquet"
+KAPPA_5B_DRIFT_12 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_12.parquet"
+KAPPA_5B_DRIFT_20 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_20.parquet"
+KAPPA_5B_DRIFT_25 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_25.parquet"
+KAPPA_5B_DRIFT_30 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_30.parquet"
+KAPPA_5B_DRIFT_40 = "05-spacing-n-stepping/05b-3bins/kappa_spectra/spectra_born_drift_40.parquet"
+
+# fmt: off  (one HF spectra file per line — kept single-line so the loaded files are glanceable)
+# midpoint
+kappa_mid_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_5}", split="train")
+)
+kappa_mid_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_8}", split="train")
+)
+kappa_mid_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_10}", split="train")
+)
+kappa_mid_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_12}", split="train")
+)
+kappa_mid_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_16}", split="train")
+)
+kappa_mid_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_20}", split="train")
+)
+kappa_mid_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_25}", split="train")
+)
+kappa_mid_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_30}", split="train")
+)
+kappa_mid_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_DRIFT_40}", split="train")
+)
+kappa_mid_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_5}", split="train")
+)
+kappa_mid_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_8}", split="train")
+)
+kappa_mid_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_10}", split="train")
+)
+kappa_mid_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_12}", split="train")
+)
+kappa_mid_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_16}", split="train")
+)
+kappa_mid_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_20}", split="train")
+)
+kappa_mid_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_25}", split="train")
+)
+kappa_mid_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_30}", split="train")
+)
+kappa_mid_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_MID_NODRIFT_40}", split="train")
+)
+# Simpson
+kappa_simp_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_5}", split="train")
+)
+kappa_simp_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_8}", split="train")
+)
+kappa_simp_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_10}", split="train")
+)
+kappa_simp_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_12}", split="train")
+)
+kappa_simp_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_16}", split="train")
+)
+kappa_simp_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_20}", split="train")
+)
+kappa_simp_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_25}", split="train")
+)
+kappa_simp_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_30}", split="train")
+)
+kappa_simp_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_DRIFT_40}", split="train")
+)
+kappa_simp_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_5}", split="train")
+)
+kappa_simp_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_8}", split="train")
+)
+kappa_simp_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_10}", split="train")
+)
+kappa_simp_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_12}", split="train")
+)
+kappa_simp_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_16}", split="train")
+)
+kappa_simp_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_20}", split="train")
+)
+kappa_simp_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_25}", split="train")
+)
+kappa_simp_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_30}", split="train")
+)
+kappa_simp_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_SIMP_NODRIFT_40}", split="train")
+)
+# Gauss-Legendre
+kappa_gl_drift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_5}", split="train")
+)
+kappa_gl_drift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_8}", split="train")
+)
+kappa_gl_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_10}", split="train")
+)
+kappa_gl_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_12}", split="train")
+)
+kappa_gl_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_16}", split="train")
+)
+kappa_gl_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_20}", split="train")
+)
+kappa_gl_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_25}", split="train")
+)
+kappa_gl_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_30}", split="train")
+)
+kappa_gl_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_DRIFT_40}", split="train")
+)
+kappa_gl_nodrift_5_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_5}", split="train")
+)
+kappa_gl_nodrift_8_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_8}", split="train")
+)
+kappa_gl_nodrift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_10}", split="train")
+)
+kappa_gl_nodrift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_12}", split="train")
+)
+kappa_gl_nodrift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_16}", split="train")
+)
+kappa_gl_nodrift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_20}", split="train")
+)
+kappa_gl_nodrift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_25}", split="train")
+)
+kappa_gl_nodrift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_30}", split="train")
+)
+kappa_gl_nodrift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_GL_NODRIFT_40}", split="train")
+)
+# scale-factor spacing (05b), midpoint
+kappa_5b_drift_10_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_10}", split="train")
+)
+kappa_5b_drift_12_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_12}", split="train")
+)
+kappa_5b_drift_16_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_16}", split="train")
+)
+kappa_5b_drift_20_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_20}", split="train")
+)
+kappa_5b_drift_25_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_25}", split="train")
+)
+kappa_5b_drift_30_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_30}", split="train")
+)
+kappa_5b_drift_40_cat = Catalog.from_dataset(
+    load_dataset("parquet", data_files=f"{root}/{KAPPA_5B_DRIFT_40}", split="train")
+)
+# fmt: on
+
+for _c in (
+    kappa_mid_drift_5_cat,
+    kappa_mid_nodrift_40_cat,
+    kappa_simp_drift_10_cat,
+    kappa_simp_nodrift_20_cat,
+    kappa_gl_drift_5_cat,
+    kappa_gl_nodrift_40_cat,
+    kappa_5b_drift_20_cat,
+):
     assert np.isclose(float(_c.cosmology[0].Omega_c), float(cosmo.Omega_c))
     assert np.isclose(float(_c.cosmology[0].sigma8), float(cosmo.sigma8))
 
-# External reference for fig11: Born convergence on the CosmoGrid density shells (~70-100 Mpc/h thin shells,
-# full N-body, nside 2048), computed with the SAME jax_fli born(). NOTE: this sim is at a DIFFERENT cosmology
-# (sigma8=0.90, h=0.73) than the 05c runs — fig11 therefore ratios each measurement to the Limber theory at
-# its OWN cosmology instead of ratioing the two measurements directly.
-COSMOGRID_KAPPA = "00-cosmogrid/kappa_spectra/spectra_kappa_born_s3.parquet"
-
-cosmogrid_kappa_cat = Catalog.from_dataset(
-    load_dataset("parquet", data_files=f"{root}/{COSMOGRID_KAPPA}", split="train")
-)
-cosmo_cg = cosmogrid_kappa_cat.cosmology[0]  # deliberately NOT asserted equal to `cosmo` (different sim)
-kappa_cosmogrid = np.asarray(cosmogrid_kappa_cat.field[0].array)[:3]  # first 3 of the 4 Stage-3 bins
-
-# kappa C_ell keyed by shell count; each entry is (3, n_ell) — one auto spectrum per tomographic bin.
-kappa_drift = {
-    n: np.asarray(c.field[0].array)
+# kappa C_ell keyed by shell count; each entry is a PowerSpectrum of (3, n_ell) — one auto spectrum per bin.
+# One dict per (quadrature, drift) so fig10/fig11/fig12 can ratio each quadrature to its OWN 40-shell run.
+kappa_mid_dr = {
+    n: c.field[0]
     for n, c in zip(
         NSHELLS_KAPPA,
         [
-            kappa_drift_5_cat,
-            kappa_drift_8_cat,
-            kappa_drift_10_cat,
-            kappa_drift_12_cat,
-            kappa_drift_16_cat,
-            kappa_drift_20_cat,
-            kappa_drift_25_cat,
-            kappa_drift_30_cat,
-            kappa_drift_40_cat,
+            kappa_mid_drift_5_cat,
+            kappa_mid_drift_8_cat,
+            kappa_mid_drift_10_cat,
+            kappa_mid_drift_12_cat,
+            kappa_mid_drift_16_cat,
+            kappa_mid_drift_20_cat,
+            kappa_mid_drift_25_cat,
+            kappa_mid_drift_30_cat,
+            kappa_mid_drift_40_cat,
         ],
     )
 }
-kappa_nodrift = {
-    n: np.asarray(c.field[0].array)
+kappa_mid_no = {
+    n: c.field[0]
     for n, c in zip(
         NSHELLS_KAPPA,
         [
-            kappa_nodrift_5_cat,
-            kappa_nodrift_8_cat,
-            kappa_nodrift_10_cat,
-            kappa_nodrift_12_cat,
-            kappa_nodrift_16_cat,
-            kappa_nodrift_20_cat,
-            kappa_nodrift_25_cat,
-            kappa_nodrift_30_cat,
-            kappa_nodrift_40_cat,
+            kappa_mid_nodrift_5_cat,
+            kappa_mid_nodrift_8_cat,
+            kappa_mid_nodrift_10_cat,
+            kappa_mid_nodrift_12_cat,
+            kappa_mid_nodrift_16_cat,
+            kappa_mid_nodrift_20_cat,
+            kappa_mid_nodrift_25_cat,
+            kappa_mid_nodrift_30_cat,
+            kappa_mid_nodrift_40_cat,
+        ],
+    )
+}
+kappa_simp_dr = {
+    n: c.field[0]
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_simp_drift_5_cat,
+            kappa_simp_drift_8_cat,
+            kappa_simp_drift_10_cat,
+            kappa_simp_drift_12_cat,
+            kappa_simp_drift_16_cat,
+            kappa_simp_drift_20_cat,
+            kappa_simp_drift_25_cat,
+            kappa_simp_drift_30_cat,
+            kappa_simp_drift_40_cat,
+        ],
+    )
+}
+kappa_simp_no = {
+    n: c.field[0]
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_simp_nodrift_5_cat,
+            kappa_simp_nodrift_8_cat,
+            kappa_simp_nodrift_10_cat,
+            kappa_simp_nodrift_12_cat,
+            kappa_simp_nodrift_16_cat,
+            kappa_simp_nodrift_20_cat,
+            kappa_simp_nodrift_25_cat,
+            kappa_simp_nodrift_30_cat,
+            kappa_simp_nodrift_40_cat,
+        ],
+    )
+}
+kappa_gl_dr = {
+    n: c.field[0]
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_gl_drift_5_cat,
+            kappa_gl_drift_8_cat,
+            kappa_gl_drift_10_cat,
+            kappa_gl_drift_12_cat,
+            kappa_gl_drift_16_cat,
+            kappa_gl_drift_20_cat,
+            kappa_gl_drift_25_cat,
+            kappa_gl_drift_30_cat,
+            kappa_gl_drift_40_cat,
+        ],
+    )
+}
+kappa_gl_no = {
+    n: c.field[0]
+    for n, c in zip(
+        NSHELLS_KAPPA,
+        [
+            kappa_gl_nodrift_5_cat,
+            kappa_gl_nodrift_8_cat,
+            kappa_gl_nodrift_10_cat,
+            kappa_gl_nodrift_12_cat,
+            kappa_gl_nodrift_16_cat,
+            kappa_gl_nodrift_20_cat,
+            kappa_gl_nodrift_25_cat,
+            kappa_gl_nodrift_30_cat,
+            kappa_gl_nodrift_40_cat,
         ],
     )
 }
 
-
-def _logbin(ell, y, nb=20):
-    """Geometric-mean bandpower binning of a 1-D C_ell for clean log-log curves and ratios."""
-    m = ell >= 2
-    e, yy = ell[m], np.asarray(y)[m]
-    edges = np.unique(np.round(np.logspace(np.log10(2), np.log10(e.max()), nb)).astype(int))
-    bc, bv = [], []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        s = (e >= lo) & (e < hi)
-        if s.any():
-            bc.append(np.sqrt(lo * hi))
-            bv.append(np.nanmean(yy[s]))
-    return np.asarray(bc), np.asarray(bv)
+# scale-factor spacing (05b), midpoint, drift only (fig14-fig18 spacing comparison).
+kappa_5b_dr = {
+    10: kappa_5b_drift_10_cat.field[0],
+    12: kappa_5b_drift_12_cat.field[0],
+    16: kappa_5b_drift_16_cat.field[0],
+    20: kappa_5b_drift_20_cat.field[0],
+    25: kappa_5b_drift_25_cat.field[0],
+    30: kappa_5b_drift_30_cat.field[0],
+    40: kappa_5b_drift_40_cat.field[0],
+}
 
 
 # =============================================================================
@@ -360,8 +637,8 @@ COLUMNS = [
 
 def _region_cl(run_dir, indices, lo, hi):
     """Sum whole nside-2048 shells `indices` of run `run_dir` into one [lo, hi] slab in COUNTS (per-pixel
-    volume cancels on conversion), then overdensity -> angular_cl. Used for both the 10-shell measurement
-    and the 40-shell continuous-lightcone reference."""
+    volume cancels on conversion), then overdensity -> angular_cl. Returns the PowerSpectrum (bin it at plot
+    time). Used for both the 10-shell measurement and the 40-shell continuous-lightcone reference."""
     files = [f"{root}/05-spacing-n-stepping/05c-equal-volume/density/{run_dir}/shell_{i:04d}.parquet" for i in indices]
     maps = [Catalog.from_dataset(load_dataset("parquet", data_files=f, split="train")).field[0] for f in files]
     counts = sum(np.asarray(m.to(jfli.DensityUnit.COUNTS).array) for m in maps)
@@ -374,8 +651,7 @@ def _region_cl(run_dir, indices, lo, hi):
             density_width=jnp.asarray(hi - lo),
         )
     )
-    ps = slab.to(jfli.DensityUnit.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX)
-    return np.asarray(ps.array).reshape(-1)
+    return slab.to(jfli.DensityUnit.OVERDENSITY).angular_cl(method="healpy", lmax=LMAX)
 
 
 def fig02_density_shells():
@@ -383,16 +659,22 @@ def fig02_density_shells():
     for col, (label, sh) in enumerate(COLUMNS):
         lo, hi = float(edges10[0, sh[0]]), float(edges10[1, sh[-1]])
         members40 = np.where((chi40 >= lo) & (chi40 <= hi))[0]  # whole 40-shells whose centre is inside the region
-        ref = _region_cl("exp5c_nodrift_40", members40, lo, hi)
-        no = _region_cl("exp5c_nodrift_10", sh, lo, hi)
-        dr = _region_cl("exp5c_drift_10", sh, lo, hi)
-        bc, ref_b = _logbin(ell_full, ref)
-        _, no_b = _logbin(ell_full, no)
-        _, dr_b = _logbin(ell_full, dr)
+        # These region C_ell are computed here (not loaded precomputed): each near/mid/far slab is the
+        # angular_cl of WHOLE nside-2048 shells summed in counts -> overdensity (see _region_cl). No
+        # precomputed region-slab spectrum exists, and it cannot be rebuilt from the per-shell spectra loaded
+        # above -- C_ell of summed maps != sum of per-shell C_ell (the inter-shell cross-power matters).
+        ref_b_ps = _region_cl("exp5c_nodrift_40", members40, lo, hi).bin(nlb=32, lmin=2)
+        no_b_ps = _region_cl("exp5c_nodrift_10", sh, lo, hi).bin(nlb=32, lmin=2)
+        dr_b_ps = _region_cl("exp5c_drift_10", sh, lo, hi).bin(nlb=32, lmin=2)
+        bc = np.asarray(ref_b_ps.wavenumber)
+        dl = bc * (bc + 1) / (2 * np.pi)
+        ref_b = np.asarray(ref_b_ps.array).reshape(-1)
+        no_b = np.asarray(no_b_ps.array).reshape(-1)
+        dr_b = np.asarray(dr_b_ps.array).reshape(-1)
         ax_s, ax_r = axes[0, col], axes[1, col]
-        ax_s.loglog(bc, ref_b, color="k", lw=1.6, label="40-shell reference")
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
+        ax_s.loglog(bc, dl * ref_b, color="k", lw=1.6, label="40-shell reference")
+        ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
+        ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
         ax_s.set_title(rf"{label} region:  $\chi \in [{lo:.0f},\,{hi:.0f}]$ Mpc/h", fontsize=11)
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         # quantify the frozen-epoch bias each run carries vs the reference (largest for the fat inner region)
@@ -410,16 +692,16 @@ def fig02_density_shells():
             family="monospace",
         )
         if col == 0:
-            ax_s.set_ylabel(r"$C_\ell$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
-        ax_r.semilogx(bc, no_b / ref_b, color="tab:red", lw=1.4)
-        ax_r.semilogx(bc, dr_b / ref_b, color="tab:blue", lw=1.4)
-        ax_r.set_ylim(0.95, 1.05)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
+        ax_r.semilogx(bc, no_b / ref_b - 1.0, color="tab:red", lw=1.4)
+        ax_r.semilogx(bc, dr_b / ref_b - 1.0, color="tab:blue", lw=1.4)
+        ax_r.set_ylim(-0.05, 0.05)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
-            ax_r.set_ylabel("meas / 40-shell")
+            ax_r.set_ylabel("meas / 40-shell - 1")
     handles = [
         Line2D([], [], color="k", lw=1.8, label="40-shell reference (continuous lightcone)"),
         Line2D([], [], color="tab:red", lw=1.6, label="10-shell, no drift"),
@@ -440,11 +722,16 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
     strip. Theory is the comoving-volume Limber number-counts prediction x pixwin^2(nside=2048); drift and
     no-drift share the shell geometry, so it is computed once from the no-drift run. The shot noise in the
     measurement (absent from theory) lifts the ratio at high ell, so read the red<->blue gap (shared shot
-    noise cancels between the two runs) as the drift's frozen-epoch correction, not the distance from 1."""
+    noise cancels between the two runs) as the drift's frozen-epoch correction, not the distance from 0."""
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    theory = np.asarray((compute_theory_cl_for_density(cosmo, spec_no, jnp.arange(LMAX + 1)) * pw2).array)
-    no = np.asarray(spec_no.array)
-    dr = np.asarray(spec_dr.array)
+    theory_b = (compute_theory_cl_for_density(cosmo, spec_no, jnp.arange(LMAX + 1)) * pw2).bin(nlb=32, lmin=2)
+    no_b_all = spec_no.bin(nlb=32, lmin=2)
+    dr_b_all = spec_dr.bin(nlb=32, lmin=2)
+    bc = np.asarray(no_b_all.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    theory = np.asarray(theory_b.array)
+    no = np.asarray(no_b_all.array)
+    dr = np.asarray(dr_b_all.array)
     chi = np.asarray(spec_no.comoving_centers)
     dx = BOX / MESH
     gs = container.add_gridspec(
@@ -462,16 +749,14 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         r, c = divmod(i, ncols)
         ax_s = container.add_subplot(gs[2 * r, c])
         ax_r = container.add_subplot(gs[2 * r + 1, c], sharex=ax_s)
-        bc, th_b = _logbin(ell_full, theory[i])
-        _, no_b = _logbin(ell_full, no[i])
-        _, dr_b = _logbin(ell_full, dr[i])
-        ax_s.loglog(bc, th_b, "k--", lw=1.0)
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.0)
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.0)
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.8)
-        ax_r.semilogx(bc, no_b / th_b, color="tab:red", lw=1.0)
-        ax_r.semilogx(bc, dr_b / th_b, color="tab:blue", lw=1.0)
+        th_b, no_b, dr_b = theory[i], no[i], dr[i]
+        ax_s.loglog(bc, dl * th_b, "k--", lw=1.0)
+        ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.0)
+        ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.0)
+        ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+        ax_r.axhline(0.0, color="0.4", ls="--", lw=0.8)
+        ax_r.semilogx(bc, no_b / th_b - 1.0, color="tab:red", lw=1.0)
+        ax_r.semilogx(bc, dr_b / th_b - 1.0, color="tab:blue", lw=1.0)
         ax_r.set_ylim(*CENSUS_RATIO_YLIM)
         lmax_sh = np.pi * chi[i] / dx  # PM Nyquist; beyond it the comparison is resolution-limited
         for ax in (ax_s, ax_r):
@@ -481,8 +766,8 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=8)
         ax_s.tick_params(labelbottom=False)
         if c == 0:
-            ax_s.set_ylabel(r"$C_\ell$", fontsize=8)
-            ax_r.set_ylabel("meas/th", fontsize=7)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=8)
+            ax_r.set_ylabel("meas/th - 1", fontsize=7)
         if r == nrows - 1:
             ax_r.set_xlabel(r"$\ell$", fontsize=8)
 
@@ -504,11 +789,8 @@ def fig03_density_census_small():
     subs = fig.subfigures(4, 1, height_ratios=[0.18, 1, 2, 2], hspace=0.05)
     _census_legend(subs[0], loc="center")  # dedicated legend strip on top
     _draw_census(subs[1], nodrift_5, drift_5, 1, 5, top=0.82, bottom=0.14)
-    subs[1].suptitle("5 shells", fontsize=12)
     _draw_census(subs[2], nodrift_8, drift_8, 2, 4, top=0.88, bottom=0.09)
-    subs[2].suptitle("8 shells", fontsize=12)
     _draw_census(subs[3], nodrift_10, drift_10, 2, 5, top=0.88, bottom=0.09)
-    subs[3].suptitle("10 shells", fontsize=12)
     savefig(ASSETS / "fig03-density-census-small", fig)
 
 
@@ -521,53 +803,88 @@ def density_census(spec_no, spec_dr, nrows, ncols, stem):
 
 
 # =============================================================================
-# fig09 — Born convergence C_ell per tomographic bin vs the number of shells (ratio to each 40-shell run)
+# fig09 — Born shell windows: midpoint vs Gauss-Legendre on the equal-volume (5c) and scale-factor (5b) geometry
 # =============================================================================
-def fig09_lensing():
-    """Per source bin, the Born convergence C_ell for every shell count ratioed to its own 40-shell run. Three
-    tomographic bins (Stage-3 [:3]) are stacked as row-pairs; no-drift and with-drift fill the two columns, and
-    the ratio window adapts per bin. For equal-volume spacing the low-z bin 1 (whose lensing kernel weights the
-    fat inner shell) is strongly biased and slow to reach the 40-shell run; the drift lowers the bias — compare
-    the two columns — but does not close it, so the frozen-epoch error of the fat inner shell survives the Born
-    projection here (contrast the scale-factor 05a/05b, where the projection washes the drift out)."""
+def fig09_born_windows():
+    """The Born lensing quadrature made visible, comparing the equal-volume (05c) and scale-factor (05b) 10-shell
+    geometries side by side. The black curve is the exact lensing kernel w(chi) = chi (1+z)(1 - chi/chi_s) for a
+    single source at z_s = 1.2; the grey area under it is the exact integral. Each shell is a box whose AREA is
+    its Born weight (box height = weight / width): colour encodes the quadrature — midpoint vs the exact
+    Gauss-Legendre integral (Simpson is identical to Gauss-Legendre for these smooth shells, so only the two
+    distinct windows are drawn) — and line style the spacing (solid = equal-volume, dashed = scale-factor). The
+    exact boxes tile the shaded kernel; the midpoint boxes (markers = kernel at each shell centre) poke far above
+    it on equal-volume's fat inner shell while scale-factor's thin shells stay close — the whole equal-volume
+    Born problem. The legend reports each scheme's summed weight and its % bias vs Gauss-Legendre; this is the
+    first of the two figures plot_born_windows() returns."""
+    # plot_born_windows labels carry Σ / % / en-dash; matplotlib snapshots text.usetex at Text creation, so build
+    # the figure with usetex OFF (the rest of the experiment runs usetex ON via set_style).
+    with plt.rc_context({"text.usetex": False}):
+        fig_w, fig_r = plot_born_windows(
+            get_stage3_nz_shear()[:3],
+            cosmo=cosmo,
+            comoving_centers={"5c": chi10, "5b": chi_5b},
+            density_width={"5c": w10, "5b": w_5b},
+            z_kernel=1.2,
+            quadrature=["midpoint", "gauss_legendre"],
+            legend_loc="outside",
+        )
+    plt.close(fig_r)  # 05c shows only the window plot; the per-bin scheme/GL ratio is the library's 2nd output
+    savefig(ASSETS / "fig09-born-windows", fig_w)
+
+
+# =============================================================================
+# fig10 / fig11 / fig12 — Born convergence C_ell per bin vs shell count, ratioed to the own 40-shell run, one
+# figure per quadrature scheme (midpoint / composite Simpson / Gauss-Legendre)
+# =============================================================================
+def lensing_vs_ref40(kappa_no, kappa_dr, stem):
+    """Per source bin, the Born convergence C_ell for every shell count ratioed to its own 40-shell run, under one
+    quadrature. Three tomographic bins (Stage-3 [:3]) are stacked as row-pairs; no-drift and with-drift fill the
+    two columns, and the ratio window adapts per bin. Under the midpoint rule the low-z bin 1 (whose kernel weights
+    the fat inner shell) overshoots its own 40-shell run and converges slowly; composite Simpson and Gauss-Legendre
+    integrate the kernel across each shell and collapse that overshoot, so the coarse runs track the 40-shell
+    reference. The drift lowers the residual (compare the two columns)."""
     counts = [n for n in NSHELLS_KAPPA if n != 40]
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
-    nbins = kappa_nodrift[40].shape[0]
+    nodrift_b = {n: kappa_no[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    drift_b = {n: kappa_dr[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    bc = np.asarray(nodrift_b[40].wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    nbins = np.asarray(nodrift_b[40].array).shape[0]
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
     for b in range(nbins):
         # data-driven ratio window shared by both columns of this source bin (bin 1 swings far more than bin 3)
         rr = []
-        for kappa in (kappa_nodrift, kappa_drift):
-            bc, ref_b = _logbin(ell_full, kappa[40][b])
+        for kb in (nodrift_b, drift_b):
+            ref_b = np.asarray(kb[40].array)[b]
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                rr.append((c_b / ref_b)[bc >= 20])
+                c_b = np.asarray(kb[n].array)[b]
+                rr.append((c_b / ref_b - 1.0)[bc >= 20])
         rr = np.concatenate(rr)
-        lo = min(0.9, max(0.4, 0.95 * float(np.nanmin(rr))))
-        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
-        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+        lo = min(-0.1, max(-0.6, 1.05 * float(np.nanmin(rr))))
+        hi = max(0.1, min(2.2, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kb) in enumerate([("no drift", nodrift_b), ("with drift", drift_b)]):
             ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
-            bc, ref_b = _logbin(ell_full, kappa[40][b])
-            ax_s.loglog(bc, ref_b, color="k", lw=1.8)
+            ref_b = np.asarray(kb[40].array)[b]
+            ax_s.loglog(bc, dl * ref_b, color="k", lw=1.8)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
             ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
-                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-            ax_r.axhspan(0.97, 1.03, color="0.7", alpha=0.3)
-            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+                ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+            ax_r.axhspan(-0.03, 0.03, color="0.7", alpha=0.3)
+            ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_r.semilogx(bc, c_b / ref_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_r.semilogx(bc, c_b / ref_b - 1.0, color=colors[n], lw=1.2)
             ax_r.set_ylim(lo, hi)  # per-bin window (bin 1 swings far more than bin 3)
             ax_r.grid(True, which="both", ls=":", alpha=0.4)
             if col == 0:
-                ax_r.set_ylabel("meas / 40 sh.")
+                ax_r.set_ylabel("meas / 40 sh. - 1")
             if b == nbins - 1:
                 ax_r.set_xlabel(r"multipole $\ell$")
             else:
@@ -579,58 +896,59 @@ def fig09_lensing():
     ]
     fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
-    savefig(ASSETS / "fig09-lensing", fig)
+    savefig(ASSETS / stem, fig)
 
 
 # =============================================================================
-# fig10 — Born convergence C_ell per tomographic bin ratioed to the Limber weak-lensing theory
+# fig13 — Gauss-Legendre Born convergence per tomographic bin ratioed to the Limber weak-lensing theory
 # =============================================================================
-def fig10_lensing_theory():
-    """fig09 re-referenced to the Limber weak-lensing theory (the same Stage-3 [:3] source bins the Born sim
-    used, x pixwin^2(2048)) instead of the 40-shell run. All counts track theory at large scales and fall below
-    at small scales as the finite PM resolution and Born projection suppress power. The per-bin ratio window
-    adapts: the equal-volume low-z bin 1 sits well above theory at coarse-to-moderate shell counts (the fat inner
-    shell), and the drift shifts it (compare the columns) without removing the offset."""
+def fig13_lensing_theory():
+    """The Gauss-Legendre (exact-kernel) Born convergence for every shell count, ratioed to the Limber
+    weak-lensing theory (the same Stage-3 [:3] source bins, x pixwin^2(2048)). With the exact quadrature the
+    midpoint overshoot of fig10 is gone: every count tracks theory at large scales and falls below at small
+    scales on the single common PM-resolution roll-off — the same ceiling the scale-factor 05b runs hit. The
+    no-drift and with-drift columns now agree, since the radial projection no longer carries a quadrature bias."""
     counts = NSHELLS_KAPPA
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.9, len(counts))))}
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    theory = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
+    theory_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
+    theory = np.asarray(theory_b.array)
+    bc = np.asarray(theory_b.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    nodrift_b = {n: kappa_gl_no[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
+    drift_b = {n: kappa_gl_dr[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
     nbins = theory.shape[0]
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
     for b in range(nbins):
-        bc, th_b = _logbin(ell_full, theory[b])
+        th_b = theory[b]
         # data-driven ratio window shared by both columns of this source bin
         rr = np.concatenate(
-            [
-                (_logbin(ell_full, kappa[n][b])[1] / th_b)[bc >= 20]
-                for kappa in (kappa_nodrift, kappa_drift)
-                for n in counts
-            ]
+            [(np.asarray(kb[n].array)[b] / th_b - 1.0)[bc >= 20] for kb in (nodrift_b, drift_b) for n in counts]
         )
-        lo = min(0.9, max(0.2, 0.95 * float(np.nanmin(rr))))
-        hi = max(1.1, min(3.2, 1.05 * float(np.nanmax(rr))))
-        for col, (label, kappa) in enumerate([("no drift", kappa_nodrift), ("with drift", kappa_drift)]):
+        lo = min(-0.1, max(-0.8, 1.05 * float(np.nanmin(rr))))
+        hi = max(0.1, min(1.0, 1.05 * float(np.nanmax(rr))))
+        for col, (label, kb) in enumerate([("no drift", nodrift_b), ("with drift", drift_b)]):
             ax_s, ax_r = axes[2 * b, col], axes[2 * b + 1, col]
-            ax_s.loglog(bc, th_b, color="k", ls="--", lw=1.8)
+            ax_s.loglog(bc, dl * th_b, color="k", ls="--", lw=1.8)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_s.loglog(bc, c_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
             ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
-                ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-            ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-            ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
+                ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+            ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
+            ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
             for n in counts:
-                _, c_b = _logbin(ell_full, kappa[n][b])
-                ax_r.semilogx(bc, c_b / th_b, color=colors[n], lw=1.2)
+                c_b = np.asarray(kb[n].array)[b]
+                ax_r.semilogx(bc, c_b / th_b - 1.0, color=colors[n], lw=1.2)
             ax_r.set_ylim(lo, hi)  # per-bin window
             ax_r.grid(True, which="both", ls=":", alpha=0.4)
             if col == 0:
-                ax_r.set_ylabel("meas / theory")
+                ax_r.set_ylabel("meas / theory - 1")
             if b == nbins - 1:
                 ax_r.set_xlabel(r"multipole $\ell$")
             else:
@@ -649,58 +967,57 @@ def fig10_lensing_theory():
     ]
     fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
-    savefig(ASSETS / "fig10-lensing-theory", fig)
+    savefig(ASSETS / "fig13-lensing-theory", fig)
 
 
 # =============================================================================
-# fig11 — 20-shell Born convergence vs the CosmoGrid Born reference (each ratioed to its OWN Limber theory)
+# fig14-fig18 — equal-volume vs scale-factor (05b) spacing at Gauss-Legendre (drift), one per shell count
 # =============================================================================
-def fig11_lensing_cosmogrid():
-    """The 20-shell drift / no-drift Born convergence against the CosmoGrid Born convergence — the external
-    reference computed with the SAME born() on CosmoGrid's ~70-100 Mpc/h thin shells (full N-body, nside 2048).
-    CosmoGrid is a different realisation at a DIFFERENT cosmology (sigma8=0.90 vs 0.816), so each measurement is
-    ratioed to the Limber weak-lensing theory at its own cosmology: identical code, different shelling — the
-    CosmoGrid curve hugs 1 while the equal-volume 20-shell runs carry the thick-shell quadrature excess."""
+def lensing_spacing(n_shells, stem):
+    """Equal-volume vs scale-factor spacing at a fixed Gauss-Legendre quadrature (drift, `n_shells` shells), with
+    all three tomographic bins overlaid (Stage-3 [:3], coloured by bin). The top panel is the D_ell power
+    ell(ell+1)/2pi C_ell — solid = equal-volume, dashed = scale-factor (05b), dotted = Limber weak-lensing theory
+    (x pixwin^2(2048)) — and the bottom panel the fractional residual C_ell/theory - 1 for each spacing. Spectra
+    are bandpower-binned in linear bins of 32 multipoles. Both spacings sit on theory around ell~50-100 and roll
+    off together below it (the PM-resolution transfer); the solid-dashed gap is the spacing difference —
+    equal-volume typically carries a ~10-25% small-scale excess (ell~500-1000) from its fat-shell geometry, and
+    bin 1 sits lowest (its low-z sources inside the fat inner ball). 05b was only run with midpoint, but for its
+    thin scale-factor shells midpoint = Gauss-Legendre to <0.2% on the total lensing weight, so its midpoint
+    spectra stand in."""
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    th_own = np.asarray((compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
-    th_cg = np.asarray((compute_theory_cl(cosmo_cg, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).array)
-    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
+    theory_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
+    theory = np.asarray(theory_b.array)
+    bc = np.asarray(theory_b.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    ev_b = np.asarray(kappa_gl_dr[n_shells].bin(nlb=32, lmin=2).array)
+    sf_b = np.asarray(kappa_5b_dr[n_shells].bin(nlb=32, lmin=2).array)
+    bincol = {0: "#4C72B0", 1: "#DD8452", 2: "#C44E52"}
+    fig, (ax_s, ax_r) = plt.subplots(2, 1, figsize=(7.4, 6.8), sharex=True, gridspec_kw={"height_ratios": [2.7, 1]})
     for b in range(3):
-        bc, cg_b = _logbin(ell_full, kappa_cosmogrid[b])
-        _, no_b = _logbin(ell_full, kappa_nodrift[20][b])
-        _, dr_b = _logbin(ell_full, kappa_drift[20][b])
-        _, tho_b = _logbin(ell_full, th_own[b])
-        _, thc_b = _logbin(ell_full, th_cg[b])
-        ax_s, ax_r = axes[0, b], axes[1, b]
-        ax_s.loglog(bc, cg_b, color="k", lw=1.6)
-        ax_s.loglog(bc, thc_b, color="k", ls=":", lw=1.1)
-        ax_s.loglog(bc, no_b, color="tab:red", lw=1.5)
-        ax_s.loglog(bc, dr_b, color="tab:blue", lw=1.5)
-        ax_s.loglog(bc, tho_b, color="0.45", ls="--", lw=1.1)
-        ax_s.set_title(f"bin {b + 1}", fontsize=11)
-        ax_s.grid(True, which="both", ls=":", alpha=0.4)
-        if b == 0:
-            ax_s.set_ylabel(r"$C_\ell^{\kappa\kappa}$")
-        ax_r.axhspan(0.95, 1.05, color="0.7", alpha=0.3)
-        ax_r.axhline(1.0, color="0.4", ls="--", lw=0.9)
-        ax_r.semilogx(bc, cg_b / thc_b, color="k", lw=1.5)
-        ax_r.semilogx(bc, no_b / tho_b, color="tab:red", lw=1.4)
-        ax_r.semilogx(bc, dr_b / tho_b, color="tab:blue", lw=1.4)
-        ax_r.set_ylim(0.3, 1.9)
-        ax_r.set_xlabel(r"multipole $\ell$")
-        ax_r.grid(True, which="both", ls=":", alpha=0.4)
-        if b == 0:
-            ax_r.set_ylabel("meas / own theory")
-    handles = [
-        Line2D([], [], color="k", lw=1.6, label="CosmoGrid Born (thin shells, N-body)"),
-        Line2D([], [], color="tab:red", lw=1.6, label="20 equal-volume shells, no drift"),
-        Line2D([], [], color="tab:blue", lw=1.6, label="20 equal-volume shells, with drift"),
-        Line2D([], [], color="0.45", ls="--", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (run cosmology)"),
-        Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (CosmoGrid cosmology)"),
+        ev, sf, th = ev_b[b], sf_b[b], theory[b]
+        ax_s.loglog(bc, dl * ev, color=bincol[b], ls="-", lw=1.6)
+        ax_s.loglog(bc, dl * sf, color=bincol[b], ls="--", lw=1.6)
+        ax_s.loglog(bc, dl * th, color=bincol[b], ls=":", lw=1.3)
+        ax_r.semilogx(bc, ev / th - 1.0, color=bincol[b], ls="-", lw=1.6)
+        ax_r.semilogx(bc, sf / th - 1.0, color=bincol[b], ls="--", lw=1.6)
+    ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+    ax_s.grid(True, which="both", ls=":", alpha=0.4)
+    ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.25)
+    ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
+    ax_r.set_ylim(-0.6, 0.15)
+    ax_r.set_xlim(15, 1300)  # below ell~15 is cosmic-variance-noisy; above ~1300 both C_ell hit the PM-resolution floor
+    ax_r.set_ylabel(r"$C_\ell\,/\,C_\ell^{\mathrm{th}} - 1$")
+    ax_r.set_xlabel(r"multipole $\ell$")
+    ax_r.grid(True, which="both", ls=":", alpha=0.4)
+    handles = [Line2D([], [], color=bincol[b], lw=2.0, label=f"bin {b + 1}") for b in range(3)]
+    handles += [
+        Line2D([], [], color="0.3", ls="-", lw=1.8, label=f"Equal-volume spacing (N={n_shells})"),
+        Line2D([], [], color="0.3", ls="--", lw=1.8, label=f"Uniform scale-factor spacing (N={n_shells})"),
+        Line2D([], [], color="0.3", ls=":", lw=1.5, label="Limber theory"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    ax_s.legend(handles=handles, loc="lower center", fontsize=8.5, ncol=2, frameon=False)
     fig.tight_layout()
-    savefig(ASSETS / "fig11-lensing-cosmogrid", fig)
+    savefig(ASSETS / stem, fig)
 
 
 def main():
@@ -713,9 +1030,18 @@ def main():
     density_census(nodrift_25, drift_25, 5, 5, "fig06-density-census-25")
     density_census(nodrift_30, drift_30, 5, 6, "fig07-density-census-30")
     density_census(nodrift_40, drift_40, 5, 8, "fig08-density-census-40")
-    fig09_lensing()
-    fig10_lensing_theory()
-    fig11_lensing_cosmogrid()
+    fig09_born_windows()
+    lensing_vs_ref40(kappa_mid_no, kappa_mid_dr, "fig10-lensing-midpoint")
+    lensing_vs_ref40(kappa_simp_no, kappa_simp_dr, "fig11-lensing-simpson")
+    lensing_vs_ref40(kappa_gl_no, kappa_gl_dr, "fig12-lensing-gauss-legendre")
+    fig13_lensing_theory()
+    lensing_spacing(10, "fig14-lensing-spacing-10")
+    lensing_spacing(12, "fig15-lensing-spacing-12")
+    lensing_spacing(16, "fig16-lensing-spacing-16")
+    lensing_spacing(20, "fig17-lensing-spacing-20")
+    lensing_spacing(25, "fig18-lensing-spacing-25")
+    lensing_spacing(30, "fig18-lensing-spacing-30")
+    lensing_spacing(40, "fig18-lensing-spacing-40")
     print(f"assets written to {ASSETS}")
 
 

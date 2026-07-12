@@ -28,13 +28,13 @@ Same drift / no-drift comparison as 05a, swept over shell count, then Born-integ
 
 ![Redshift assignment](assets/fig01-redshift-assignment.svg)
 
-A wedge of the particle cloud, coloured by assigned redshift. **Left (10 shells, no drift):** scale-factor spacing gives ten concentric bands, each frozen to a single redshift — a staircase of discontinuities across the lightcone. **Middle (10 shells, with drift):** the drift replaces the staircase with the smooth true `z(r)`, so the same ten shells now carry a continuous gradient. **Right (40 shells, no drift):** more shells refine the staircase toward the smooth gradient — reaching it by brute force needs many shells, whereas the drift already recovers it with only ten.
+**Redshift assignment under scale-factor shells (fig01).** A wedge of the particle cloud, coloured by assigned redshift. **Left (10 shells, no drift):** scale-factor spacing gives ten concentric bands, each frozen to a single redshift — a staircase of discontinuities across the lightcone. **Middle (10 shells, with drift):** the drift replaces the staircase with the smooth true `z(r)`, so the same ten shells now carry a continuous gradient. **Right (40 shells, no drift):** more shells refine the staircase toward the smooth gradient — reaching it by brute force needs many shells, whereas the drift already recovers it with only ten.
 
 ### Per-shell density power spectra
 
 ![Density C_ell](assets/fig02-density-shells.svg)
 
-Density `C_ℓ` for the near, mid and far shell: the 10-shell no-drift (red) and with-drift (blue) runs against the 40-shell continuous-lightcone reference (black), with the ratio below. Scale-factor spacing keeps every shell thin, so the frozen-epoch bias is small to begin with — the no-drift run sits only **+1.7% / +0.6% / +0.6%** above the reference (near / mid / far) — and the drift removes even that, landing within a few tenths of a percent. This is the milder, well-behaved counterpart to 05c's equal-volume spacing, where the fat inner shell drives the no-drift bias to +21%: scale-factor spacing avoids the pathology, and the drift mops up the residual.
+**Per-shell density power spectra (fig02).** Density `C_ℓ` for the near, mid and far shell: the 10-shell no-drift (red) and with-drift (blue) runs against the 40-shell continuous-lightcone reference (black), with the ratio below. Scale-factor spacing keeps every shell thin, so the frozen-epoch bias is small to begin with — the no-drift run sits only **+1.7% / +0.6% / +0.6%** above the reference (near / mid / far) — and the drift removes even that, landing within a few tenths of a percent. This is the milder, well-behaved counterpart to 05c's equal-volume spacing, where the fat inner shell drives the no-drift bias to +21%: scale-factor spacing avoids the pathology, and the drift mops up the residual.
 
 ### Per-shell density census against theory
 
@@ -42,15 +42,27 @@ Each subplot is one shell compared to the Limber number-counts prediction (`comp
 
 ![Per-shell density census vs Limber theory — 5 / 8 / 10 shells](assets/fig03-density-census-small.svg)
 
+**Per-shell density census — 5 / 8 / 10 shells (fig03).**
+
 ![Per-shell density census vs Limber theory — 16 shells](assets/fig04-density-census-16.svg)
+
+**Per-shell density census — 16 shells (fig04).**
 
 ![Per-shell density census vs Limber theory — 20 shells](assets/fig05-density-census-20.svg)
 
+**Per-shell density census — 20 shells (fig05).**
+
 ![Per-shell density census vs Limber theory — 25 shells](assets/fig06-density-census-25.svg)
+
+**Per-shell density census — 25 shells (fig06).**
 
 ![Per-shell density census vs Limber theory — 30 shells](assets/fig07-density-census-30.svg)
 
+**Per-shell density census — 30 shells (fig07).**
+
 ![Per-shell density census vs Limber theory — 40 shells](assets/fig08-density-census-40.svg)
+
+**Per-shell density census — 40 shells (fig08).**
 
 ### Born convergence against the finest run and against theory
 
@@ -58,15 +70,15 @@ Each density run is Born-integrated against the three lowest-`z` Stage-3 source 
 
 ![Born convergence vs the 40-shell run](assets/fig09-lensing.svg)
 
-Convergence `C_ℓ` per source bin, each shell count ratioed to the 40-shell run (per-bin ratio window). The **no-drift and with-drift columns nearly coincide** — at fixed shell count the drift shifts the convergence by only a few percent at the coarsest 5–8 shells and below 1% by ~16 shells, because the thin scale-factor shells carry little frozen-epoch error and the Born projection averages out what little remains. What controls convergence is the **shell count**: the 5-shell run is ~20–30% high in the low-`z` bin 1 and settles to within a few percent by ~16 shells, with the higher-`z` bins 2 and 3 already tighter. This clean behaviour is a property of the spacing: scale-factor shells stay thin where the lensing kernel varies, so the shell-Born quadrature error (diagnosed in [05c](../05c-spacing-n-stepping-equal-vol/README.md)'s fig12) is ≤ 2% for this geometry at 20 shells — whereas equal-volume's fat inner shells inflate the convergence by up to ~1.7× through the identical `born()` code.
+**Born convergence vs the 40-shell run (fig09).** Convergence `C_ℓ` per source bin, each shell count ratioed to the 40-shell run (per-bin ratio window). The **no-drift and with-drift columns nearly coincide** — at fixed shell count the drift shifts the convergence by only a few percent at the coarsest 5–8 shells and below 1% by ~16 shells, because the thin scale-factor shells carry little frozen-epoch error and the Born projection averages out what little remains. What controls convergence is the **shell count**: the 5-shell run is ~20–30% high in the low-`z` bin 1 and settles to within a few percent by ~16 shells, with the higher-`z` bins 2 and 3 already tighter. This clean behaviour is a property of the spacing: scale-factor shells stay thin where the lensing kernel varies, so the shell-Born quadrature error (diagnosed in [05c](../05c-spacing-n-stepping-equal-vol/README.md)'s fig09) is ≤ 2% for this geometry at 20 shells — whereas equal-volume's fat inner shells inflate the convergence by up to ~1.7× through the identical `born()` code.
 
 ![Born convergence vs Limber theory](assets/fig10-lensing-theory.svg)
 
-The same convergence ratioed to Limber theory (40-shell included). All shell counts track the theory at large scales and fall below it at small scales, where the finite PM resolution and the Born projection suppress power — a common deficit shared by every run, again essentially independent of the drift. The shell-count spread of fig09 rides on top of this shared resolution roll-off rather than on the theory itself.
+**Born convergence vs Limber theory (fig10).** The same convergence ratioed to Limber theory (40-shell included). All shell counts track the theory at large scales and fall below it at small scales, where the finite PM resolution and the Born projection suppress power — a common deficit shared by every run, again essentially independent of the drift. The shell-count spread of fig09 rides on top of this shared resolution roll-off rather than on the theory itself.
 
 ![Born convergence vs the CosmoGrid Born reference](assets/fig11-lensing-cosmogrid.svg)
 
-The external check: the 20-shell runs against the CosmoGrid Born convergence — the **same `born()` code** run on CosmoGrid's thin (~70–100 Mpc/h) shells, a full N-body at nside 2048 and a *different cosmology* (σ₈ = 0.90, h = 0.73), so each measurement is ratioed to the Limber theory at its **own** cosmology. The 20 scale-factor shells sit on their theory out to `ℓ ≈ 100` (the no-drift red curve is hidden under the with-drift blue one — the drift null again) and then roll off as the 2560³ PM mesh runs out of resolution, while the N-body CosmoGrid reference holds its theory to `ℓ = 1500`. No bulge anywhere: with thin shells the shell-Born integration is sound, and the only deficit is resolution.
+**Born convergence vs the CosmoGrid Born reference (fig11).** The external check: the 20-shell runs against the CosmoGrid Born convergence — the **same `born()` code** run on CosmoGrid's thin (~70–100 Mpc/h) shells, a full N-body at nside 2048 and a *different cosmology* (σ₈ = 0.90, h = 0.73), so each measurement is ratioed to the Limber theory at its **own** cosmology. The 20 scale-factor shells sit on their theory out to `ℓ ≈ 100` (the no-drift red curve is hidden under the with-drift blue one — the drift null again) and then roll off as the 2560³ PM mesh runs out of resolution, while the N-body CosmoGrid reference holds its theory to `ℓ = 1500`. No bulge anywhere: with thin shells the shell-Born integration is sound, and the only deficit is resolution.
 
 ## How to run
 
