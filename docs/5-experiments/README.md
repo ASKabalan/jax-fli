@@ -53,7 +53,10 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 - **05b — [Spacing & stepping: drift, 3-bin](05b-spacing-n-stepping-3bin/README.md)** ✅ — the deeper 5 Gpc/h, 2560³, three-source-bin tomographic counterpart of 05a (scale-factor spacing).
 
   [![Tomographic Born κ vs CosmoGrid and Limber theory, three source bins](05b-spacing-n-stepping-3bin/assets/fig11-lensing-cosmogrid.svg)](05b-spacing-n-stepping-3bin/README.md)
-- **05c — [Spacing & stepping: equal-volume, 3-bin](05c-spacing-n-stepping-equal-vol/README.md)** ⚠️ — 05b with **equal-volume** shells (the near-shell shot-noise lever) instead of scale-factor spacing.
+- **05c — [Spacing & stepping: equal-volume, 3-bin](05c-spacing-n-stepping-equal-vol/README.md)** ✅ — 05b with **equal-volume** shells (the near-shell shot-noise lever) instead of scale-factor spacing.
+
+[![Equal volume spacing (N=20 shells)](05c-spacing-n-stepping-equal-vol/assets/fig17-lensing-spacing-20.svg)](05c-spacing-n-stepping-equal-vol/README.md)
+
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ✅ — per-shell density `C_ℓ` + cross-correlation vs the CosmoGrid shells (needs the CosmoGrid shell edges).
 
   [![sim / CosmoGrid band-power ratio vs comoving distance within a ±5% band](06-cosmogrid-shells/assets/fig02-band-vs-distance.svg)](06-cosmogrid-shells/README.md)

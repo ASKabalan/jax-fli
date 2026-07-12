@@ -2,10 +2,10 @@
 
 ## Goal
 
-Validate jax-fli's Born-approximation weak lensing **end to end**: integrate the [experiment 06](../06-cosmogrid-shells/) PM density lightcones into tomographic convergence (κ) and check, statistically, that it reproduces a trusted reference — for two weak-lensing source distributions.
+Validate jax-fli's Born-approximation weak lensing **end to end**: integrate the [experiment 06](../06-cosmogrid-shells/README.md) PM density lightcones into tomographic convergence (κ) and check, statistically, that it reproduces a trusted reference — for two weak-lensing source distributions.
 
 - **Stage-3** — vs **CosmoGrid's own** convergence (`cosmogrid_sample_kappa`, the gold standard from CosmoGrid's native lensing pipeline). This is the strict end-to-end test: does *our* density → Born → κ chain reproduce *CosmoGrid's* lensing?
-- **DES Y3** — vs our **Born-on-CosmoGrid-density** κ (`kappa_born_des`). There is no native CosmoGrid DES convergence, so the Born integral of CosmoGrid's *own* published density (validated against Limber theory in [experiment 00](../00-cosmogrid-reference/)) is the reference; the comparison then isolates the **density** difference (CosmoGrid's N-body vs our PM), the Born method being identical.
+- **DES Y3** — vs our **Born-on-CosmoGrid-density** κ (`kappa_born_des`). There is no native CosmoGrid DES convergence, so the Born integral of CosmoGrid's *own* published density (validated against Limber theory in [experiment 00](../00-cosmogrid-reference/README.md)) is the reference; the comparison then isolates the **density** difference (CosmoGrid's N-body vs our PM), the Born method being identical.
 
 Both source sets are also put against **Limber weak-lensing theory**.
 

@@ -10,7 +10,7 @@ The tension is sharpness vs differentiability:
 - **Bilinear** (jax-healpy `get_interp_weights`) spreads each particle over its 4 surrounding pixels and **is differentiable** — but it **smooths** (loses high-`ℓ` power), has **no closed-form deconvolution kernel** to undo that smoothing, and its effective kernel is **position-dependent** (the bilinear weights vary with where on the sphere the particle lands).
 - **RBF-neighbour** (a Gaussian-RBF deposit on a fixed neighbour stencil — `paint_particles_spherical_rbf_neighbor` in JaxPM's `spherical.py`, on jax-healpy's `get_all_neighbours`) is differentiable **and** has a **controllable width**. Choosing a **sub-pixel** width at a **high nside** gives a `C_ℓ` essentially identical to NGP's — sharp, retaining the small-scale power — while staying smooth and differentiable, with a gentle, *controlled* smoothing NGP cannot offer.
 
-So the production choice is **RBF-neighbour at sub-pixel width**: NGP's spectrum, with NGP's only flaw (non-differentiability) removed. As in [Experiment 02](../02-mass-assignment/), undoing the **pixel** window by *deconvolution* would re-inflate small-scale noise; here we instead show that painting at a **higher nside and down-grading** recovers the window without that hazard.
+So the production choice is **RBF-neighbour at sub-pixel width**: NGP's spectrum, with NGP's only flaw (non-differentiability) removed. As in [Experiment 02](../02-mass-assignment/README.md), undoing the **pixel** window by *deconvolution* would re-inflate small-scale noise; here we instead show that painting at a **higher nside and down-grading** recovers the window without that hazard.
 
 The eight runs — four schemes, each painted natively at two resolutions:
 
