@@ -54,7 +54,10 @@ OBS_QUAD = (0.0, 0.5, 1.0)  # Case 2: observer on a box edge -> quadrant footpri
 OBS_LARGE = (0.1, 0.5, 0.9)  # Case 3: pulled slightly inside -> DES sits entirely inside the footprint
 
 kaiser_squires_method = "jax"
-GPU_AVAILABLE = jax.devices("gpu") != []
+try:
+    GPU_AVAILABLE = jax.devices("gpu") != []
+except RuntimeError:
+    GPU_AVAILABLE = False
 if GPU_AVAILABLE:
     if _s2fft.COMPILED_WITH_CUDA:
         print("GPU available and s2fft compiled with CUDA.")
