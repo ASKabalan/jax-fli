@@ -80,7 +80,8 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 - **11 — [Performance: strong & weak scaling](11-scaling/README.md)** ✅ — PM strong & weak scaling (perf + memory) on slab decompositions, in float32 *and* float64.
 
   [![PM strong-scaling wall-time, float32 vs float64](11-scaling/assets/fig01-strong-time.svg)](11-scaling/README.md)
-- **12 — [Gradient scaling](12-scaling-gradient/README.md)** ⚠️ — strong & weak scaling of the initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the former adjoint memory / checkpoint-count study.
+- **12 — [Gradient scaling](12-scaling-gradient/README.md)** ✅ — strong & weak scaling of the initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the former adjoint memory / checkpoint-count study.
+  [![PM strong-scaling wall-time, float32 vs float64](12-scaling-gradient/assets/fig01-strong-time.svg)](12-scaling-gradient/README.md)
 
 ## Field-level inference (13–14) — blocked on the inference pipeline
 
