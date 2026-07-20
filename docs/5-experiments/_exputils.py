@@ -73,10 +73,11 @@ def savefig(stem: str | os.PathLike[str], fig: Figure | None = None, *, formats=
 
     fig = fig or plt.gcf()
     if PAPER_PATH is not None:
+        stem = str(stem)
         if "assets" in stem:
-            stem = stem.split("assets")[-1]
+            stem = stem.split("assets")[-1].lstrip("/")
         stem = Path(PAPER_PATH) / stem
-        formats = "pdf,"
+        formats = ("pdf",)
 
     stem = Path(stem)
     stem.parent.mkdir(parents=True, exist_ok=True)

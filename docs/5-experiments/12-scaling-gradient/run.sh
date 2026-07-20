@@ -25,7 +25,7 @@ BOX5="5000.0 5000.0 5000.0"   # 5 Gpc/h — final-version accuracy box
 GRAD_CEIL=27000000   # 300³ cells/GPU — unified with the Exp 11 float64 ceiling
 GPUS="4 8 16 32 64 128 256 512"
 # <grad-value>:<tag> — the tag goes into --name (single _-free token so a func_name parser can split on _).
-GRADS="reverse:rev checkpointed_4:ckpt4 checkpointed_8:ckpt8 checkpointed_16:ckpt16 checkpointed_30:ckpt30"   # O(1)-memory backsolve + four shell-scan checkpoint counts (30 ≥ 20 shells ⇒ store-all)
+GRADS="reverse:rev checkpointed_4:ckpt4 checkpointed_8:ckpt8 checkpointed_16:ckpt16 checkpointed_20:ckpt20 checkpointed_30:ckpt30"   # O(1)-memory backsolve + five shell-scan checkpoint counts (both 20 and 30 are ≥ 20 shells ⇒ store-all; 20 is the boundary check)
 
 for gradspec in $GRADS; do
   IFS=: read -r grad gtag <<<"$gradspec"

@@ -7,9 +7,10 @@ Reads the ``perf_pm.csv`` produced on the cluster (profiler schema, one row per 
 variant. CPU-only — no ``jax_fli`` / GPU needed.
 
 The raw ``function`` column is a *unique* per-run string; the profiler groups lines by that column, so we
-rewrite it to the adjoint variant (``reverse`` / ``ckpt-4`` / ``ckpt-8`` / ``ckpt-16`` / ``ckpt-30``) — that
-becomes the five lines — and split the rows into a weak CSV and a strong CSV (strong g64 = 1024³/64 = 256³
-would otherwise collide with weak's local 256³). All runs are float64.
+rewrite it to the adjoint variant (``reverse`` / ``ckpt-4`` / ``ckpt-8`` / ``ckpt-16`` / ``ckpt-20`` /
+``ckpt-30``) and split the rows into a weak CSV and a strong CSV (strong g64 = 1024³/64 = 256³ would
+otherwise collide with weak's local 256³). All six variants are labelled; five are plotted (see ``VARIANTS``).
+All runs are float64.
 
     /home/wassim/Projects/NBody/jax-fli/.venv/bin/python build.py    # CPU, loads CSV from HF
 """
@@ -28,7 +29,10 @@ DATA = HERE / "data"
 REPO = "ASKabalan/jax-fli-experiments"
 CSV = "12-gradient-scaling/perf/perf_pm.csv"
 
-# five adjoint variants, in the order they should appear in the legend (memory ↔ compute trade)
+# the plotted adjoint variants, in the order they should appear in the legend (memory ↔ compute trade).
+# ckpt-20 is labelled below but deliberately not plotted: with 20 shells it compiles to the *same program*
+# as ckpt-30 (identical generated code and peak temp, to the byte), so it would exactly overplot it. It is
+# the store-all boundary check instead — see the identity table in README.md.
 VARIANTS = ["reverse", "ckpt-4", "ckpt-8", "ckpt-16", "ckpt-30"]
 
 # --- load the perf CSV from HF (only this ~5 KB file, not the multi-GB density maps) ----------------
@@ -36,11 +40,18 @@ root = snapshot_download(REPO, repo_type="dataset", allow_patterns=[CSV])
 raw = pd.read_csv(f"{root}/{CSV}", header=None)
 
 # --- normalize the series label + split weak / strong into profiler-ready CSVs ----------------------
-# function name e.g. pm30_exp12_{weak_g4|strong_M1024_g64}_{rev|ckpt4|ckpt8|ckpt16|ckpt30}_s0.
+# function name e.g. pm30_exp12_{weak_g4|strong_M1024_g64}_{rev|ckpt4|ckpt8|ckpt16|ckpt20|ckpt30}_s0.
 tokens = raw[0].str.split("_")
 kind = tokens.str[2]  # weak / strong
-label = {"rev": "reverse", "ckpt4": "ckpt-4", "ckpt8": "ckpt-8", "ckpt16": "ckpt-16", "ckpt30": "ckpt-30"}
-raw[0] = tokens.str[-2].map(label)  # the token before s0 is the variant → the five lines
+label = {
+    "rev": "reverse",
+    "ckpt4": "ckpt-4",
+    "ckpt8": "ckpt-8",
+    "ckpt16": "ckpt-16",
+    "ckpt20": "ckpt-20",
+    "ckpt30": "ckpt-30",
+}
+raw[0] = tokens.str[-2].map(label)  # the token before s0 is the variant
 DATA.mkdir(parents=True, exist_ok=True)
 WEAK = DATA / "_weak.csv"
 STRONG = DATA / "_strong.csv"
