@@ -29,7 +29,7 @@ from .fields import (
 )
 
 # From initial
-from .initial import gaussian_initial_conditions, interpolate_initial_conditions
+from .initial import gaussian_initial_conditions, interpolate_initial_conditions, resample_white_field
 
 # From lensing
 from .lensing import born, raytrace
@@ -100,6 +100,7 @@ __all__ = [
     # From initial
     "gaussian_initial_conditions",
     "interpolate_initial_conditions",
+    "resample_white_field",
     # From fields
     "AbstractField",
     "FieldMetadata",
