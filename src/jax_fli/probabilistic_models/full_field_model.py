@@ -19,10 +19,16 @@ __all__ = ["make_full_field_model", "full_field_probmodel", "mock_probmodel"]
 
 def _dispersion(config: Configurations) -> float:
     """Per-galaxy noise dispersion by observable (methods note, section 4): ``1`` for density
-    (Poisson), ``sigma_e / sqrt(2)`` for convergence, ``sigma_e`` for shear."""
+    (Poisson), ``sigma_e`` for convergence and for shear.
+
+    Kaiser-Squires is a unit-modulus phase multiplication in harmonic space, so isotropic
+    ellipticity noise stays white under it and splits into equal E/B power; convergence is
+    the E part and inherits exactly one component's worth, i.e. ``sigma_e``, not
+    ``sigma_e / sqrt(2)``.
+    """
     return {
         "density": 1.0,
-        "convergence": config.sigma_e / jnp.sqrt(2.0),
+        "convergence": config.sigma_e,
         "shear": config.sigma_e,
         "reduced_shear": config.sigma_e,
     }[config.lensing_output]
