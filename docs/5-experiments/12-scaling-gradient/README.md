@@ -1,7 +1,5 @@
 # Experiment 12 — IC-gradient: strong & weak scaling
 
-**This is WIP waiting for runs with 20 checkpoints** ⚠️
-
 **Goal.** [Experiment 09](../09-gradient-validation/README.md) established that the lightcone initial-condition gradient is **correct**; this experiment measures what it **costs at scale**. We strong- and weak-scale the IC gradient (forward + backward) under a **slab `(N, 1)`** decomposition and capture **min wall-time *and* peak per-device temporary memory** (`fli-simulate --perf`, XLA `memory_analysis`) for **five reverse-mode adjoints**, so you can read off which adjoint to pick and how large a *differentiable* simulation fits at a given GPU count. The gradient is bit-identical across all five (Exp 09) — this is a pure time↔memory trade.
 
 The five adjoint variants (`--grad`), and the fixed forward model they differentiate:
