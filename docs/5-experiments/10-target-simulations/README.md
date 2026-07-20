@@ -53,9 +53,33 @@ The cosmology is **CosmoGrid run000** (`$COSMOGRID_COSMO` from `_launch_common.s
 
 ## Results
 
-<!-- TODO: figures after the cluster runs are published to ASKabalan/jax-fli-experiments and studied in build.py. -->
+### The initial condition survives resampling exactly
 
-_Pending the cluster runs — this experiment's figures (the 1LPT / 2LPT / PM shell and C_ℓ comparison, and the production lightcone) are produced by a `build.py` from the published parquet, per the standard lifecycle._
+Before any simulation runs, the one thing worth checking is that handing the pipeline an external initial condition does not quietly change it. The figure resamples the real `832³` CosmoGrid white noise onto a `1024³` grid **in the same `900 h⁻¹Mpc` box**, so integer wavevector `n` maps to the same physical `k` on both grids and a cross-spectrum is well defined. Both fields are then coloured with the same linear `P(k)`.
+
+![832³ CosmoGrid IC vs its 1024³ spectral upsample: P(k), transfer and coherence](assets/fig01-ic-upsample-832-1024.svg)
+
+**The upsample is lossless on every mode the two grids share.** The top panel shows both coloured fields tracking the linear `P(k)` (measured/theory median `0.9991` over the well-sampled decades), with the `1024³` grid simply reaching a higher Nyquist. The middle panel is the point: over the shared modes the transfer function `T(k)` and the coherence `r(k)` sit at **1 across the whole band**. In this figure `|T − 1| ≡ 0` exactly — the measurement compares the two k-arrays directly, and the target's shared block is a bitwise copy of the source's, so the two spectra are sums over identical numbers — while `|1 − r| ≤ 9.7 × 10⁻⁸` reflects only the different `float32` arithmetic used for `|a|²` and `Re(a₁a₂*)`, as the bottom panel confirms.
+
+That is the guarantee `jax_fli.resample_white_field` is built to give — source modes copied at the same integer wavevector rather than interpolated — but note the shipped function is measured a little differently. It round-trips through an inverse FFT to return a real-space field, so re-transforming its output recovers the source's modes to `≈ 1 × 10⁻⁶` rather than bitwise: the `float32` FFT round-off floor, not an approximation in the copy. `STAGE=check` in `prep_ic_spectra.py` reports both numbers side by side.
+
+**What the upsample cannot do is invent information.** The green curve is the fraction of the `1024³` grid's modes in each shell that are inherited from CosmoGrid. It is exactly 1 out to the `832³` Nyquist (`k = 2.90 h Mpc⁻¹`), then falls through the region where the shared block is a cube inside a larger sphere — `0.46` at the `1024³` Nyquist, and 0 by the cube corner. Above the source Nyquist the field is fresh noise drawn from `--seed`; filling it is not optional, since zero-padding alone would leave the field with no small-scale power and a variance of `(832/1024)³ = 0.54`.
+
+### It runs the other way too, for validation
+
+`resample_white_field` is not upsample-only: the shared block is set by the **smaller** of the two grids, so the same code coarsens a field as exactly as it refines one. That is the direction you want for validation — a cheap `512³` run off the *same* CosmoGrid realization, rather than a different seed.
+
+![832³ CosmoGrid IC vs its 512³ spectral downsample: P(k), transfer and coherence](assets/fig02-ic-downsample-832-512.svg)
+
+**Downsampling is truncation, and it is equally exact.** Read the same way as the figure above, with the two Nyquist guides swapped: the `512³` field now stops at `k = 1.79 h Mpc⁻¹` while the source runs on to `2.90`. Over the shared modes `T(k)` and `r(k)` are again `1` — `|T − 1| ≡ 0`, `|1 − r| ≤ 9.7 × 10⁻⁸`. The coarse field inherits **99.4 %** of its modes from CosmoGrid (against 53.4 % for the `1024³` upsample, which has to invent everything above the source Nyquist); the small dip near its own Nyquist is the one structural asymmetry — a real field needs those modes self-conjugate and the source's are generic complex, so they come from the fresh draw instead.
+
+What this is **not** is a real-space block average. Averaging `2³` cells preserves variance (`0.9997`) and would leave `P(k)` looking healthy, but it aliases high-`k` power back down and decorrelates the modes it appears to keep: measured against the source, its shared-block departure is `3.89` on `O(1)` modes — total decorrelation — versus `10⁻¹⁵` for the spectral path. That failure is invisible to a variance or `P(k)` check, which is why the truncation is done in Fourier space.
+
+Two caveats these figures do **not** address. It compares the resampled field with its own source, which is what the resampler is responsible for — it says nothing about agreement with CosmoGrid's *evolved* density, and the box here is CosmoGrid's `900 h⁻¹Mpc`, not the `5 h⁻¹Gpc` of run 4 (see *Initial conditions of the production run* above). And it cannot detect an axis transpose in the `npz → mesh` ingest, because coherence and `P(k)` are both isotropic; that check belongs to Experiment 14.
+
+<!-- TODO: lightcone figures after the cluster runs are published to ASKabalan/jax-fli-experiments. -->
+
+_The remaining figures — the 1LPT / 2LPT / PM shell and `C_ℓ` comparison, and the production lightcone — are pending the cluster runs and will be produced by `build.py` from the published parquet, per the standard lifecycle._
 
 ## How to run
 
@@ -75,4 +99,21 @@ hf download ASKabalan/jax-fli-experiments --repo-type dataset --revision main \
   --include '14-inference-cosmogrid/truth/input_cg.parquet'   # on a LOGIN node
 ```
 
-Off-cluster, `--ic-input /path/to/input_cg.parquet` replaces the `--ic-repo`/`--ic-data-files` pair.
+Off-cluster, `--ic-input /path/to/input_cg.parquet` replaces the `--ic-repo`/`--ic-data-files` pair. The truth parquet is already published, so the `hf upload` line above is only needed if it is ever regenerated.
+
+The initial-condition figure is local and needs no cluster time, but the `832³` white field is 2.3 GB so the measurement is split from the plotting (as in [Experiment 06](../06-cosmogrid-shells/README.md)):
+
+```bash
+# 1. Spectra (CPU, ~15 GB peak, a few minutes each) -> ic_spectra_832_{1024,512}.csv (committed, 27 kB each)
+STAGE=check python prep_ic_spectra.py    # assert the resampler's contract at a small size
+STAGE=dump  python prep_ic_spectra.py    # parquet -> white_832.npy (own process; the load peaks ~12 GB)
+            python prep_ic_spectra.py    # -> ic_spectra_832_1024.csv  (upsample)
+     NT=512 python prep_ic_spectra.py    # -> ic_spectra_832_512.csv   (downsample)
+
+# 2. Figure (instant; reads only the committed .csv)
+JAX_PLATFORMS=cpu python build.py        # -> assets/fig01-*.svg and fig02-*.svg
+```
+
+The spectra are stored as **CSV, not `.npz`** — `*.npz` and `*.npy` are gitignored repo-wide, and this artifact has to be committed so the figure can be redrawn without the 2.3 GB initial condition. Its header carries the box, the two mesh sizes and the cosmology, from which `build.py` rebuilds the linear-theory curve.
+
+`prep_ic_spectra.py` works in half-complex (`rfftn`) Fourier space and never inverse-transforms, because calling `jax_fli.resample_white_field` at `832³ → 1024³` materialises the full complex grids and peaks around 46 GB. `STAGE=check` asserts at a small size that both paths satisfy the same contract, so the shortcut cannot silently drift from the shipped function.

@@ -59,7 +59,7 @@ MESH_2560_QUADRANT="2304 3840 2304"  # dx 1.302; 2.04e10 cells = 1.21x 2560^3; l
 # --halo-multiplier is set per run below: the 64-way (local_x 16) is even at the default 0.5, but the
 # 256-way (local_x 10) would be odd (5) at 0.5, so it uses 1.0 (halo 10 = 19.5 Mpc/h, even).
 COMMON="--paint-order cic --nside 2048 --scheme rbf_neighbor --kernel-width-pixels 0.8 \
---nb-shells 20 --shell-spacing equal_vol --min-width 10.0 \
+--nb-shells 20 --shell-spacing equal_vol --min-width 50.0 \
 --shells-per-file 1 --enable-x64 --perf --iterations 3 --seed $SEED $COSMOGRID_COSMO"
 
 # N-body-only knobs (PM runs): BullFrog, 30 steps, growth-factor stepping, drift on the lightcone.
@@ -67,14 +67,14 @@ COMMON="--paint-order cic --nside 2048 --scheme rbf_neighbor --kernel-width-pixe
 PM="--solver bf --nb-steps 30 --time-stepping D --drift-on-lightcone"
 
 # --- 1024^3 LPT->PM comparison trio @ 64 GPU (slab pdim 64 1; default halo 0.5 -> 8 cells = 39 Mpc/h) ---
-launch 16 4 64 1 00:20:00 -- $COMMON --sim-mode lpt --lpt-order 1 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
-  --output "$RESULTS/exp10/1lpt_fs_1024" --name "exp10_1lpt_1024_s%seed%"
-  
-launch 16 4 64 1 00:20:00 -- $COMMON --sim-mode lpt --lpt-order 2 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
-  --output "$RESULTS/exp10/2lpt_fs_1024" --name "exp10_2lpt_1024_s%seed%"
+#launch 16 4 64 1 00:20:00 -- $COMMON --sim-mode lpt --lpt-order 1 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
+#  --output "$RESULTS/exp10/1lpt_fs_1024" --name "exp10_1lpt_1024_s%seed%"
 
-launch 16 4 64 1 00:25:00 -- $COMMON $PM --sim-mode pm --lpt-order 2 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
-  --output "$RESULTS/exp10/pm_fs_1024" --name "exp10_pm_1024_s%seed%"
+#launch 16 4 64 1 00:20:00 -- $COMMON --sim-mode lpt --lpt-order 2 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
+#  --output "$RESULTS/exp10/2lpt_fs_1024" --name "exp10_2lpt_1024_s%seed%"
+
+#launch 16 4 64 1 00:25:00 -- $COMMON $PM --sim-mode pm --lpt-order 2 --mesh-size $MESH_1024 --observer-position $OBS_FULL --box-size $BOX_FULL \
+#  --output "$RESULTS/exp10/pm_fs_1024" --name "exp10_pm_1024_s%seed%"
 
 # --- production target sim: PM lightcone @ 2560^3, 256 GPU (slab pdim 256 1) --------------------
 # --halo-multiplier 1.0 -> halo int(10*1.0)=10 cells (19.5 Mpc/h, ~3 sigma), covering the z=0 X-displacement.
@@ -99,18 +99,18 @@ launch 64 4 256 1 00:35:00 -- $COMMON $PM $CG_IC --halo-multiplier 1.0 --sim-mod
 # === QUADRANT (partial-sky) mirror of the four runs above; same recipe, quadrant box/observer/mesh =========
 # --- quadrant 1024^3 LPT->PM trio @ 64 GPU (local_x 15 is odd; --halo-multiplier 0.8 -> halo int(15*0.8)=12,
 #     even, = 37.5 Mpc/h, ~= the full-sky 39 Mpc/h ghost zone; default 0.5 -> odd halo 7 -> slice_unpad crash) ---
-launch 16 4 64 1 00:20:00 -- $COMMON --halo-multiplier 0.8 --sim-mode lpt --lpt-order 1 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
-  --output "$RESULTS/exp10/1lpt_quad_1024" --name "exp10_1lpt_quad_1024_s%seed%"
+#launch 16 4 64 1 00:20:00 -- $COMMON --halo-multiplier 0.8 --sim-mode lpt --lpt-order 1 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
+  #--output "$RESULTS/exp10/1lpt_quad_1024" --name "exp10_1lpt_quad_1024_s%seed%"
 
-launch 16 4 64 1 00:20:00 -- $COMMON --halo-multiplier 0.8 --sim-mode lpt --lpt-order 2 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
-  --output "$RESULTS/exp10/2lpt_quad_1024" --name "exp10_2lpt_quad_1024_s%seed%"
+#launch 16 4 64 1 00:20:00 -- $COMMON --halo-multiplier 0.8 --sim-mode lpt --lpt-order 2 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
+  #--output "$RESULTS/exp10/2lpt_quad_1024" --name "exp10_2lpt_quad_1024_s%seed%"
 
-launch 16 4 64 1 00:30:00 -- $COMMON $PM --halo-multiplier 0.8 --sim-mode pm --lpt-order 2 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
-  --output "$RESULTS/exp10/pm_quad_1024" --name "exp10_pm_quad_1024_s%seed%"
+#launch 16 4 64 1 00:30:00 -- $COMMON $PM --halo-multiplier 0.8 --sim-mode pm --lpt-order 2 --mesh-size $MESH_1024_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
+  #--output "$RESULTS/exp10/pm_quad_1024" --name "exp10_pm_quad_1024_s%seed%"
 
 # --- quadrant production PM @ 2560^3, 256 GPU (local_x 9 is odd; --halo-multiplier 1.35 -> halo int(9*1.35)=12,
 #     even, = 15.6 Mpc/h, ~1.5 sigma; default 0.5 -> halo 4 = 5.2 Mpc/h too thin, hm 1.0 -> odd halo 9 -> crash).
 #     Odd local_x forces a large relative pad (9 -> 33 = 3.7x vs full-sky's 10 -> 30 = 3.0x): peak ~2.3 GB/field
 #     (~1.5x the full-sky 1.6); still fits H100. Confirm from --perf memory before this 256-GPU submit. ---
-launch 64 4 256 1 00:45:00 -- $COMMON $PM --halo-multiplier 1.35 --sim-mode pm --lpt-order 2 --mesh-size $MESH_2560_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
-  --output "$RESULTS/exp10/pm_quad_2560" --name "exp10_pm_quad_2560_s%seed%"
+#launch 64 4 256 1 00:45:00 -- $COMMON $PM --halo-multiplier 1.35 --sim-mode pm --lpt-order 2 --mesh-size $MESH_2560_QUADRANT --observer-position $OBS_QUADRANT --box-size $BOX_QUADRANT \
+  #--output "$RESULTS/exp10/pm_quad_2560" --name "exp10_pm_quad_2560_s%seed%"

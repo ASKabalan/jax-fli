@@ -21,14 +21,25 @@ def resample_white_field(
     *,
     field_sharding: Any | None = None,
 ) -> Array:
-    """Spectrally upsample a white field onto a larger mesh, preserving its modes exactly.
+    """Spectrally resample a white field onto another mesh, preserving the shared modes exactly.
 
-    Every mode of ``white_field`` with ``|n_i| < N_src_i / 2`` is copied into the target grid at the
-    **same integer wavevector** ``n``; the remaining (higher ``|n|``) modes are drawn fresh from
-    ``key``. The copied modes are therefore identical amplitude *and* phase, so the transfer
-    function and coherence against the source are exactly 1 over the shared block — by construction,
-    not by measurement. Filling the rest is not optional: zero-padding alone would leave the field
-    with no small-scale power and a variance of ``prod(N_src) / prod(N_tgt)``.
+    Every mode with ``|n_i| < min(N_src_i, N_tgt_i) / 2`` is copied into the target grid at the
+    **same integer wavevector** ``n``; every other target mode is drawn fresh from ``key``. The
+    copied modes keep both amplitude and phase, so the transfer function and coherence against the
+    source are exactly 1 over the shared block — by construction, not by measurement.
+
+    Works in **both directions**. Upsampling inherits every source mode and fills in above the
+    source Nyquist; filling is not optional there, since zero-padding alone would leave the field
+    with no small-scale power and a variance of ``prod(N_src) / prod(N_tgt)``. Downsampling keeps
+    the large-scale modes and truncates the rest — which is *not* what a real-space block average
+    gives: that aliases high-``k`` power back down and decorrelates the modes it appears to keep,
+    while still looking healthy in variance and ``P(k)``.
+
+    The two directions are not quite symmetric. A real field needs its Nyquist modes
+    (``|n_i| = N_tgt_i / 2``) self-conjugate, and the source's values there are generic complex, so
+    they are never inherited — they come from the fresh draw. Upsampling barely notices (the plane
+    dropped is the *source's*, a vanishing fraction of the target); downsampling leaves roughly
+    ``3 / N_tgt`` of the coarse grid's modes fresh, concentrated at its Nyquist.
 
     The source's integer wavevector ``n`` sits at a different **physical** ``k`` whenever the target
     box differs from the source's, so this reproduces a *realization*, not a physical field.
@@ -38,9 +49,9 @@ def resample_white_field(
     white_field : Array
         Real, unit-variance, zero-mean field. Not a ``DensityField``.
     key : jax.random.PRNGKey
-        Seeds the modes above the source's Nyquist index.
+        Seeds every target mode outside the shared block.
     mesh_size : tuple[int, int, int]
-        Target mesh. Must be >= the source mesh on every axis; equal returns the input unchanged.
+        Target mesh; equal to the source's returns the input unchanged.
     field_sharding : Any, optional
         JAX sharding descriptor for the target array.
 
@@ -53,8 +64,6 @@ def resample_white_field(
     tgt = tuple(mesh_size)
     if src == tgt:
         return white_field
-    if any(t < s for s, t in zip(src, tgt)):
-        raise ValueError(f"resample_white_field only upsamples: source {src} exceeds target {tgt} on some axis.")
 
     # NOT jitted, and the source transform is taken FIRST, while no sharded array is in play: the
     # source is small and replicated, and jaxdecomp's pfft rejects an unsharded operand once a
@@ -75,11 +84,13 @@ def resample_white_field(
     # axis a of `kt` are the same real-space axis and the index sets are read off the k-array shapes
     # directly -- no need to name which axis is which. In fftfreq order the shared modes are NOT a
     # centred block: they are n = 0..h-1 at the start of the axis and n = -1..-(h-1) at its end.
-    # The source Nyquist index h is dropped so the copied set is symmetric under n -> -n, which is
-    # what keeps the inverse transform exactly real.
+    # h is the SMALLER grid's half-extent, which is what makes this work in both directions, and
+    # index h itself is dropped so the copied set is symmetric under n -> -n -- that symmetry is
+    # what keeps the inverse transform exactly real, and it is also why the target's own Nyquist
+    # plane is never inherited (it must be self-conjugate; the source's values there are not).
     src_idx, tgt_idx = [], []
     for axis in range(3):
-        h = ks.shape[axis] // 2
+        h = min(ks.shape[axis], kt.shape[axis]) // 2
         low = jnp.arange(h)
         high = jnp.arange(1, h)
         src_idx.append(jnp.concatenate([low, ks.shape[axis] - high]))
