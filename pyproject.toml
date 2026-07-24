@@ -4,9 +4,9 @@ requires = ["hatchling", "hatch-vcs"]
 
 [dependency-groups]
 dev = [
-  "prek==0.4.10",
+  "prek==0.4.11",
   "pyright==1.1.411",
-  "ruff==0.15.22",
+  "ruff==0.16.0",
   "toml-sort==0.24.4"
 ]
 docs = [
@@ -88,7 +88,7 @@ examples = [
 ]
 legacy = ["diffrax"]
 plot = [
-  "matplotlib>=3.0",
+  "matplotlib>=3.11.1",
   "getdist",
   "arviz",
   "tabulate"
