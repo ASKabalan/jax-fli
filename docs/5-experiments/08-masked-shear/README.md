@@ -104,4 +104,4 @@ All three recover the full-sky `EE` to a few percent over the band, and the **co
 python 08-masked-shear.py
 ```
 
-The script loads the CosmoGrid convergence from the `00-cosmogrid-kappa` HuggingFace config (Experiment 0), downgrades to `nside = 128`, picks tomographic bin 3, and writes the SVG figures into `assets/` (committed — Read the Docs builds without a GPU or HuggingFace access) plus a `data/masked_shear.npz` cache of the headline arrays.
+The script loads the CosmoGrid convergence from the `00-cosmogrid-000001-kappa` HuggingFace config (Experiment 0), downgrades to `nside = 128`, picks tomographic bin 3, and writes the SVG figures into `assets/` (committed — Read the Docs builds without a GPU or HuggingFace access) plus a `data/masked_shear.npz` cache of the headline arrays.

@@ -62,7 +62,7 @@ from _exputils import savefig, set_style  # noqa: E402
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
-DENSITY_SHELLS = "00-cosmogrid/density/cosmogrid_density_nside2048_shell_*.parquet"  # one parquet per shell
+DENSITY_SHELLS = "00-cosmogrid/cosmo_000001/density/cosmogrid_density_nside2048_shell_*.parquet"  # one parquet per shell
 
 # n(z) "effective end" = last z where n(z) >= THRESH_FRAC * peak. The DES Y3 bins carry a thin
 # (~0.5-1% of peak) high-z noise floor, so a 1-2% cut clips to the grid edge and inverts the bin
@@ -125,7 +125,7 @@ def load_cosmogrid_shells():
     from datasets import load_dataset
     from huggingface_hub import snapshot_download
 
-    # One parquet per shell under ``00-cosmogrid/density/``. We only need each shell's comoving edges +
+    # One parquet per shell under ``00-cosmogrid/cosmo_000001/density/``. We only need each shell's comoving edges +
     # scale factor (its metadata), so we read those two scalars per shell and free the map immediately —
     # no downsampling, no field concatenation (each shell's field carries a distinct ``name``, which would
     # break a tree.map concat anyway).

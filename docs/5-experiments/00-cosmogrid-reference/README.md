@@ -22,9 +22,9 @@ Everything is on the `ASKabalan/jax-fli-experiments` HuggingFace dataset (built 
 
 | config | field | nside | contents |
 |--------|-------|------:|----------|
-| `00-cosmogrid-density` | `SphericalDensity` | 2048 | particle counts, 56 shells to **z ≤ 1.6** (DES Y3 depth) — **one row per shell**, load by **streaming** |
-| `00-cosmogrid-kappa` | `SphericalKappaField` | 512 | CosmoGrid's own **Stage-3 forecast** κ (4 bins) |
-| `00-cosmogrid-born-{s3,des}` | `SphericalKappaField` | 2048 | **Born** κ from the density, Stage-3 / DES Y3 source `n(z)` (4 bins) |
+| `00-cosmogrid-000001-density` | `SphericalDensity` | 2048 | particle counts, 56 shells to **z ≤ 1.6** (DES Y3 depth) — **one row per shell**, load by **streaming** |
+| `00-cosmogrid-000001-kappa` | `SphericalKappaField` | 512 | CosmoGrid's own **Stage-3 forecast** κ (4 bins) |
+| `00-cosmogrid-000001-born-{s3,des}` | `SphericalKappaField` | 2048 | **Born** κ from the density, Stage-3 / DES Y3 source `n(z)` (4 bins) |
 
 The 2048 lightcone is too large to be one parquet (stacking it OOMs; a non-streaming `load_dataset` overflows arrow's INT32 list-offset across the 56 shells), so the density is stored **one `(1, npix)` parquet per shell** under a single config and **reassembled by streaming**.
 
@@ -82,8 +82,8 @@ The density and forecast-κ are published from the local CosmoGrid files; the Bo
 
 ```bash
 # 1. Publish the reference density + CosmoGrid's forecast κ (CPU; needs HF_TOKEN to upload).
-python publish_density_2048.py --publish     # 00-cosmogrid-density (one parquet per shell, streamed)
-python publish_kappa_512.py    --publish     # 00-cosmogrid-kappa   (CosmoGrid's own Stage-3 forecast κ)
+python publish_density_2048.py --publish     # 00-cosmogrid-000001-density (one parquet per shell, streamed)
+python publish_kappa_512.py    --publish     # 00-cosmogrid-000001-kappa   (CosmoGrid's own Stage-3 forecast κ)
 
 # 2. Compute the Born + ray-traced κ on the cluster, then publish (SLURM via fli-launcher).
 MODE=dryrun bash run.sh        # resolve the born ×2 / dorian ×2 commands without submitting

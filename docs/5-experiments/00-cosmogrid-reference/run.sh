@@ -9,18 +9,26 @@
 #
 #   MODE=dryrun bash run.sh   # print the resolved fli-launcher / sbatch commands, submit nothing
 #   MODE=sbatch bash run.sh   # submit to SLURM (default)
+#   CG_RUN=cosmo_000001 bash run.sh   # the other published CosmoGrid cosmology
 set -euo pipefail
 
 source "$(dirname "$0")/../_launch_common.sh"   # MODE, ACCOUNT, CONSTRAINT, QOS, CPUS, SLURM_SCRIPT, OUTPUT_LOGS, RESULTS
 
-echo "### Exp 00 — CosmoGrid reference lensing  (MODE=$MODE)"
+# Which published CosmoGrid cosmology to lens. NOT named COSMO: _launch_common.sh already exports
+# that as the cosmology CLI flag string, and reusing the name silently swallows this default. cosmo_172798 is the default because it is the one
+# whose lensing spectrum matches the 05b/05c run cosmology (to 1.7%, against 23% for cosmo_000001),
+# so it is the reference those figures can actually be set beside. It reaches the output paths as
+# well as the input glob, so running both cosmologies does not overwrite one with the other.
+CG_RUN="${CG_RUN:-cosmo_172798}"
+
+echo "### Exp 00 — CosmoGrid reference lensing  (MODE=$MODE, CG_RUN=$CG_RUN)"
 
 # Offline cluster (Jean Zay has no internet on compute nodes)? Pre-cache the density on a LOGIN node
 # (`HF_HOME=$WORK/hf_cache python download.py`), then on compute nodes:
 #   export HF_HOME=$WORK/hf_cache HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 
 # Streamed HF density source (one row per shell; the glob string is kept as a single arg, not shell-globbed).
-SRC=(--repo ASKabalan/jax-fli-experiments --data-files "00-cosmogrid/density/cosmogrid_density_nside2048_shell*.parquet")
+SRC=(--repo ASKabalan/jax-fli-experiments --data-files "00-cosmogrid/$CG_RUN/density/cosmogrid_density_nside2048_shell*.parquet")
 
 # CPU knobs for the (single-process) dorian jobs — override per cluster.
 CPU_ACCOUNT="${CPU_ACCOUNT:-rzt@cpu}"
@@ -42,20 +50,20 @@ launch_rt() {
 # Source n(z): Stage-3 (s3) and DES Y3 (des_y3). nside 2048 native; float64; global normalization.
 launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 8 4 32 1 01:00:00 -- \
   fli-born-rt "${SRC[@]}" --nz-shear s3     --nside 2048 --enable-x64 --normalization global \
-  --output "$RESULTS/exp0/born_s3"
+  --output "$RESULTS/exp0/$CG_RUN/born_s3"
 launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 8 4 32 1 01:00:00 -- \
   fli-born-rt "${SRC[@]}" --nz-shear des_y3 --nside 2048 --enable-x64 --normalization global \
-  --output "$RESULTS/exp0/born_des"
+  --output "$RESULTS/exp0/$CG_RUN/born_des"
 
 # --- Ray-traced κ (single-process dorian): CPU, 1 task (--pdim 1 1, ignored by dorian) ----------------
 # Holds the FULL nside-2048 lightcone in host RAM (~14 GB) -> a fat-RAM node; --nside downsamples if needed.
 # --with-born also emits the Born byproduct from the same dorian pass (a cross-check, not published).
 launch_rt "$CPU_ACCOUNT" cpu "$CPU_QOS" 1 1 1 1 10:00:00 -- \
   fli-dorian-rt "${SRC[@]}" --nz-shear s3     --nside 2048 --rt-interp bilinear --with-born \
-  --output "$RESULTS/exp0/raytrace_s3"
+  --output "$RESULTS/exp0/$CG_RUN/raytrace_s3"
 launch_rt "$CPU_ACCOUNT" cpu "$CPU_QOS" 1 1 1 1 10:00:00 -- \
   fli-dorian-rt "${SRC[@]}" --nz-shear des_y3 --nside 2048 --rt-interp bilinear --with-born \
-  --output "$RESULTS/exp0/raytrace_des"
+  --output "$RESULTS/exp0/$CG_RUN/raytrace_des"
 
 # Then publish from a node with internet + HF_TOKEN:
 #   RESULTS="$RESULTS" python "$(dirname "$0")/publish_local.py" --yes

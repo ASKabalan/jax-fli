@@ -23,10 +23,10 @@ HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 
 REPO = "ASKabalan/jax-fli-experiments"
-CG_KAPPA = "00-cosmogrid/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet"
-BORN_KAPPA_S3 = "00-cosmogrid/kappa_spectra/spectra_kappa_born_s3.parquet"
-BORN_KAPPA_S3_512 = "00-cosmogrid/kappa_spectra/spectra_kappa_born_s3_512.parquet"
-BORN_KAPPA_DES_Y3 = "00-cosmogrid/kappa_spectra/spectra_kappa_born_des.parquet"
+CG_KAPPA = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet"
+BORN_KAPPA_S3 = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_kappa_born_s3.parquet"
+BORN_KAPPA_S3_512 = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_kappa_born_s3_512.parquet"
+BORN_KAPPA_DES_Y3 = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_kappa_born_des.parquet"
 
 NLB = 32  # multipoles per bandpower bin
 
