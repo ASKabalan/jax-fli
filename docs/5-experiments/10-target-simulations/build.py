@@ -66,8 +66,9 @@ def plot_ic_resample(csv_name: str, stem: str):
     roles of the two Nyquist guides swapped.
     """
     head, d = _load(HERE / csv_name)
-    cosmo = jc.Cosmology(**{p: head[p] for p in ("Omega_c", "Omega_b", "h", "n_s", "sigma8",
-                                                 "w0", "wa", "Omega_k", "Omega_nu")})
+    cosmo = jc.Cosmology(
+        **{p: head[p] for p in ("Omega_c", "Omega_b", "h", "n_s", "sigma8", "w0", "wa", "Omega_k", "Omega_nu")}
+    )
     kgrid = np.logspace(-4, 1, 512)
     pkgrid = np.asarray(jc.power.linear_matter_power(cosmo, kgrid))
 
@@ -90,30 +91,46 @@ def plot_ic_resample(csv_name: str, stem: str):
     Pd2 = d["pk2a"][m2] / d["c22a"][m2]  # colored spectrum on the target grid
     frac = d["cb"][m2] / d["c22a"][m2]
 
-    fig, ax = plt.subplots(3, 1, figsize=(6.0, 8.4), sharex=True,
-                           gridspec_kw={"height_ratios": [1.45, 1.15, 1.0], "hspace": 0.07})
+    fig, ax = plt.subplots(
+        3, 1, figsize=(6.0, 8.4), sharex=True, gridspec_kw={"height_ratios": [1.45, 1.15, 1.0], "hspace": 0.07}
+    )
     for a in ax:
         a.grid(True, which="major", alpha=0.25, lw=0.6)
         a.grid(True, which="minor", alpha=0.10, lw=0.4)
         a.axvline(k_src, color="0.35", ls="--", lw=1.0, zorder=0)
         a.axvline(k_tgt, color="0.35", ls=":", lw=1.0, zorder=0)
 
-    ax[0].loglog(kgrid, pkgrid, color=C_TH, lw=2.4, alpha=0.55,
-                 label=r"linear theory $P_{\rm lin}(k)$ (Eisenstein--Hu, CosmoGrid cosmology)")
-    ax[0].loglog(k[m1], Pd1, color=C_SRC, lw=1.3,
-                 label=rf"${ns}^3$ CosmoGrid IC, coloured (own grid)")
-    ax[0].loglog(k[m2], Pd2, color=C_TGT, lw=1.3, ls="--",
-                 label=rf"${nt}^3$ spectral {kind}, coloured (own grid)")
+    ax[0].loglog(
+        kgrid,
+        pkgrid,
+        color=C_TH,
+        lw=2.4,
+        alpha=0.55,
+        label=r"linear theory $P_{\rm lin}(k)$ (Eisenstein--Hu, CosmoGrid cosmology)",
+    )
+    ax[0].loglog(k[m1], Pd1, color=C_SRC, lw=1.3, label=rf"${ns}^3$ CosmoGrid IC, coloured (own grid)")
+    ax[0].loglog(k[m2], Pd2, color=C_TGT, lw=1.3, ls="--", label=rf"${nt}^3$ spectral {kind}, coloured (own grid)")
     ax[0].set_ylabel(r"$P(k)\;\;[(h^{-1}\mathrm{Mpc})^3]$")
     ax[0].set_ylim(3e-1, 1e5)
     ax[0].legend(loc="lower left", frameon=False, fontsize=8.3)
 
-    ax[1].plot(k[mb], T, color=C_TGT, lw=1.5,
-               label=rf"transfer $T(k)=\sqrt{{P_{{{nt}}}/P_{{{ns}}}}}$, shared modes")
-    ax[1].plot(k[mb], r, color=C_SRC, lw=1.5, ls="--",
-               label=rf"coherence $r(k)=P_{{{ns}\times{nt}}}/\sqrt{{P_{{{ns}}}P_{{{nt}}}}}$, shared modes")
-    ax[1].plot(k[m2], frac, color=C_FRAC, lw=1.5, ls="-.",
-               label=rf"inherited fraction: shared modes $/$ all ${nt}^3$ modes in the shell")
+    ax[1].plot(k[mb], T, color=C_TGT, lw=1.5, label=rf"transfer $T(k)=\sqrt{{P_{{{nt}}}/P_{{{ns}}}}}$, shared modes")
+    ax[1].plot(
+        k[mb],
+        r,
+        color=C_SRC,
+        lw=1.5,
+        ls="--",
+        label=rf"coherence $r(k)=P_{{{ns}\times{nt}}}/\sqrt{{P_{{{ns}}}P_{{{nt}}}}}$, shared modes",
+    )
+    ax[1].plot(
+        k[m2],
+        frac,
+        color=C_FRAC,
+        lw=1.5,
+        ls="-.",
+        label=rf"inherited fraction: shared modes $/$ all ${nt}^3$ modes in the shell",
+    )
     ax[1].axhline(1.0, color="0.5", lw=0.7, zorder=0)
     ax[1].set_ylim(-0.06, 1.20)
     ax[1].set_ylabel(r"$T(k)$,\; $r(k)$,\; inherited fraction")
@@ -122,29 +139,35 @@ def plot_ic_resample(csv_name: str, stem: str):
     # |T-1| is IDENTICALLY zero -- the two spectra are sums over bitwise-equal float32 values --
     # so it draws nothing on a log axis. Say so in the legend rather than leave a phantom entry.
     ax[2].loglog(k[mb], np.abs(1.0 - r), color=C_SRC, lw=1.2, ls="--", label=r"$|1-r(k)|$")
-    ax[2].plot([], [], color=C_TGT, lw=1.2,
-               label=r"$|T(k)-1| \equiv 0$ (bitwise-equal modes; no line on a log axis)")
-    ax[2].axhline(np.finfo(np.float32).eps, color="0.35", lw=1.0, ls=":",
-                  label=r"float32 $\varepsilon=1.2\times10^{-7}$ (the IC is stored float32)")
+    ax[2].plot([], [], color=C_TGT, lw=1.2, label=r"$|T(k)-1| \equiv 0$ (bitwise-equal modes; no line on a log axis)")
+    ax[2].axhline(
+        np.finfo(np.float32).eps,
+        color="0.35",
+        lw=1.0,
+        ls=":",
+        label=r"float32 $\varepsilon=1.2\times10^{-7}$ (the IC is stored float32)",
+    )
     ax[2].set_ylim(1e-11, 1e-5)
     ax[2].set_ylabel("departure from unity")
     ax[2].set_xlabel(r"$k\;\;[h\,\mathrm{Mpc}^{-1}]$")
     # opaque frame: the float32-eps guide runs the full width at 1e-7, under the legend
-    ax[2].legend(loc="upper left", fontsize=8.3, frameon=True, facecolor="white",
-                 framealpha=0.92, edgecolor="none")
+    ax[2].legend(loc="upper left", fontsize=8.3, frameon=True, facecolor="white", framealpha=0.92, edgecolor="none")
     ax[2].set_xlim(kf * 0.9, kf * (max(ns, nt) // 2) * 1.85)
 
     for kk, lbl, ha in ((k_src, rf"${ns}^3$ Nyquist", "right"), (k_tgt, rf"${nt}^3$ Nyquist", "left")):
-        ax[0].text(kk * (0.93 if ha == "right" else 1.08), 1.5e4, lbl, rotation=90,
-                   ha=ha, va="top", fontsize=8, color="0.35")
+        ax[0].text(
+            kk * (0.93 if ha == "right" else 1.08), 1.5e4, lbl, rotation=90, ha=ha, va="top", fontsize=8, color="0.35"
+        )
 
     savefig(ASSETS / stem, fig)
 
     lo = k[mb] < k_blk
     inherited = frac[k[m2] < k_blk]
-    print(f"  {ns}^3 -> {nt}^3 ({kind}): below the shared-block edge k={k_blk:.2f}, "
-          f"max|T-1| = {np.abs(T[lo] - 1).max():.1e}, max|1-r| = {np.abs(1 - r[lo]).max():.1e}, "
-          f"inherited >= {inherited.min():.3f}")
+    print(
+        f"  {ns}^3 -> {nt}^3 ({kind}): below the shared-block edge k={k_blk:.2f}, "
+        f"max|T-1| = {np.abs(T[lo] - 1).max():.1e}, max|1-r| = {np.abs(1 - r[lo]).max():.1e}, "
+        f"inherited >= {inherited.min():.3f}"
+    )
 
 
 def main():

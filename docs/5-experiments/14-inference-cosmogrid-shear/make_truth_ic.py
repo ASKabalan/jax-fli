@@ -8,7 +8,7 @@ NumPy generator, verified bit-for-bit against PKDGRAV3 at the production size (0
 pencils, 0/288,657,407 modes with r(k) < 0.999999 at nGrid=832; see ``ic_resample/CONVENTION.md``).
 
 This pairs that recreated input with the published output: the density shells of this same run are
-already on HuggingFace as ``00-cosmogrid/density`` (``00-cosmogrid-reference/publish_density_2048.py``
+already on HuggingFace as ``00-cosmogrid/cosmo_000001/density`` (``00-cosmogrid-reference/publish_density_2048.py``
 has the same ``DEFAULT_RUN``). Together they are a real external simulation with a known latent — the
 mock that field-level inference needs but cannot generate itself.
 
@@ -32,7 +32,7 @@ WARNING — the axis orientation is NOT verified. The white *noise* is bit-verif
 checks that pkdgrav3's ``[x, y, z]`` drops into jax-fli's mesh the right way round. CONVENTION.md warns
 that getting the FFT axes wrong "transposes the box silently", and no statistic can catch it — coloring
 and P(k) are isotropic, so a transpose survives into the artifact looking perfectly healthy. The only
-real check is running this IC forward and cross-correlating against ``00-cosmogrid-density`` at matched
+real check is running this IC forward and cross-correlating against ``00-cosmogrid-000001-density`` at matched
 redshift. That is this experiment's job, not this script's.
 
 Run on CPU (NumPy generation + arrow serialization; no GPU):
@@ -70,7 +70,7 @@ import pkd_whitenoise as pw
 from check_against_pkdgrav3 import compare
 from cosmogrid_params import read_run
 
-# Provenance: the same run Experiment 0 published as 00-cosmogrid/density.
+# Provenance: the same run Experiment 0 published as 00-cosmogrid/cosmo_000001/density.
 DEFAULT_SIM_ROOT = Path("/home/wassim/Projects/NBody/Simulations")
 DEFAULT_RUN = "CosmoGrid/raw/cosmo_000001/run_0"
 DEFAULT_OUT = Path("/home/wassim/Projects/NBody/jax-fli-experiments/14-inference-cosmogrid/truth/input_cg.parquet")

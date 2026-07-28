@@ -62,7 +62,9 @@ from _exputils import savefig, set_style  # noqa: E402
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
-DENSITY_SHELLS = "00-cosmogrid/cosmo_000001/density/cosmogrid_density_nside2048_shell_*.parquet"  # one parquet per shell
+DENSITY_SHELLS = (
+    "00-cosmogrid/cosmo_000001/density/cosmogrid_density_nside2048_shell_*.parquet"  # one parquet per shell
+)
 
 # n(z) "effective end" = last z where n(z) >= THRESH_FRAC * peak. The DES Y3 bins carry a thin
 # (~0.5-1% of peak) high-z noise floor, so a 1-2% cut clips to the grid edge and inverts the bin
