@@ -4,9 +4,9 @@ requires = ["hatchling", "hatch-vcs"]
 
 [dependency-groups]
 dev = [
-  "prek==0.4.10",
+  "prek==0.4.11",
   "pyright==1.1.411",
-  "ruff==0.15.22",
+  "ruff==0.16.0",
   "toml-sort==0.24.4"
 ]
 docs = [
@@ -75,8 +75,8 @@ requires-python = ">=3.11"
 all = ["jax_fli[catalog, sampling, raytrace, plot, benchmark]"]
 benchmark = ["jax-hpc-profiler>=0.3.4"]
 catalog = [
-  "datasets>=2.0",
-  "huggingface_hub>=1.24.0",
+  "datasets>=5.0.1",
+  "huggingface_hub>=1.25.1",
   "h5py"
 ]
 cuda = ["jax[cuda]>=0.10.1"]
@@ -88,7 +88,7 @@ examples = [
 ]
 legacy = ["diffrax"]
 plot = [
-  "matplotlib>=3.0",
+  "matplotlib>=3.11.1",
   "getdist",
   "arviz",
   "tabulate"
