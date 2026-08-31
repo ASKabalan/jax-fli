@@ -151,7 +151,7 @@ class FlatDensity(AbstractField):
         """
         Visualize one or more flat-sky maps using matplotlib.
         """
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("Cannot plot/show traced arrays. Use outside of jit context.")
 
         data = jnp.asarray(self.array)
@@ -669,7 +669,7 @@ class SphericalDensity(AbstractField):
         """
         Visualize one or more spherical maps using ``healpy.projview``.
         """
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("Cannot plot/show traced arrays. Use outside of jit context.")
 
         data = jnp.asarray(self.array)
@@ -732,7 +732,7 @@ class SphericalDensity(AbstractField):
         """
         import matplotlib.pyplot as plt
 
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("Cannot plot/show traced arrays. Use outside of jit context.")
 
         self.plot(
@@ -1227,7 +1227,7 @@ class SphericalDensity(AbstractField):
         its ``TabNorm``. Returns a :class:`StarletCoefficients` (a ``SphericalDensity`` batched
         over scales, shape ``(nscales, npix)``).
         """
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("starlet_coefficients is concrete-only; call outside of a jit context.")
         if self.array.ndim != 1:
             raise ValueError(

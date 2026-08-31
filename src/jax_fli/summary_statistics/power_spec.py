@@ -237,7 +237,7 @@ class PowerSpectrum(AbstractField):
         grid : bool
             Enable grid lines.
         """
-        if not jax.core.is_concrete(self.wavenumber):
+        if isinstance(self.wavenumber, jax.core.Tracer):
             raise ValueError("Cannot plot traced arrays. Use PowerSpectrum.plot() outside of a jit context.")
 
         k_1d = self.wavenumber

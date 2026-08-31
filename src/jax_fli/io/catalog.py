@@ -207,7 +207,7 @@ class Catalog(eqx.Module):
         backend = self.backend
 
         for entry in self.field:
-            if not jax.core.is_concrete(entry.array):
+            if isinstance(entry.array, jax.core.Tracer):
                 raise ValueError("Cannot convert to dataset inside a jit context (arrays are tracers).")
 
         ds_list = []

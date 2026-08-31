@@ -502,7 +502,7 @@ class ParticleField(AbstractField):
         axes : ndarray
             Array of axes.
         """
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("Cannot plot traced arrays. Use outside of jit context.")
 
         self = self.to(PositionUnit.GRID_ABSOLUTE)  # ensure absolute for plotting
