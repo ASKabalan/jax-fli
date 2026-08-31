@@ -127,9 +127,9 @@ MAP_2BIN_QUADRANT_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_2bin_quadran
 MAP_3BIN_FULLSKY_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_3bin_fullsky_slab_density_512.parquet"
 MAP_3BIN_QUADRANT_SLAB = "06-cosmogrid-shells/density_512/cosmogrid_3bin_quadrant_slab_density_512.parquet"
 
-CG_SPEC_2048 = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside2048.parquet"
-CG_SPEC_512 = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside512.parquet"
-CG_MAP = "00-cosmogrid/density/cosmogrid_density_nside512.parquet"
+CG_SPEC_2048 = "00-cosmogrid/cosmo_000001/density_spectra/spectra_cosmogrid_density_nside2048.parquet"
+CG_SPEC_512 = "00-cosmogrid/cosmo_000001/density_spectra/spectra_cosmogrid_density_nside512.parquet"
+CG_MAP = "00-cosmogrid/cosmo_000001/density/cosmogrid_density_nside512.parquet"
 
 # -----------------------------------------------------------------------------
 # Explicit per-file loads — every HF parquet on its own line.

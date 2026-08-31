@@ -83,10 +83,12 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 - **12 — [Gradient scaling](12-scaling-gradient/README.md)** ✅ — strong & weak scaling of the initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the former adjoint memory / checkpoint-count study.
   [![PM strong-scaling wall-time, float32 vs float64](12-scaling-gradient/assets/fig01-strong-time.svg)](12-scaling-gradient/README.md)
 
-## Field-level inference (13–14) — blocked on the inference pipeline
+## Field-level inference (10, 13–14)
 
-- **13 — [Toy field-level (full sky)](13-inference-toy/README.md)** ⚠️ — smallest end-to-end posterior.
-- **14 — [Field-level vs CosmoGrid shear](14-inference-cosmogrid-shear/README.md)** ⚠️ — DES Y3 mask.
+- **10 — [Target simulations](10-target-simulations/README.md)** ⚠️ *(not yet submitted)* — the density-shell lightcones that Experiments 13 and 14 condition on: a 1LPT → 2LPT → PM progression at 1024³ plus the 2560³ production target, each over a full-sky and a quadrant geometry. Every physics choice is inherited from an earlier converged experiment. The production run starts from the recreated white noise of CosmoGrid `cosmo_000001/run_0` rather than from a seed. Unlike 13 and 14 below, this one is a forward simulation and is **not** blocked on the inference pipeline — it is simply waiting on cluster time.
+
+- **13 — [Toy field-level (full sky)](13-inference-toy/README.md)** ⚠️ *(blocked on the inference pipeline)* — smallest end-to-end posterior.
+- **14 — [Field-level vs CosmoGrid shear](14-inference-cosmogrid-shear/README.md)** ⚠️ *(blocked on the inference pipeline)* — DES Y3 mask.
 
 ```{toctree}
 :hidden:
@@ -103,6 +105,7 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 07-born-lensing/README
 08-masked-shear/README
 09-gradient-validation/README
+10-target-simulations/README
 11-scaling/README
 12-scaling-gradient/README
 13-inference-toy/README

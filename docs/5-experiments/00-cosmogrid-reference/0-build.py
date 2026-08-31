@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 
 REPO = "ASKabalan/jax-fli-experiments"
-SHELLS_SPECTRA = "00-cosmogrid/density_spectra/spectra_cosmogrid_density_nside2048.parquet"
+SHELLS_SPECTRA = "00-cosmogrid/cosmo_000001/density_spectra/spectra_cosmogrid_density_nside2048.parquet"
 
 N_SHELLS = 56
 NSIDE = 2048

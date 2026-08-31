@@ -70,7 +70,7 @@ else:
 
 def load_kappa():
     """Load the CosmoGrid convergence (Experiment 0), downgrade, pick one tomographic bin."""
-    ds = load_dataset(REPO, "00-cosmogrid-kappa", split="train").with_format("numpy")
+    ds = load_dataset(REPO, "00-cosmogrid-000001-kappa", split="train").with_format("numpy")
     catalog = Catalog.from_dataset(ds)
     kappa_all = catalog.field[0] if isinstance(catalog.field, list) else catalog.field
     print("loaded", type(kappa_all).__name__, kappa_all.array.shape, "nside", kappa_all.nside)

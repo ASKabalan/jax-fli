@@ -5,7 +5,7 @@
 Streams the native CosmoGrid lightcone to disk with the shared loader
 ``jfli.io.load_cosmogrid_lc(..., output=folder)`` (which parses the cosmology + shell geometry,
 **selects shells by redshift**, and writes **one parquet per shell** — ``shell_NNN.parquet`` — in its
-native **COUNTS** unit, float32), then publishes those files as **one config** ``00-cosmogrid-density``
+native **COUNTS** unit, float32), then publishes those files as **one config** ``00-cosmogrid-<id>-density``
 with **one row per shell** on HuggingFace. (COUNTS is what every other ``load_cosmogrid_lc`` consumer
 gets; ``jfli.born``/``jfli.raytrace`` convert to overdensity internally.)
 
@@ -18,10 +18,10 @@ paths. (``load_cosmogrid_lc(max_redshift=…)`` does the masking.)
 **One config, one parquet per shell.** The full nside-2048 lightcone can't be one parquet: stacking it
 to write OOMs, and ``load_dataset`` combining ~n_shells·npix > INT32 elements overflows arrow's list
 offset. So the loader writes **one ``(npix,)`` parquet per shell** (~200 MB), and we register them all
-as separate **rows** under **one config** ``00-cosmogrid-density`` (a glob ``data_files``). Writing one
+as separate **rows** under **one config** ``00-cosmogrid-<id>-density`` (a glob ``data_files``). Writing one
 shell at a time keeps peak RAM ~one shell. Reassemble by **streaming** the config and stacking:
 
-    ds = load_dataset(REPO, "00-cosmogrid-density", split="train", streaming=True)
+    ds = load_dataset(REPO, "00-cosmogrid-000001-density", split="train", streaming=True)
     field = SphericalDensity.stack([Catalog.from_dataset(r).field[0] for r in ds])  # (n_shells, npix)
 
 Each row is one ``(npix,)`` shell; ``stack`` adds the leading shell axis. Streaming is **required**: a
@@ -31,9 +31,13 @@ the INT32 offset.
 Run on CPU (pure I/O + serialization; no GPU); the per-shell stream keeps peak RAM low:
 
     python publish_density_2048.py --self-test     # fast: validate the serializer split round-trip, then exit
-    python publish_density_2048.py --check          # STREAM the PUBLISHED 00-cosmogrid-density config on HF
+    python publish_density_2048.py --check          # STREAM the PUBLISHED 00-cosmogrid-<id>-density config on HF
     python publish_density_2048.py --out /scratch/density   # write the per-shell parquets to a folder (no upload)
-    python publish_density_2048.py --publish       # write shells + upload as one config 00-cosmogrid-density
+    python publish_density_2048.py --publish       # write shells + upload as one config 00-cosmogrid-<id>-density
+
+A second cosmology goes to its own folder and its own config — ``--run`` and ``--cosmo`` must agree::
+
+    python publish_density_2048.py --run CosmoGrid/raw/cosmo_172798/run_0 --cosmo cosmo_172798 --publish
 
 ``HF_TOKEN`` must be set in the environment for ``--publish``.
 """
@@ -57,12 +61,15 @@ import numpy as np
 import jax_fli as jfli
 
 REPO = "ASKabalan/jax-fli-experiments"
-DENSITY_CONFIG = "00-cosmogrid-density"
 HERE = Path(__file__).resolve().parent
 
-# Provenance of the current Experiment 0 reference (cosmo_000001/run_0).
+# Provenance of the first Experiment 0 reference (cosmo_000001/run_0). --run and --cosmo travel
+# together: the raw run supplies the data, the cosmology names both the folder it lands in and the
+# config that exposes it. They are cross-checked below, because publishing one cosmology under
+# another's name is silent and only shows up as a wrong reference curve months later.
 DEFAULT_SIM_ROOT = Path("/home/wassim/Projects/NBody/Simulations")
 DEFAULT_RUN = "CosmoGrid/raw/cosmo_000001/run_0"
+DEFAULT_COSMO = "cosmo_000001"
 
 
 # --------------------------------------------------------------------------------------------------
@@ -149,7 +156,7 @@ def self_test() -> None:
 
 
 # --------------------------------------------------------------------------------------------------
-# Check — what does the published HF config 00-cosmogrid-density expose? (one config, many shell rows)
+# Check — what does the published HF config 00-cosmogrid-<id>-density expose? (one config, many shell rows)
 # --------------------------------------------------------------------------------------------------
 def _fmt_array(x) -> str:
     if x is None:
@@ -248,12 +255,17 @@ def main() -> None:
     ap.add_argument(
         "--check",
         action="store_true",
-        help=f"only check the published {DENSITY_CONFIG} config on HuggingFace and print its field attributes, then exit",
+        help="only check the published 00-cosmogrid-<id>-density config on HuggingFace and print its field attributes, then exit",
     )
     ap.add_argument("--self-test", action="store_true", help="run only the split-path round-trip test, then exit")
     ap.add_argument("--skip-self-test", action="store_true", help="skip the pre-flight test before the big build")
     ap.add_argument("--sim-root", default=str(DEFAULT_SIM_ROOT))
     ap.add_argument("--run", default=DEFAULT_RUN, help="run dir relative to --sim-root")
+    ap.add_argument(
+        "--cosmo",
+        default=DEFAULT_COSMO,
+        help=f"cosmology this run belongs to; sets the destination 00-cosmogrid/COSMO/density and the config 00-cosmogrid-<id>-density. Must appear in --run. Default {DEFAULT_COSMO}.",
+    )
     ap.add_argument("--out", default=None, help="local folder for the per-shell parquets (default: a temp dir)")
     ap.add_argument(
         "--max-z",
@@ -265,12 +277,19 @@ def main() -> None:
     ap.add_argument(
         "--publish",
         action="store_true",
-        help="upload per-shell parquet rows to HuggingFace under one config 00-cosmogrid-density",
+        help="upload per-shell parquet rows to HuggingFace under one config 00-cosmogrid-<id>-density",
     )
     args = ap.parse_args()
 
+    if not re.fullmatch(r"cosmo_\d{6}", args.cosmo):
+        raise SystemExit(f"--cosmo must look like cosmo_000001, got {args.cosmo!r}")
+    if args.cosmo not in args.run:
+        raise SystemExit(f"--cosmo {args.cosmo} does not appear in --run {args.run} — refusing to mislabel the upload")
+    density_dir = f"00-cosmogrid/{args.cosmo}/density"
+    density_config = f"00-cosmogrid-{args.cosmo.removeprefix('cosmo_')}-density"
+
     if args.check:
-        check(DENSITY_CONFIG)
+        check(density_config)
         return
 
     if args.self_test:
@@ -302,17 +321,16 @@ def main() -> None:
 
     if not args.publish:
         print(f"Not publishing (pass --publish). Wrote {len(shell_paths)} per-shell parquet(s) under {out_dir}.")
-        print(f"   Load: load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) → concatenate rows.")
+        print(f"   Load: load_dataset(REPO, '{density_config}', split='train', streaming=True) → concatenate rows.")
         return
 
     from huggingface_hub import HfApi
 
     api = HfApi()
     meta, body = _load_card(api)
-    density_dir = "00-cosmogrid/density"
     prefix = "cosmogrid_density_nside2048"
     glob = f"{density_dir}/{prefix}_shell*.parquet"
-    print(f"\nUploading {len(shell_paths)} shell parquet(s) to {REPO} under ONE config {DENSITY_CONFIG} …")
+    print(f"\nUploading {len(shell_paths)} shell parquet(s) to {REPO} under ONE config {density_config} …")
     for i, p in enumerate(shell_paths):
         repo_path = f"{density_dir}/{prefix}_{p.name}"  # cosmogrid_density_nside2048_shell_NNN.parquet
         print(f"   [{i + 1}/{len(shell_paths)}] → {repo_path}")
@@ -321,13 +339,13 @@ def main() -> None:
     meta["configs"] = [
         c
         for c in meta.get("configs", [])
-        if not re.fullmatch(re.escape(DENSITY_CONFIG) + r"-\d+", c.get("config_name", ""))
+        if not re.fullmatch(re.escape(density_config) + r"-\d+", c.get("config_name", ""))
     ]
-    _ensure_config(meta, DENSITY_CONFIG, glob)
+    _ensure_config(meta, density_config, glob)
     _save_card(api, meta, body)
-    print(f"   done. {len(shell_paths)} shells published as ONE config {DENSITY_CONFIG} (glob {glob}).")
+    print(f"   done. {len(shell_paths)} shells published as ONE config {density_config} (glob {glob}).")
     print(
-        f"   Load: stream + concatenate — load_dataset(REPO, '{DENSITY_CONFIG}', split='train', streaming=True) (see README)."
+        f"   Load: stream + concatenate — load_dataset(REPO, '{density_config}', split='train', streaming=True) (see README)."
     )
 
 

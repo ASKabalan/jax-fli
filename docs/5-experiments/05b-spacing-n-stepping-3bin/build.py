@@ -172,7 +172,7 @@ kappa_nodrift_40_cat = Catalog.from_dataset(
 # full N-body, nside 2048), computed with the SAME jax_fli born(). NOTE: this sim is at a DIFFERENT cosmology
 # (sigma8=0.90, h=0.73) than the 05b runs — fig11 therefore ratios each measurement to the Limber theory at
 # its OWN cosmology instead of ratioing the two measurements directly.
-COSMOGRID_KAPPA = "00-cosmogrid/kappa_spectra/spectra_kappa_born_s3.parquet"
+COSMOGRID_KAPPA = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_kappa_born_s3.parquet"
 
 cosmogrid_kappa_cat = Catalog.from_dataset(
     load_dataset("parquet", data_files=f"{root}/{COSMOGRID_KAPPA}", split="train")

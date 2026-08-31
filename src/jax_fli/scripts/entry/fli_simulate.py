@@ -20,7 +20,13 @@ import jax_cosmo as jc
 from jax.experimental.multihost_utils import sync_global_devices
 
 import jax_fli as jfli
-from jax_fli.scripts._common import _build_sharding, _resolve_nz_shear, _save_args_log, _try_parse_s3  # noqa: F401
+from jax_fli.scripts._common import (  # noqa: F401
+    _build_sharding,
+    _resolve_nz_shear,
+    _resolve_source,
+    _save_args_log,
+    _try_parse_s3,
+)
 
 # ---------------------------------------------------------------------------
 # Cosmology builder
@@ -219,6 +225,7 @@ def parser() -> ArgumentParser:
         add_lensing_args,
         add_output_target_args,
         add_simulation_settings_args,
+        add_source_args,
     )
 
     p = ArgumentParser(prog="fli-simulate", description="jax_fli simulation pipeline CLI")
@@ -226,6 +233,11 @@ def parser() -> ArgumentParser:
     add_distributed_args(p)
     add_simulation_settings_args(p)
     add_output_target_args(p)
+    # Optional external initial condition: --ic-input (local) XOR --ic-repo + --ic-data-files (HF).
+    # A single-row Catalog holding a WHITE DensityField -- the opposite convention to fli-infer's
+    # --ic-input, which expects the COLORED delta and de-colors it. Nothing in the schema
+    # distinguishes the two, so the source has to be the right one by construction.
+    add_source_args(p, prefix="ic")
     # --sim-mode is required for fli-simulate and adds the 'lensing' choice (pm + Born -> kappa).
     add_integration_settings_args(p, sim_mode_default=None, sim_mode_choices=("lpt", "pm", "lensing"))
     add_lensing_args(p)
@@ -505,18 +517,58 @@ def main() -> None:
 
     key = jax.random.key(args.seed)
 
-    initial_field = jfli.gaussian_initial_conditions(
-        key,
-        mesh,
-        tuple(args.box_size),
-        observer_position=tuple(args.observer_position),
-        cosmo=cosmo,
-        nside=args.nside,
-        flatsky_npix=tuple(args.flatsky_npix) if args.flatsky_npix is not None else None,
-        field_size=tuple(args.field_size) if args.field_size is not None else None,
-        field_sharding=sharding,
-        halo_size=halo_size,
-    )
+    if args.ic_input or args.ic_repo:
+        # External white field. gaussian_initial_conditions is just normal_field +
+        # interpolate_initial_conditions, so this swaps one white field for another and nothing
+        # downstream changes. The source is spectrally upsampled to `mesh` when it is smaller --
+        # its modes are copied at the same integer wavevector and the rest drawn from --seed.
+        rows = []
+        for row in _resolve_source(args, prefix="ic").with_format("numpy"):
+            rows.append(row)
+            if len(rows) > 1:
+                raise ValueError("The initial-condition source must contain exactly one row, but found more than one.")
+        if not rows:
+            raise ValueError("The initial-condition source contained no rows.")
+        # Load REPLICATED unless the source already has the run's mesh. Applying the run's sharding
+        # to a smaller source fails outright -- 832 % 256 != 0 raises IndivisibleError -- and even
+        # where it divides, resample_white_field needs the source replicated for its eager fft3d.
+        # (fli-infer can pass `sharding` because there the IC always has the run mesh.)
+        ic_sharding = sharding if tuple(int(v) for v in rows[0]["mesh_size"]) == mesh else None
+        ic_field = jfli.io.Catalog.from_dataset(rows[0], sharding=ic_sharding).field[0]
+        if not isinstance(ic_field, jfli.DensityField):
+            raise TypeError(f"The initial condition must be a DensityField, got {type(ic_field).__name__}.")
+        if jax.process_index() == 0:
+            print(f"Initial condition from {args.ic_input or args.ic_repo}: {tuple(ic_field.mesh_size)} -> {mesh}")
+        # The catalog's own box_size is the SOURCE simulation's (e.g. CosmoGrid's 900 Mpc/h). It is
+        # deliberately ignored: the realization is re-interpreted in THIS run's --box-size, so the
+        # array -- not the DensityField -- is what gets passed on (the field overload would override
+        # mesh_size/box_size with the source's).
+        white = jfli.resample_white_field(ic_field.array, key, mesh, field_sharding=sharding)
+        initial_field = jfli.interpolate_initial_conditions(
+            white,
+            mesh,
+            tuple(args.box_size),
+            observer_position=tuple(args.observer_position),
+            cosmo=cosmo,
+            nside=args.nside,
+            flatsky_npix=tuple(args.flatsky_npix) if args.flatsky_npix is not None else None,
+            field_size=tuple(args.field_size) if args.field_size is not None else None,
+            field_sharding=sharding,
+            halo_size=halo_size,
+        )
+    else:
+        initial_field = jfli.gaussian_initial_conditions(
+            key,
+            mesh,
+            tuple(args.box_size),
+            observer_position=tuple(args.observer_position),
+            cosmo=cosmo,
+            nside=args.nside,
+            flatsky_npix=tuple(args.flatsky_npix) if args.flatsky_npix is not None else None,
+            field_size=tuple(args.field_size) if args.field_size is not None else None,
+            field_sharding=sharding,
+            halo_size=halo_size,
+        )
 
     sim_type = args.sim_mode
     lpt_order = args.lpt_order

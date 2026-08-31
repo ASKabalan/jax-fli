@@ -43,15 +43,10 @@ raw = pd.read_csv(f"{root}/{CSV}", header=None)
 # function name e.g. pm30_exp12_{weak_g4|strong_M1024_g64}_{rev|ckpt4|ckpt8|ckpt16|ckpt20|ckpt30}_s0.
 tokens = raw[0].str.split("_")
 kind = tokens.str[2]  # weak / strong
-label = {
-    "rev": "reverse",
-    "ckpt4": "ckpt-4",
-    "ckpt8": "ckpt-8",
-    "ckpt16": "ckpt-16",
-    "ckpt20": "ckpt-20",
-    "ckpt30": "ckpt-30",
-}
-raw[0] = tokens.str[-2].map(label)  # the token before s0 is the variant
+label = {"rev": "reverse", "ckpt4": "ckpt-4", "ckpt8": "ckpt-8", "ckpt16": "ckpt-16", "ckpt30": "ckpt-30"}
+raw[0] = tokens.str[-2].map(label)  # the token before s0 is the variant → the five lines
+raw = raw[raw[0].notna()]  # the CSV also holds ckpt20 runs; unmapped → dropped here
+kind = kind[raw.index]
 DATA.mkdir(parents=True, exist_ok=True)
 WEAK = DATA / "_weak.csv"
 STRONG = DATA / "_strong.csv"

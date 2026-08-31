@@ -81,8 +81,8 @@ root = Path(snapshot_download(REPO, repo_type="dataset", local_files_only=True))
 # native-2048 3-bin map that we downsample to 512 for the pixel-wise PDF/starlet/map panels.
 # =============================================================================================
 # ---- Stage-3 source n(z): reference = CosmoGrid's own nside-512 kappa ----
-S3_REF_SPEC = "00-cosmogrid/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet"
-S3_REF_MAP512 = "00-cosmogrid/kappa/cosmogrid_sample_kappa.parquet"
+S3_REF_SPEC = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet"
+S3_REF_MAP512 = "00-cosmogrid/cosmo_000001/kappa/cosmogrid_sample_kappa.parquet"
 S3_LENSED3_SPEC = "07-cosmogrid-lensing/spectra/cosmogrid_3bin_fullsky_slab/s3.parquet"
 S3_LENSED2_SPEC = "07-cosmogrid-lensing/spectra/cosmogrid_2bin_fullsky_slab/s3.parquet"
 S3_LENSED3_MAP = "07-cosmogrid-lensing/kappa/cosmogrid_3bin_fullsky_slab/s3/BORN_exp6_3bin_fullsky_slab_s0.parquet"
@@ -102,8 +102,8 @@ del s3_map_cat  # free the ~1.2 GB native-2048 catalog
 lensed3_cl512_s3 = lens512_s3.angular_cl(method="healpy", lmax=LMAX)
 
 # ---- DES Y3 source n(z): reference = our Born-on-CosmoGrid-density kappa (nside 2048) ----
-DES_REF_SPEC = "00-cosmogrid/kappa_spectra/spectra_kappa_born_des.parquet"
-DES_REF_MAP512 = "00-cosmogrid/kappa/kappa_born_des_512.parquet"
+DES_REF_SPEC = "00-cosmogrid/cosmo_000001/kappa_spectra/spectra_kappa_born_des.parquet"
+DES_REF_MAP512 = "00-cosmogrid/cosmo_000001/kappa/kappa_born_des_512.parquet"
 DES_LENSED3_SPEC = "07-cosmogrid-lensing/spectra/cosmogrid_3bin_fullsky_slab/des_y3.parquet"
 DES_LENSED2_SPEC = "07-cosmogrid-lensing/spectra/cosmogrid_2bin_fullsky_slab/des_y3.parquet"
 DES_LENSED3_MAP = "07-cosmogrid-lensing/kappa/cosmogrid_3bin_fullsky_slab/des_y3/BORN_exp6_3bin_fullsky_slab_s0.parquet"
