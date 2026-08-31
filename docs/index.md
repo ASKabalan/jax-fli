@@ -31,8 +31,7 @@
 3-sampling-and-inference/README
 3-sampling-and-inference/12-Probabilistic-Modeling
 3-sampling-and-inference/13-Rosen
-3-sampling-and-inference/14-LPTDensityMCLMC
-3-sampling-and-inference/15-PMDensityMAP-Laplace
+3-sampling-and-inference/14-LPT-MAP-Estimation
 3-sampling-and-inference/configurations-options
 ```
 

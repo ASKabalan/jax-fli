@@ -4,7 +4,7 @@ Probabilistic inference with `jax-fli` — building a NumPyro forward model, cus
 
 - [Probabilistic Modeling](12-Probabilistic-Modeling.ipynb) — the forward-model builder, the `Configurations` dataclass, custom MCMC distributions, and the NumPyro/BlackJAX wrappers.
 - [Rosenbrock](13-Rosen.ipynb) — an MCMC sampler sanity check (NUTS / MCLMC / MAMS, compared at a matched gradient budget) on a known target before touching cosmology.
-- [LPT Density MCLMC](14-LPTDensityMCLMC.ipynb) — full-posterior field-level inference of `(Ω_c, σ₈)` over the initial-condition field on a 1LPT spherical galaxy-overdensity mock (seed 0), sampled with MCLMC.
+- [LPT MAP estimation](14-LPT-MAP-Estimation.ipynb) — dev notebook: joint MAP minimization of `(Ω_c, σ₈)` and the initial-condition field with cadre, plus a cheap Laplace uncertainty from the conditioned potential.
 - [Configuration options](configurations-options.md) — the `Configurations` fields that drive the forward model.
 
 The command-line entry points wrap the same pipeline for batch / HPC runs, documented under [Scripts & utilities](../4-scripts-and-utilities/README.md):

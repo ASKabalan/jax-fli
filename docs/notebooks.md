@@ -29,8 +29,7 @@ The documentation is organized into four sections:
 
 12. [Probabilistic Modeling](3-sampling-and-inference/12-Probabilistic-Modeling.ipynb) — the forward-model builder, the `Configurations` dataclass, and NumPyro / BlackJAX wrappers.
 13. [Rosenbrock](3-sampling-and-inference/13-Rosen.ipynb) — an MCMC sanity check on a known target before touching cosmology.
-14. [LPT Density MCLMC](3-sampling-and-inference/14-LPTDensityMCLMC.ipynb) — full-posterior field-level inference of $(\Omega_c, \sigma_8)$ over the initial-condition field on a 1LPT spherical galaxy-overdensity mock, sampled with MCLMC.
-15. [PM Density MAP + Laplace](3-sampling-and-inference/15-PMDensityMAP-Laplace.ipynb) — MAP reconstruction + Laplace UQ on a toy 64³ PM spherical-density mock under scale cuts.
+14. [LPT MAP estimation](3-sampling-and-inference/14-LPT-MAP-Estimation.ipynb) — dev notebook: joint MAP minimization of $(\Omega_c, \sigma_8)$ and the initial-condition field with cadre, plus a cheap Laplace uncertainty from the conditioned potential.
 
 See the [Sampling & inference](3-sampling-and-inference/README.md) index for the [configuration options](3-sampling-and-inference/configurations-options.md) and the matching command-line entry points.
 
