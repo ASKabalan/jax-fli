@@ -156,7 +156,7 @@ python_files = ["test_*.py"]
 python_functions = ["test_*"]
 pythonpath = ["."]
 testpaths = ["tests"]
-timeout = 20000
+timeout = 9000
 timeout_method = "thread"
 
 [tool.ruff]

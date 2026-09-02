@@ -309,6 +309,9 @@ def test_step_checkpoints_invariant(cosmo, jfli_initial_field, perturbed_referen
 # ---------------------------------------------------------------------------
 
 
+# BullFrog's VJP hangs in jax's _pjit_linearize under jax 0.11 (~60s on 0.10) — too slow
+# for CI until fixed upstream; see PR #102.
+@pytest.mark.slow
 @pytest.mark.parametrize("solver_name", ["KKD", "BullFrog"])
 def test_adjoint_transpose(cosmo, jfli_initial_field, solver_name):
     """The reverse / checkpointed VJP must be the exact transpose of the forward-mode JVP:
