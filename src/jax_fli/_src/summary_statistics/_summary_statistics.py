@@ -127,7 +127,7 @@ def _starlet_transform(m, *, nside: int, nscales: int) -> tuple[np.ndarray, np.n
     """
     from pycs.sparsity.mrs.mrs_starlet import CMRStarlet
 
-    if not jax.core.is_concrete(m):
+    if isinstance(m, jax.core.Tracer):
         raise ValueError("starlet transform requires concrete (non-traced) arrays")
 
     m_np = np.asarray(m, dtype=np.float64)

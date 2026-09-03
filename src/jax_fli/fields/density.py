@@ -192,7 +192,7 @@ class DensityField(AbstractField):
     ):
         """Plot 3D density field as orthogonal slice visualization."""
 
-        if not jax.core.is_concrete(self.array):
+        if isinstance(self.array, jax.core.Tracer):
             raise ValueError("Cannot plot traced arrays. Use outside of jit context.")
 
         data = np.asarray(self.array)

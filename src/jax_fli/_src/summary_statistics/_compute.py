@@ -114,9 +114,9 @@ def _flat_cl(map2d, map2=None, *, pixel_size=None, field_size=None, ell_edges=No
 def _spherical_cl(map_sphere, map_sphere2=None, *, lmax=None, method="jax"):
     """Spherical (HEALPix) angular power spectrum using jax_healpy.anafast."""
     if method == "healpy":
-        if not jax.core.is_concrete(map_sphere):
+        if isinstance(map_sphere, jax.core.Tracer):
             raise ValueError("method='healpy' requires concrete (non-jax) arrays")
-        if map_sphere2 is not None and not jax.core.is_concrete(map_sphere2):
+        if map_sphere2 is not None and isinstance(map_sphere2, jax.core.Tracer):
             raise ValueError("method='healpy' requires concrete (non-jax) arrays")
 
         map_sphere_np = np.asarray(map_sphere)
@@ -187,7 +187,7 @@ def _cross_spherical_cl(maps, *, lmax=None, method="healpy"):
             "JAX method is not implemented for cross-spectra computation."
         )
 
-    if not jax.core.is_concrete(maps):
+    if isinstance(maps, jax.core.Tracer):
         raise ValueError("method='healpy' requires concrete (non-traced) arrays")
 
     # Convert to numpy for healpy
