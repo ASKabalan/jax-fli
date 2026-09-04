@@ -57,6 +57,10 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 
 [![Equal volume spacing (N=20 shells)](05c-spacing-n-stepping-equal-vol/assets/fig17-lensing-spacing-20.svg)](05c-spacing-n-stepping-equal-vol/README.md)
 
+- **05d — [Step & stepping convergence (equal-volume, 3-bin)](05d-spacing-n-stepping-steps/README.md)** ⚠️ *(not yet run)* — the 50-step budget re-checked at the production geometry: 20/30/40/50 steps × BullFrog `a`/`D`, endpoint 3-bin Born κ; the 50-step `bfd` point reuses 05c's anchor.
+
+- **05e — [Mesh ladder (equal-volume, 3-bin)](05e-spacing-n-stepping-mesh/README.md)** ⚠️ *(not yet run)* — 512³ → 4096³ at the fixed bf/D/50-step production point, all nside 2048, slabs with halos sized by the Exp-01 rule; where tomographic Born κ stops improving with resolution.
+
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ✅ — per-shell density `C_ℓ` + cross-correlation vs the CosmoGrid shells (needs the CosmoGrid shell edges).
 
   [![sim / CosmoGrid band-power ratio vs comoving distance within a ±5% band](06-cosmogrid-shells/assets/fig02-band-vs-distance.svg)](06-cosmogrid-shells/README.md)
@@ -101,6 +105,8 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 05a-spacing-n-stepping-drift/README
 05b-spacing-n-stepping-3bin/README
 05c-spacing-n-stepping-equal-vol/README
+05d-spacing-n-stepping-steps/README
+05e-spacing-n-stepping-mesh/README
 06-cosmogrid-shells/README
 07-born-lensing/README
 08-masked-shear/README
