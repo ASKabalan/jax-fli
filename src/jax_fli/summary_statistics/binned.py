@@ -162,7 +162,7 @@ class BinnedStatistic(AbstractField):
         **kwargs: Any,
     ) -> tuple[Figure, Axes, list[Any]]:
         """Overlay every (batched) statistic in this object on a single axis."""
-        if not jax.core.is_concrete(self.bins):
+        if isinstance(self.bins, jax.core.Tracer):
             raise ValueError("Cannot plot traced arrays. Use .plot() outside of a jit context.")
 
         x = self.bins

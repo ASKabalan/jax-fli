@@ -300,7 +300,7 @@ def raytrace(
 
     # Tracer lock — raytrace() must not be called inside jax.jit
     _jax_inputs = (lightcone.array, lightcone.scale_factors, cosmo.Omega_m, cosmo.h)
-    if not jax.tree.all(jax.tree.map(jax.core.is_concrete, _jax_inputs)):
+    if not jax.tree.all(jax.tree.map(lambda x: not isinstance(x, jax.core.Tracer), _jax_inputs)):
         raise ValueError(
             "raytrace() cannot be called inside jax.jit. "
             "All inputs must be concrete arrays. Use outside of jit context."
