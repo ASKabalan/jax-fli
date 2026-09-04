@@ -57,6 +57,7 @@ dependencies = [
   "jax-cosmo",
   "healpy",
   "jax-healpy[recommended]>=0.7.0",
+  "jaxdecomp>=0.3.2",
   # s2fft is already pulled by jax-healpy[recommended]; declared directly so the
   # [tool.uv.sources] override below binds (uv sources apply to direct deps only).
   "s2fft"
