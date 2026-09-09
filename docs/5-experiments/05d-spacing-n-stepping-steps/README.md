@@ -21,7 +21,17 @@ The endpoint of every comparison is the Gauss–Legendre Born convergence `C_ℓ
 
 ## Results
 
-⚠️ *Not yet run.* The sweep is submitted via `run.sh`; figures land here once the density and Born data are on HuggingFace.
+The sweep has run. The figures below are rendered by [`build.py`](build.py) from the κ spectra under `05-spacing-n-stepping/05d-steps/kappa_spectra/` (HuggingFace push pending).
+
+![20 steps (fig01)](assets/fig01-lensing-steps-20.svg)
+
+![30 steps (fig02)](assets/fig02-lensing-steps-30.svg)
+
+![40 steps (fig03)](assets/fig03-lensing-steps-40.svg)
+
+![50 steps (fig04)](assets/fig04-lensing-steps-50.svg)
+
+**Born convergence per step count against CosmoGrid (fig01–fig04).** One figure per step count (20 / 30 / 40 / 50), the three Stage-3 source bins overlaid. Top: the `D_ℓ` power — solid = BullFrog D-stepping (the production choice; at 50 steps byte-identical to the 05c anchor and labelled so), dashed = KDK a-stepping (kick–drift–kick in the scale factor). Middle: `C_ℓ`/CosmoGrid − 1 against the acceptance band = the expected cosmology + nside-512-pixwin offset (thin dotted) ± √2 × the empirical CV of the 200 fiducial CosmoGrid permutations (worst bin). Bottom: the median bandpower ratio per ℓ band ([30,100) … [250,300)), one bar per stepping and bin, in the bin colours (solid = D-stepping, hatched = a-stepping); spectra are bandpower-binned in linear bins of `nlb` = 32 multipoles. The two arms behave completely differently. **The D-stepping arm is step-converged across the entire sweep**: its band medians move by at most 0.01 between 20 and 50 steps (+0.08 / +0.01 / −0.01 / −0.10 / −0.15 → +0.08 / −0.00 / −0.02 / −0.10 / −0.16) — and since every run is phase-matched to the anchor at fixed seed and mesh, that is sub-per-cent step error, free of cosmic variance: even 20 steps suffice for the production stepping at this geometry. **The KDK a-stepping arm converges from above, slowly**: its excess over the anchor is almost band-independent — ≈ +36% of the anchor power at 20 steps, +21% at 30, +14% at 40 and still +8% at 50 (visible in the middle panel as the light-dashed curves running above the solid ones at every `ℓ`) — far outside the CV band, so it is a systematic stepping effect, not variance. Exp 04's null result (the two BullFrog steppings indistinguishable) therefore does **not** transfer to the production geometry: at coarse step budgets the a-stepping's step placement overshoots the tomographic power, and the D-stepping is the converged arm at every budget — the production configuration (50 steps, `D`) is safe with room to spare.
 
 ## How to run
 
@@ -31,4 +41,8 @@ bash run.sh                # submit the density sweep to SLURM
 SIM_MODE=BORN bash run.sh  # after pushing the density parquet to HF: the 3-bin Born pass
 ```
 
-The density sweep writes one directory of per-shell parquet (`shell_NNNN.parquet`) per (stepping, step count) to `results/exp5d/density/`; once pushed to HuggingFace, `SIM_MODE=BORN` reads the published shells back and writes the 3-bin convergence maps under `results/exp5d/kappa_gl/` (`fli-born-rt --quadrature gauss_legendre --perf --iterations 3`). The κ spectra parquet are then derived with `tools/make_spectra.py` and published under `05-spacing-n-stepping/05d-steps/kappa_spectra/`.
+The density sweep writes one directory of per-shell parquet (`shell_NNNN.parquet`) per (stepping, step count) to `results/exp5d/density/`; once pushed to HuggingFace, `SIM_MODE=BORN` reads the published shells back and writes the 3-bin convergence maps under `results/exp5d/kappa_gl/` (`fli-born-rt --quadrature gauss_legendre --perf --iterations 3`). The κ spectra parquet are then derived with `tools/make_spectra.py` and published under `05-spacing-n-stepping/05d-steps/kappa_spectra/`. Once those are in place, the figure script renders the SVGs locally without a GPU:
+
+```bash
+JAX_PLATFORMS=cpu uv run --no-sync python build.py
+```

@@ -16,7 +16,7 @@ SIM_MODE="${SIM_MODE:-DENSITY}"  # DENSITY → the step sweep; anything else →
 # Same COMMON as 05c's drift runs: 2560³ @ 128 GPUs (32 nodes, --pdim 128 1) gives a local 20³-slab
 # with an EVEN halo int(20·0.5)=10 cells = 19.5 Mpc/h (clears the end-of-run rms displacement) and
 # 20·2560·2560 ≈ 512³ local cells → fits float64. Only --nb-steps / --time-stepping are free.
-COMMON="--sim-mode pm --mesh-size 2560 2560 2560 --box-size $BOX5 --solver bf --min-width 60.0 \
+COMMON="--sim-mode pm --mesh-size 2560 2560 2560 --box-size $BOX5 --solver bf --min-width 60.0 --nb-shells 20 \
 --paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --shell-spacing equal_vol \
 --drift-on-lightcone --halo-multiplier 0.5 --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
@@ -29,14 +29,15 @@ NB_STEPS=(20 30 40 50)
 NB_STEPS_LIMIT="00:40:00"
 
 if [ "$SIM_MODE" = "DENSITY" ]; then
-  for TS in a D; do
+  for SETTING in "kdk a" "bf D"; do
     for NS in "${NB_STEPS[@]}"; do
-      if [ "$TS" = "D" ] && [ "$NS" = "50" ]; then
+      read -r solver tstep <<<"$SETTING"
+      if [ "$tstep" = "D" ] && [ "$NS" = "50" ]; then
         echo "### SKIP bfd_50 (identical to 05c's exp5c_drift_20 — reused as the shared anchor)"
         continue
       fi
-      tag="exp5d_bf${TS}_${NS}"
-      launch 32 4 128 1 "$NB_STEPS_LIMIT" -- $COMMON --time-stepping "$TS" --nb-steps "$NS" \
+      tag="exp5d_${solver}_${NS}"
+      launch 32 4 128 1 "$NB_STEPS_LIMIT" -- $COMMON --solver "$solver" --time-stepping "$tstep" --nb-steps "$NS" \
         --output "$RESULTS/exp5d/density/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
     done
   done
@@ -54,20 +55,17 @@ else
       --pdim "$px" "$py" -- "$@"
   }
 
-  for TS in a D; do
+  for SETTING in "kdk a" "bf D"; do
     for NS in "${NB_STEPS[@]}"; do
-      if [ "$TS" = "D" ] && [ "$NS" = "50" ]; then
-        echo "### SKIP born bfd_50 (already published as 05c's spectra_gl_drift_20.parquet)"
-        continue
-      fi
-      tag="exp5d_bf${TS}_${NS}"
-      DATA="05-spacing-n-stepping/05d-steps/density/exp5d_bf${TS}_${NS}/shell*.parquet"
+      read -r solver tstep <<<"$SETTING"
+      tag="exp5d_${solver}_${NS}"
+      DATA="05-spacing-n-stepping/05d-steps/density/${tag}/shell*.parquet"
       echo "Launching 3-bin Born lensing (gauss_legendre) for $tag"
-      launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 00:40:00 -- \
+      launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 8 16 1 00:40:00 -- \
         fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
         --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
         --perf --iterations 3 \
-        --name "kappa_gl_bf${TS}_3bin_${NS}" --output "$RESULTS/exp5d/kappa_gl/born_gl_bf${TS}_${NS}"
+        --name "kappa_gl_bf${solver}_${NS}" --output "$RESULTS/exp5d/kappa_gl/born_gl_bf${solver}_${NS}"
     done
   done
 fi

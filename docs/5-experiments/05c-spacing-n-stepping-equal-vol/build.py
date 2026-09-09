@@ -57,6 +57,8 @@ from datasets import load_dataset
 from huggingface_hub import snapshot_download
 from matplotlib import cm
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from matplotlib.ticker import NullFormatter
 
 import jax_fli as jfli
 from jax_fli import compute_theory_cl, compute_theory_cl_for_density
@@ -65,10 +67,16 @@ from jax_fli.lensing import plot_born_windows
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from _exputils import savefig, set_style  # noqa: E402
+from _exputils import DISPLAY_WIDTH_IN, savefig, set_style  # noqa: E402
 
 ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
+
+# Cosmic-variance band (experiment 00, published under 00-cosmogrid/fiducial_kappa_spectra):
+# the 200 fiducial perm spectra binned like every figure; the empirical fractional CV is the
+# std across perms of the bandpowers, worst of the three plotted bins, times sqrt(2) because
+# the ratio compares two independent single realizations (our run vs one CosmoGrid perm).
+FIDUCIAL_KAPPA = "00-cosmogrid/fiducial_kappa_spectra"
 
 LMAX = 1500  # the published spectra stop at ell 1500
 BOX, MESH = 5000.0, 2560.0  # per-shell PM-Nyquist line ell_max ~ pi*chi/dx, dx = box/mesh (equal-volume box)
@@ -76,6 +84,28 @@ CENSUS_RATIO_YLIM = (-0.3, 0.35)  # ratio-to-theory strip range, centered on 0 (
 NSHELLS_KAPPA = [5, 8, 10, 12, 16, 20, 25, 30, 40]  # Born-convergence shell-count sweep (fig10-fig13)
 
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)
+
+_fid_cats = [
+    Catalog.from_dataset(
+        load_dataset("parquet", data_files=f"{root}/{FIDUCIAL_KAPPA}/cosmo_fiducial_part{p}.parquet", split="train")
+    )
+    for p in range(4)
+]
+_fid_b = np.stack([np.asarray(f.bin(nlb=32, lmin=2).array) for cat in _fid_cats for f in cat.field])
+CV_FRAC = np.sqrt(2.0) * (_fid_b.std(axis=0, ddof=1) / _fid_b.mean(axis=0))[:3].max(axis=0)
+
+# The CosmoGrid reference the ratio panels divide by: the Stage-3 forecast kappa at grid point
+# 172798 (the grid cosmology closest to the 05c run cosmology), binned like every figure, plus
+# its Limber theory under the nside-512 pixel window the CosmoGrid maps carry.
+CG_172798 = "00-cosmogrid/cosmo_172798/kappa_spectra/spectra_cosmogrid_sample_kappa.parquet"
+_cg17_cat = Catalog.from_dataset(load_dataset("parquet", data_files=f"{root}/{CG_172798}", split="train"))
+cg17_b = np.asarray(_cg17_cat.field[0].bin(nlb=32, lmin=2).array)[:3]
+cosmo_172798 = _cg17_cat.cosmology[0]
+th_172798_b = np.asarray(
+    (compute_theory_cl(cosmo_172798, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * hp.pixwin(512, lmax=LMAX) ** 2)
+    .bin(nlb=32, lmin=2)
+    .array
+)[:3]
 
 # Per-shell density census (fig03-fig08): drift + no-drift spectra for every published shell count. fig01/fig02
 # additionally read only the shell geometry (equal-volume edges) from nodrift_10 / nodrift_30 / nodrift_40.
@@ -608,11 +638,12 @@ def fig01_illustration():
         ("30 shells, no drift", banded_z(chi30, w30)),
     ]
     vmin, vmax = float(z_of(R0)[0]), float(z_of(R1)[0])  # z grows with distance: near R0 -> min, far R1 -> max
+    set_style(width_in=16.5)  # fonts scale with the figure width
     fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.6), sharex=True, sharey=True)
     sc = None
     for ax, (title, zc) in zip(axes, panels):
         sc = ax.scatter(x, y, c=zc, s=2, cmap="turbo", vmin=vmin, vmax=vmax, rasterized=True)
-        ax.set_title(title, fontsize=12)
+        ax.set_title(title)
         ax.set_xlabel("x [Mpc/h]")
         ax.set_aspect("equal")
     axes[0].set_ylabel("y [Mpc/h]")
@@ -655,6 +686,7 @@ def _region_cl(run_dir, indices, lo, hi):
 
 
 def fig02_density_shells():
+    set_style(width_in=16.5)  # fonts scale with the figure width
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, (label, sh) in enumerate(COLUMNS):
         lo, hi = float(edges10[0, sh[0]]), float(edges10[1, sh[-1]])
@@ -675,20 +707,21 @@ def fig02_density_shells():
         ax_s.loglog(bc, dl * ref_b, color="k", lw=1.6, label="40-shell reference")
         ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
         ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
-        ax_s.set_title(rf"{label} region:  $\chi \in [{lo:.0f},\,{hi:.0f}]$ Mpc/h", fontsize=11)
+        ax_s.set_title(rf"{label} region:  $\chi \in [{lo:.0f},\,{hi:.0f}]$ Mpc/h")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
         # quantify the frozen-epoch bias each run carries vs the reference (largest for the fat inner region)
         inb = (bc >= 50) & (bc <= 800)
         dev_no = np.nanmedian(no_b[inb] / ref_b[inb]) - 1
         dev_dr = np.nanmedian(dr_b[inb] / ref_b[inb]) - 1
         ax_s.text(
-            0.04,
+            0.96,
             0.05,
             f"median bias ($\\ell\\in[50,800]$):\nno drift: {dev_no * 100:+.2f}\\%\nwith drift: {dev_dr * 100:+.2f}\\%",
             transform=ax_s.transAxes,
-            fontsize=8.5,
             va="bottom",
-            ha="left",
+            ha="right",
             family="monospace",
         )
         if col == 0:
@@ -708,7 +741,7 @@ def fig02_density_shells():
         Line2D([], [], color="tab:blue", lw=1.6, label="10-shell, with drift"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    fig.legend(handles=handles, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.05))
     fig.tight_layout()
     savefig(ASSETS / "fig02-density-shells", fig)
 
@@ -734,11 +767,19 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
     dr = np.asarray(dr_b_all.array)
     chi = np.asarray(spec_no.comoving_centers)
     dx = BOX / MESH
+    # the per-cell font hierarchy of the original census (7 pt ticks / 8 pt titles), scaled by the
+    # figure-width factor and capped: a 20-in-wide census displayed at README size still zooms to
+    # full size, where oversized per-cell text would crowd the 2.5-in cells
+    fig = container if isinstance(container, plt.Figure) else container.figure
+    s = fig.get_figwidth() / DISPLAY_WIDTH_IN
+    fs_tick = min(7 * s, 11.0)
+    fs_title = min(8 * s, 12.0)
+    fs_lab = min(8 * s, 11.0)
     gs = container.add_gridspec(
         2 * nrows,
         ncols,
         height_ratios=[3, 1] * nrows,
-        hspace=0.45,
+        hspace=0.8,
         wspace=0.32,
         left=0.06,
         right=0.99,
@@ -762,14 +803,19 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         for ax in (ax_s, ax_r):
             ax.axvline(lmax_sh, color="0.6", ls=":", lw=0.8)
             ax.grid(True, which="both", ls=":", alpha=0.35)
-            ax.tick_params(labelsize=7)
-        ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=8)
+            ax.tick_params(labelsize=fs_tick)
+            ax.yaxis.offsetText.set_fontsize(fs_tick)
+        # decade-only labels: the auto minor labelling piles up in the short cells
+        ax_s.yaxis.set_minor_formatter(NullFormatter())
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
+        ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=fs_title)
         ax_s.tick_params(labelbottom=False)
         if c == 0:
-            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=8)
-            ax_r.set_ylabel("meas/th - 1", fontsize=7)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=fs_lab)
+            ax_r.set_ylabel("meas/th - 1", fontsize=fs_tick)
         if r == nrows - 1:
-            ax_r.set_xlabel(r"$\ell$", fontsize=8)
+            ax_r.set_xlabel(r"$\ell$", fontsize=fs_lab)
 
 
 def _census_legend(target, **kwargs):
@@ -780,11 +826,12 @@ def _census_legend(target, **kwargs):
         Line2D([], [], color="0.6", ls=":", lw=1.2, label=r"$\ell_{\max}\approx\pi\chi/\mathrm{d}x$ (PM Nyquist)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    target.legend(handles=handles, ncol=5, fontsize=9, frameon=False, **kwargs)
+    target.legend(handles=handles, ncol=5, frameon=False, **kwargs)
 
 
 def fig03_density_census_small():
     """The three small runs (5 / 8 / 10 shells) stacked as one figure of sub-blocks."""
+    set_style(width_in=13.0)  # fonts scale with the figure width
     fig = plt.figure(figsize=(13.0, 14.0))
     subs = fig.subfigures(4, 1, height_ratios=[0.18, 1, 2, 2], hspace=0.05)
     _census_legend(subs[0], loc="center")  # dedicated legend strip on top
@@ -796,6 +843,7 @@ def fig03_density_census_small():
 
 def density_census(spec_no, spec_dr, nrows, ncols, stem):
     """One run's census on an nrows x ncols grid (one shell per cell)."""
+    set_style(width_in=2.5 * ncols)  # fonts scale with the figure width
     fig = plt.figure(figsize=(2.5 * ncols, 2.9 * nrows))
     _draw_census(fig, spec_no, spec_dr, nrows, ncols, top=0.9, bottom=0.06)
     _census_legend(fig, loc="upper center", bbox_to_anchor=(0.5, 0.99))
@@ -818,6 +866,7 @@ def fig09_born_windows():
     first of the two figures plot_born_windows() returns."""
     # plot_born_windows labels carry Σ / % / en-dash; matplotlib snapshots text.usetex at Text creation, so build
     # the figure with usetex OFF (the rest of the experiment runs usetex ON via set_style).
+    set_style(width_in=8.6)  # the window figure the library returns is 8.6 in wide
     with plt.rc_context({"text.usetex": False}):
         fig_w, fig_r = plot_born_windows(
             get_stage3_nz_shear()[:3],
@@ -850,6 +899,7 @@ def lensing_vs_ref40(kappa_no, kappa_dr, stem):
     bc = np.asarray(nodrift_b[40].wavenumber)
     dl = bc * (bc + 1) / (2 * np.pi)
     nbins = np.asarray(nodrift_b[40].array).shape[0]
+    set_style(width_in=12.0)  # fonts scale with the figure width
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
@@ -871,9 +921,11 @@ def lensing_vs_ref40(kappa_no, kappa_dr, stem):
             for n in counts:
                 c_b = np.asarray(kb[n].array)[b]
                 ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
-            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            ax_s.set_title(f"bin {b + 1} — {label}")
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
+            # the axis starts at the first bandpower: nothing is binned below it
+            ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
             if col == 0:
                 ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
             ax_r.axhspan(-0.03, 0.03, color="0.7", alpha=0.3)
@@ -894,7 +946,7 @@ def lensing_vs_ref40(kappa_no, kappa_dr, stem):
         Line2D([], [], color="k", lw=1.8, label="40 shells (reference)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm3\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     savefig(ASSETS / stem, fig)
 
@@ -918,6 +970,7 @@ def fig13_lensing_theory():
     nodrift_b = {n: kappa_gl_no[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
     drift_b = {n: kappa_gl_dr[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
     nbins = theory.shape[0]
+    set_style(width_in=12.0)  # fonts scale with the figure width
     fig, axes = plt.subplots(
         2 * nbins, 2, figsize=(12.0, 13.5), gridspec_kw={"height_ratios": [3, 1] * nbins}, sharex="col"
     )
@@ -935,9 +988,11 @@ def fig13_lensing_theory():
             for n in counts:
                 c_b = np.asarray(kb[n].array)[b]
                 ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
-            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            ax_s.set_title(f"bin {b + 1} — {label}")
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
+            # the axis starts at the first bandpower: nothing is binned below it
+            ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
             if col == 0:
                 ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
             ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
@@ -965,58 +1020,150 @@ def fig13_lensing_theory():
         ),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     savefig(ASSETS / "fig13-lensing-theory", fig)
 
 
 # =============================================================================
-# fig14-fig18 — equal-volume vs scale-factor (05b) spacing at Gauss-Legendre (drift), one per shell count
+# fig14-fig20 — equal-volume vs scale-factor (05b) spacing at Gauss-Legendre (drift), one per shell count
 # =============================================================================
+ELL_MAX_PLOT = 1300  # above ~1300 both C_ell hit the PM-resolution floor
+BIN_COLOURS = ("#4477aa", "#ee7733", "#117733")  # the thesis tomographic-bin colours
+
+
 def lensing_spacing(n_shells, stem):
-    """Equal-volume vs scale-factor spacing at a fixed Gauss-Legendre quadrature (drift, `n_shells` shells), with
-    all three tomographic bins overlaid (Stage-3 [:3], coloured by bin). The top panel is the D_ell power
-    ell(ell+1)/2pi C_ell — solid = equal-volume, dashed = scale-factor (05b), dotted = Limber weak-lensing theory
-    (x pixwin^2(2048)) — and the bottom panel the fractional residual C_ell/theory - 1 for each spacing. Spectra
-    are bandpower-binned in linear bins of 32 multipoles. Both spacings sit on theory around ell~50-100 and roll
-    off together below it (the PM-resolution transfer); the solid-dashed gap is the spacing difference —
-    equal-volume typically carries a ~10-25% small-scale excess (ell~500-1000) from its fat-shell geometry, and
-    bin 1 sits lowest (its low-z sources inside the fat inner ball). 05b was only run with midpoint, but for its
-    thin scale-factor shells midpoint = Gauss-Legendre to <0.2% on the total lensing weight, so its midpoint
-    spectra stand in."""
-    pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
-    theory_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
-    theory = np.asarray(theory_b.array)
-    bc = np.asarray(theory_b.wavenumber)
-    dl = bc * (bc + 1) / (2 * np.pi)
+    """Equal-volume vs scale-factor spacing at a fixed Gauss-Legendre quadrature (drift, `n_shells` shells),
+    all three tomographic bins overlaid (Stage-3 [:3], coloured by bin), judged against the CosmoGrid
+    reference itself — no Limber in the yardstick; the thesis `lensing_vs_cosmogrid` layout. Top: the D_ell
+    power — solid = equal-volume, dashed = uniform scale-factor (05b), dash-dotted = the CosmoGrid reference
+    itself. Middle: C_ell/CosmoGrid - 1 with the acceptance band = the expected cosmology + nside-512-pixwin
+    offset (th_run/th_172798 - 1, thin dotted) +- sqrt(2) x the empirical CV of the 200 fiducial CosmoGrid
+    permutations (worst bin) — the run and the reference are independent single realizations, so a second
+    CosmoGrid realization would live inside the band. The ell axis is numbered here; the bottom row carries
+    its own band-start axis. Bottom: the median bandpower ratio per ell band ([30,100/150/200/250/300)) as
+    bars — one solid and one hatched bar per bin colour, one bar group per spacing — with the same acceptance
+    band behind them; the validity claim 'good up to 250' is literal: the 200/250 bars sit inside the grey
+    band, or they do not. Spectra are bandpower-binned in linear bins of 32 multipoles; the multipole axis
+    starts at the first bandpower. Both spacings sit on the reference around ell~50-100 and roll off below it
+    and at small scales on the common PM-resolution transfer (the ceiling any 2560^3 run hits); the
+    solid-dashed gap is the spacing difference, shrinking with shell count. 05b was only run with midpoint,
+    but for its thin scale-factor shells midpoint = Gauss-Legendre to <0.2% on the total lensing weight, so
+    its midpoint spectra stand in."""
     ev_b = np.asarray(kappa_gl_dr[n_shells].bin(nlb=32, lmin=2).array)
     sf_b = np.asarray(kappa_5b_dr[n_shells].bin(nlb=32, lmin=2).array)
-    bincol = {0: "#4C72B0", 1: "#DD8452", 2: "#C44E52"}
-    fig, (ax_s, ax_r) = plt.subplots(2, 1, figsize=(7.4, 6.8), sharex=True, gridspec_kw={"height_ratios": [2.7, 1]})
-    for b in range(3):
-        ev, sf, th = ev_b[b], sf_b[b], theory[b]
-        ax_s.loglog(bc, dl * ev, color=bincol[b], ls="-", lw=1.6)
-        ax_s.loglog(bc, dl * sf, color=bincol[b], ls="--", lw=1.6)
-        ax_s.loglog(bc, dl * th, color=bincol[b], ls=":", lw=1.3)
-        ax_r.semilogx(bc, ev / th - 1.0, color=bincol[b], ls="-", lw=1.6)
-        ax_r.semilogx(bc, sf / th - 1.0, color=bincol[b], ls="--", lw=1.6)
-    ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
-    ax_s.grid(True, which="both", ls=":", alpha=0.4)
-    ax_r.axhspan(-0.05, 0.05, color="0.7", alpha=0.25)
-    ax_r.axhline(0.0, color="0.4", ls="--", lw=0.9)
-    ax_r.set_ylim(-0.6, 0.15)
-    ax_r.set_xlim(15, 1300)  # below ell~15 is cosmic-variance-noisy; above ~1300 both C_ell hit the PM-resolution floor
-    ax_r.set_ylabel(r"$C_\ell\,/\,C_\ell^{\mathrm{th}} - 1$")
-    ax_r.set_xlabel(r"multipole $\ell$")
-    ax_r.grid(True, which="both", ls=":", alpha=0.4)
-    handles = [Line2D([], [], color=bincol[b], lw=2.0, label=f"bin {b + 1}") for b in range(3)]
-    handles += [
-        Line2D([], [], color="0.3", ls="-", lw=1.8, label=f"Equal-volume spacing (N={n_shells})"),
-        Line2D([], [], color="0.3", ls="--", lw=1.8, label=f"Uniform scale-factor spacing (N={n_shells})"),
-        Line2D([], [], color="0.3", ls=":", lw=1.5, label="Limber theory"),
+    ratio_ev = ev_b / cg17_b - 1.0
+    ratio_sf = sf_b / cg17_b - 1.0
+    # the expected cosmology + nside-512-pixwin offset between the run theory and the reference theory
+    th_run_ps = (
+        compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * hp.pixwin(2048, lmax=LMAX) ** 2
+    ).bin(nlb=32, lmin=2)
+    band_c = (np.asarray(th_run_ps.array) / th_172798_b - 1.0).mean(axis=0)
+    bc = np.asarray(th_run_ps.wavenumber)
+    dl = bc * (bc + 1) / (2 * np.pi)
+    z = np.asarray(kappa_gl_dr[n_shells].z_sources)[:3]
+    keep = bc <= ELL_MAX_PLOT
+
+    series = [  # (line style, bar hatch, bar fill, ratio spectra); equal volume first
+        ("-", "", True, ratio_ev),
+        ("--", "///", False, ratio_sf),
     ]
-    ax_s.legend(handles=handles, loc="lower center", fontsize=8.5, ncol=2, frameon=False)
-    fig.tight_layout()
+
+    fig, (ax_spec, ax_cg, ax_band) = plt.subplots(
+        3,
+        1,
+        figsize=(4.98, 5.2),
+        height_ratios=[1.5, 1.0, 1.05],
+        layout="constrained",
+    )
+    fig.get_layout_engine().set(h_pad=0.02, w_pad=0.02, hspace=0.03, wspace=0.03)
+
+    ax_spec.set_title(rf"${n_shells}$ shells", pad=4)
+    for b, colour in enumerate(BIN_COLOURS):
+        ax_spec.plot(bc[keep], (dl * cg17_b[b])[keep], "-.", color=colour, lw=1.2)
+        ax_spec.plot(bc[keep], (dl * ev_b[b])[keep], "-", color=colour, lw=1.2)
+        ax_spec.plot(bc[keep], (dl * sf_b[b])[keep], "--", color=colour, lw=1.2)
+    ax_spec.set(xscale="log", yscale="log")
+    ax_spec.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
+    ax_spec.tick_params(labelbottom=False)
+    ax_spec.set_xlim(20, ELL_MAX_PLOT)
+
+    ax_cg.fill_between(bc[keep], (band_c - CV_FRAC)[keep], (band_c + CV_FRAC)[keep], color="0.88", lw=0, zorder=0)
+    for b, colour in enumerate(BIN_COLOURS):
+        ax_cg.plot(bc[keep], ratio_ev[b][keep], "-", color=colour, lw=1.2)
+        ax_cg.plot(bc[keep], ratio_sf[b][keep], "--", color=colour, lw=1.2)
+    ax_cg.plot(bc[keep], band_c[keep], ":", color="0.3", lw=0.9)
+    ax_cg.axhline(0.0, color="k", lw=0.8)
+    ax_cg.set_xscale("log")
+    ax_cg.set_xlim(20, ELL_MAX_PLOT)
+    ax_cg.set_xlabel(r"$\ell$")
+    ax_cg.set_ylabel("over CosmoGrid\n" + r"$-\,1$")
+    # cap the y-range at the interesting scale: the bias line keeps rising (pixwin term) and would
+    # otherwise compress the +-5-8% band that carries the verdict into invisibility
+    m_le = (bc <= 400) & keep
+    lo_r = min(ratio_ev[:, keep].min(), ratio_sf[:, keep].min())
+    hi_r = max(ratio_ev[:, m_le].max(), ratio_sf[:, m_le].max(), (band_c + CV_FRAC)[m_le].max())
+    pad_r = 0.06 * (hi_r - lo_r)
+    ax_cg.set_ylim(lo_r - pad_r, hi_r + pad_r)
+
+    band_starts = (30, 100, 150, 200, 250)
+    band_edges = band_starts + (300,)
+    sel_band = [(bc >= lo) & (bc < hi) for lo, hi in zip(band_edges[:-1], band_edges[1:])]
+    centres = np.arange(len(band_starts))
+    width = 0.8 / (len(series) * len(BIN_COLOURS))
+    bar_vals = []
+    for s, (_, hatch, filled, ratios) in enumerate(series):
+        for b, colour in enumerate(BIN_COLOURS):
+            med = np.array([np.median(ratios[b][sel]) for sel in sel_band])
+            bar_vals.append(1.0 + med)
+            ax_band.bar(
+                centres + (len(series) * b + s - (len(series) * 3 - 1) / 2) * width,
+                1.0 + med,
+                width,
+                color=colour if filled else "white",
+                edgecolor=colour,
+                hatch=hatch,
+                lw=0.8,
+                zorder=2,
+            )
+    # the acceptance band sits behind the bars: per-band worst-bin +-sqrt(2) x empirical CV
+    acc = np.array([CV_FRAC[sel].max() for sel in sel_band])
+    acc_lo, acc_hi = 1.0 - acc, 1.0 + acc
+    ax_band.fill_between(
+        np.concatenate([[centres[0] - 0.5], centres, [centres[-1] + 0.5]]),
+        np.concatenate([acc_lo[:1], acc_lo, acc_lo[-1:]]),
+        np.concatenate([acc_hi[:1], acc_hi, acc_hi[-1:]]),
+        step="mid",
+        color="0.88",
+        lw=0,
+        zorder=0,
+    )
+    ax_band.axhline(1.0, color="k", lw=0.8, zorder=1)
+    ax_band.set_xticks(centres)
+    ax_band.set_xticklabels([rf"${lo}$" for lo in band_starts])
+    ax_band.set(xlabel=r"band start $\ell$", ylabel="median over\nCosmoGrid")
+    ax_band.set_xlim(-0.55, len(band_starts) - 0.45)
+    bars = np.concatenate(bar_vals)
+    ax_band.set_ylim(min(bars.min(), acc_lo.min()) - 0.03, max(bars.max(), acc_hi.max()) + 0.03)
+
+    fig.legend(
+        handles=[
+            Patch(color=c, label=rf"bin {b + 1}, $z_s = {zb:.2f}$") for b, (c, zb) in enumerate(zip(BIN_COLOURS, z))
+        ]
+        + [
+            Line2D([], [], color="0.3", ls="-", label="equal-volume spacing"),
+            Line2D([], [], color="0.3", ls="--", label="uniform scale-factor spacing"),
+            Line2D([], [], color="0.3", ls="-.", label=r"CosmoGrid $N$-body"),
+            Patch(color="0.88", label=r"$\sqrt{2}\times$ empirical cosmic variance (200 CosmoGrid permutations)"),
+            Line2D([], [], color="0.3", ls=":", lw=0.9, label="expected cosmology + pixel-window offset"),
+        ],
+        frameon=False,
+        loc="outside upper center",
+        ncol=4,
+        handlelength=1.8,
+        columnspacing=1.2,
+        handletextpad=0.5,
+    )
     savefig(ASSETS / stem, fig)
 
 

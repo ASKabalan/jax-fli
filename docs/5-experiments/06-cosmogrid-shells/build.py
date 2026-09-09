@@ -260,6 +260,7 @@ def ell_max_shell(nbin, chi):
 # fig01 — per-shell C_ℓ vs CosmoGrid + ratio, representative near/mid/far shells (full sky)
 # =============================================================================================
 def fig01_spectra(sim_fs, cg_hi, cosmo):
+    set_style(16)
     shells = [NEAR, MID, FAR]
     ell_cg, cg_b = bandpowers(cg_hi)
     z = np.asarray(cg_hi.z_sources)
@@ -288,7 +289,8 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
         for ax in (axs, axr):
             ax.axvline(lmax_sh, color="0.6", ls=":", lw=1.0)
         axs.set(xscale="log", yscale="log")
-        axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}", fontsize=11)
+        axs.set_xlim(float(ell_cg[0]) * 0.92, float(ell_cg[-1]) * 1.02)  # the binned band, no dead stretch to ℓ≈2
+        axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}")
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -311,7 +313,7 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
         Line2D([], [], color="0.6", ls=":", lw=1.0, label=r"$\ell_{\max}\approx\pi\chi/\mathrm{d}x$ (PM Nyquist)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.07))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.07))
     fig.tight_layout()
     savefig(ASSETS / "fig01-spectra-near-mid-far", fig)
 
@@ -322,6 +324,7 @@ def fig01_spectra(sim_fs, cg_hi, cosmo):
 def fig02_band_vs_distance(sim_spec, cg_hi):
     ell_cg, cg_b = bandpowers(cg_hi)
     targets = [200, 400, 800]
+    set_style(5.2 * len(targets))
 
     fig, axes = plt.subplots(1, len(targets), figsize=(5.2 * len(targets), 4.8), sharey=True)
     for ax, lt in zip(axes, targets):
@@ -344,7 +347,7 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
                         lw=1.5 if dec == "slab" else 1.0,
                         alpha=0.95 if dec == "slab" else 0.7,
                     )
-        ax.set_title(rf"$\ell \approx {lt}$ (nearest bandpower)", fontsize=11)
+        ax.set_title(rf"$\ell \approx {lt}$ (nearest bandpower)")
         ax.set_xlabel(r"comoving distance $\chi$  [Mpc/$h$]")
         ax.set_ylim(-0.6, 0.2)
         ax.grid(alpha=0.25)
@@ -355,7 +358,7 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
     ]
     handles += [Line2D([], [], color="0.3", ls=DECOMP_LS[d], lw=1.5, label=f"{d} decomposition") for d in DECOMPS]
     handles += [Line2D([], [], color="0.82", lw=6, label=r"$\pm5\%$")]
-    fig.legend(handles=handles, loc="upper center", ncol=7, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.04))
+    fig.legend(handles=handles, loc="upper center", ncol=7, frameon=False, bbox_to_anchor=(0.5, 1.08))
     fig.tight_layout()
     savefig(ASSETS / "fig02-band-vs-distance", fig)
 
@@ -364,6 +367,7 @@ def fig02_band_vs_distance(sim_spec, cg_hi):
 # fig03 — nside-512 matched-resolution cross-check (ties spectra to the higher-order stats)
 # =============================================================================================
 def fig03_nside512(sim_fs_512, cg_lo):
+    set_style(16)
     ell_cg, cg_b = bandpowers(cg_lo)
     z = np.asarray(cg_lo.z_sources)
     binned = {nb: bandpowers(sim_fs_512[nb]) for nb in NBINS}
@@ -377,7 +381,8 @@ def fig03_nside512(sim_fs_512, cg_lo):
             ev, cv = binned[nb]
             axs.plot(ev, ev * (ev + 1) / (2 * np.pi) * cv[sh], color=NBIN_COLOR[nb], lw=1.5)
         axs.set(xscale="log", yscale="log")
-        axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}", fontsize=11)
+        axs.set_xlim(float(ell_cg[0]) * 0.92, float(ell_cg[-1]) * 1.02)  # the binned band, no dead stretch to ℓ≈2
+        axs.set_title(f"shell {sh}:  z = {z[sh]:.3f}")
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -396,7 +401,7 @@ def fig03_nside512(sim_fs_512, cg_lo):
         Line2D([], [], color=C_CG, lw=1.8, label="CosmoGrid (nside 512)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.06))
+    fig.legend(handles=handles, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.06))
     fig.tight_layout()
     savefig(ASSETS / "fig03-nside512-crosscheck", fig)
 
@@ -416,6 +421,7 @@ def _od_map(field, sh):
 # fig04 / fig05 — δ maps, near/mid/far × variants (texture/geometry only, independent realisations)
 # =============================================================================================
 def fig04_maps_fullsky(od_fs, cg_od):
+    set_style(15)
     z = np.asarray(cg_od.z_sources)
     cols = [("2-bin (slab)", od_fs[2]), ("3-bin (slab)", od_fs[3]), ("CosmoGrid", cg_od)]
     fig = plt.figure(figsize=(15, 10.2))
@@ -442,6 +448,7 @@ def fig04_maps_fullsky(od_fs, cg_od):
 
 
 def fig05_maps_quadrant(od_q):
+    set_style(11)
     z = np.asarray(od_q[2].z_sources)
     cols = [("2-bin quadrant (slab)", od_q[2]), ("3-bin quadrant (slab)", od_q[3])]
     fig = plt.figure(figsize=(11, 15.0))
@@ -484,6 +491,7 @@ def _overdensity_shell(field, sh, normalization="per_plane"):
 # fig06 / fig07 — overdensity PDF and peak counts, SIM vs CosmoGrid (full sky)
 # =============================================================================================
 def _higher_order_grid(od_fs, cg_od, xy, title, stem, xlabel):
+    set_style(15)
     shells = [NEAR, MID, FAR]
     z = np.asarray(cg_od.z_sources)
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
@@ -516,6 +524,7 @@ def fig08_masked(od_q, cg_od):
     # Conservative all-radii footprint (the threshold=1.0 visibility cap, same observer as Exp 08).
     # Applied IDENTICALLY to the quadrant sim and to the full-sky CosmoGrid map, so PDF/peaks compare
     # on the very same pixels (these statistics have no MASTER-style mask deconvolution).
+    set_style(13)
     footprint = np.asarray(spherical_visibility_mask(NSIDE_LO, OBS_QUAD, threshold=1.0)).astype(bool)
     apo = np.asarray(jfli.data.apodize(footprint.astype(float), 2.0))
     z = np.asarray(cg_od.z_sources)
@@ -559,6 +568,7 @@ def fig08_masked(od_q, cg_od):
 # fig09 — starlet (spherical wavelet) per-scale coefficient distributions (needs pycs/CosmoStat)
 # =============================================================================================
 def fig09_starlet(od_fs, cg_od, nscales=5):
+    set_style(4.0 * nscales)
     shells = [NEAR, MID, FAR]  # three rows: near / mid / far representative shells
     z = np.asarray(cg_od.z_sources)
     fig, axes = plt.subplots(len(shells), nscales, figsize=(4.0 * nscales, 3.7 * len(shells)))
@@ -570,7 +580,7 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
             ax = axes[r, s]
             lo, hi = np.percentile(np.asarray(coeffs[-1][1].array[s]), [0.5, 99.5])
             bins = np.linspace(lo, hi, 60)
-            for lab, st, col in coeffs:
+            for _lab, st, col in coeffs:
                 ax.hist(
                     np.asarray(st.array[s]),
                     bins=bins,
@@ -578,7 +588,6 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
                     histtype="step",
                     lw=1.6,
                     color=col,
-                    label=lab if (r == 0 and s == 0) else None,
                 )
             ax.set(yscale="log")
             ax.grid(alpha=0.3, which="both")
@@ -588,8 +597,10 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
                 ax.set_xlabel("coefficient")
             if s == 0:
                 ax.set_ylabel(f"shell {sh} (z={z[sh]:.2f})\nprobability density")
-                if r == 0:
-                    ax.legend(frameon=False, fontsize=8)
+    # a figure legend rather than an in-axes one: the panels are narrow and every corner carries a tail
+    handles = [Line2D([], [], color=NBIN_COLOR[nb], lw=1.6, label=f"jax-fli {nb}-bin") for nb in NBINS]
+    handles += [Line2D([], [], color=C_CG, lw=1.8, label="CosmoGrid")]
+    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.03))
     fig.tight_layout()
     savefig(ASSETS / "fig09-starlet", fig)
 
@@ -598,6 +609,7 @@ def fig09_starlet(od_fs, cg_od, nscales=5):
 # fig10 — starlet coefficient MAPS per scale (mollview), jax-fli vs CosmoGrid (needs pycs)
 # =============================================================================================
 def fig10_starlet_maps(od_fs, cg_od, nscales=5):
+    set_style(3.4 * nscales)
     sh = MID
     st_sim = np.asarray(_overdensity_shell(od_fs[2], sh).starlet_coefficients(nscales=nscales).array)
     st_cg = np.asarray(_overdensity_shell(cg_od, sh).starlet_coefficients(nscales=nscales).array)
@@ -630,8 +642,6 @@ def fig10_starlet_maps(od_fs, cg_od, nscales=5):
 
 
 def main():
-    set_style()
-
     sim_fs_hi = {nb: sim_spec_hi[(nb, "fullsky", "slab")] for nb in NBINS}
     sim_fs_lo = {nb: sim_spec_lo[(nb, "fullsky", "slab")] for nb in NBINS}
 

@@ -40,7 +40,21 @@ Each run is one PM simulation identical to the 05c drift anchor but for the mesh
 
 ## Results
 
-⚠️ *Not yet run.* The ladder is submitted via `run.sh`; figures land here once the density and Born data are on HuggingFace.
+The ladder has run. The figures below are rendered by [`build.py`](build.py) from the κ spectra under `05-spacing-n-stepping/05e-mesh/kappa_spectra/` (HuggingFace push pending).
+
+![512³ mesh (fig01)](assets/fig01-lensing-mesh-512.svg)
+
+![1024³ mesh (fig02)](assets/fig02-lensing-mesh-1024.svg)
+
+![2048³ mesh (fig03)](assets/fig03-lensing-mesh-2048.svg)
+
+![2560³ mesh — the 05c anchor (fig04)](assets/fig04-lensing-mesh-2560.svg)
+
+![3072³ mesh (fig05)](assets/fig05-lensing-mesh-3072.svg)
+
+![4096³ mesh (fig06)](assets/fig06-lensing-mesh-4096.svg)
+
+**Born convergence per mesh against CosmoGrid (fig01–fig06).** One figure per mesh (in increasing mesh), the three Stage-3 source bins overlaid. Top: the `D_ℓ` power — solid = the mesh, dashed = the 2560³ anchor (absent on fig04, the anchor's own figure and the production baseline of the set). Middle: `C_ℓ`/CosmoGrid − 1 against the acceptance band = the expected cosmology + nside-512-pixwin offset (thin dotted) ± √2 × the empirical CV of the 200 fiducial CosmoGrid permutations (worst bin) — each mesh is an independent universe, so the band is the honest scatter of the comparison. Bottom: the median bandpower ratio per ℓ band ([30,100) … [250,300)), one bar per variant and bin, in the bin colours (solid = the mesh, hatched = the anchor); spectra are bandpower-binned in linear bins of `nlb` = 32 multipoles. **The ladder converges at 2048³**: its band medians (+0.02 / −0.05 / −0.09 / −0.17 / −0.21) sit within a few per cent of the anchor's (+0.08 / −0.00 / −0.02 / −0.10 / −0.15) through `ℓ ≈ 150` and roll off only slightly earlier at the finest bands, while **3072³ and 4096³ sit on the anchor at every band** (4096³: +0.05 / +0.03 / +0.03 / −0.07 / −0.12) with marginally *shallower* small-scale roll-off — their PM-Nyquist ceiling `ℓ_max ≈ πχ/dx` has moved past the plotted window. The coarse end collapses: 1024³ loses 10–60% of power across the band (−0.10 → −0.60) and 512³ carries medians of −0.36 → −0.78, both far outside the CV band — systematic mesh effects, not universe scatter — and both show a sharp particle shot-noise excess that lifts them back above the anchor beyond `ℓ ≈ 500` (the re-cross at the right edge of fig01/fig02 is discreteness, not recovered signal). The 4096³ spectra show **no low-bias** relative to the anchor, so the `--halo-multiplier 2.0` contingency of the caveat above is not triggered.
 
 ## How to run
 
@@ -50,4 +64,8 @@ bash run.sh                # submit the mesh ladder to SLURM
 SIM_MODE=BORN bash run.sh  # after pushing the density parquet to HF: the 3-bin Born pass
 ```
 
-The ladder writes one directory of per-shell parquet (`shell_NNNN.parquet`) per mesh to `results/exp5e/density/`; once pushed to HuggingFace, `SIM_MODE=BORN` reads the published shells back and writes the 3-bin convergence maps under `results/exp5e/kappa_gl/` (`fli-born-rt --quadrature gauss_legendre --perf --iterations 3`). The κ spectra parquet are then derived with `tools/make_spectra.py` and published under `05-spacing-n-stepping/05e-mesh/kappa_spectra/`.
+The ladder writes one directory of per-shell parquet (`shell_NNNN.parquet`) per mesh to `results/exp5e/density/`; once pushed to HuggingFace, `SIM_MODE=BORN` reads the published shells back and writes the 3-bin convergence maps under `results/exp5e/kappa_gl/` (`fli-born-rt --quadrature gauss_legendre --perf --iterations 3`). The κ spectra parquet are then derived with `tools/make_spectra.py` and published under `05-spacing-n-stepping/05e-mesh/kappa_spectra/`. Once those are in place, the figure script renders the SVGs locally without a GPU:
+
+```bash
+JAX_PLATFORMS=cpu uv run --no-sync python build.py
+```

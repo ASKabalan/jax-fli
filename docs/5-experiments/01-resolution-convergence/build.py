@@ -206,6 +206,7 @@ def _sigma_displacement(z):
 # fig01 / fig02 — per-shell binned C_ell vs theory (top) + measured/theory ratio (bottom)
 # =============================================================================
 def plot_spectra_batch(shell_idxs, title, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
     dl = leff * (leff + 1) / (2 * np.pi)
@@ -219,8 +220,9 @@ def plot_spectra_batch(shell_idxs, title, stem):
         ax_s.axvline(LPLOT, color="0.6", ls=":", lw=0.9)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_xlim(max(2.0, leff.min() * 0.8), LPLOT * 1.07)
-        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(leff[0]) * 0.92, LPLOT * 1.07)
+        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -237,7 +239,7 @@ def plot_spectra_batch(shell_idxs, title, stem):
             )
         ax_r.axvline(LPLOT, color="0.6", ls=":", lw=0.9)
         ax_r.set_xscale("log")
-        ax_r.set_xlim(max(2.0, leff.min() * 0.8), LPLOT * 1.07)
+        ax_r.set_xlim(float(leff[0]) * 0.92, LPLOT * 1.07)
         ax_r.set_ylim(-0.6, 0.4)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -252,7 +254,7 @@ def plot_spectra_batch(shell_idxs, title, stem):
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
         Line2D([], [], color="0.6", ls=":", lw=0.9, label=r"$\ell=2\,n_{\rm side}$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=8, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.06))
+    fig.legend(handles=handles, loc="upper center", ncol=8, frameon=False, bbox_to_anchor=(0.5, 1.06))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -269,6 +271,7 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     cmap = cm.plasma
     norm = Normalize(vmin=float(chi_shells[kept].min()), vmax=float(chi_shells[kept].max()))
     xs = np.arange(len(MESHES))
+    set_style(width_in=15.8)  # fonts scale with the figure width
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(15.8, 5.4))
 
     # left: measured/theory - 1 over the CV-clean band, per outer shell, vs resolution
@@ -286,9 +289,9 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
     axL.set_xticklabels(labels)
     axL.set_ylabel(rf"measured / theory - 1  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
     axL.grid(alpha=0.25)
-    axL.legend(loc="lower left", fontsize=9)
+    axL.legend(loc="lower left")
     for ax_, ay, atext, acolor in annotations:
-        axL.annotate(atext, (ax_, ay), fontsize=9, color=acolor, ha="center")
+        axL.annotate(atext, (ax_, ay), color=acolor, ha="center")
 
     # right: physical halo (ghost zone) vs the particle-displacement band
     s_lo, s_hi = _sigma_displacement(0.35), np.sqrt(3) * _sigma_displacement(0.0)  # 1D@far .. 3D@z0
@@ -317,14 +320,13 @@ def _fig_convergence(raw_map, halo_map, labels, suptitle, stem, annotations):
             textcoords="offset points",
             xytext=(0, 9),
             ha="center",
-            fontsize=8.5,
         )
     axR.set_yscale("log")
     axR.set_xticks(xs)
     axR.set_xticklabels(labels)
     axR.set_ylabel(r"physical halo (ghost zone)  [Mpc/h]")
     axR.grid(alpha=0.25, which="both")
-    axR.legend(loc="upper right", fontsize=9)
+    axR.legend(loc="upper right")
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -336,7 +338,7 @@ def fig03_convergence():
         [f"m{m}\npx={PX[m]}" for m in MESHES],
         "Anti-convergence of the over-fine runs, and its cause: a starved distributed-PM ghost zone",
         "fig03-convergence",
-        [(1.5, 0.02, "converged", "green"), (3.5, -0.20, "power lost\n(finer $\\rightarrow$ worse)", "firebrick")],
+        [(1.5, 0.02, "converged", "green"), (3.4, 0.25, "power lost\n(finer $\\rightarrow$ worse)", "firebrick")],
     )
 
 
@@ -362,6 +364,7 @@ def plot_slab_pencil(m, stem):
     lo, hi = BAND
     r_slab, _ = band_ratio(ell_full, raw_s[m], theory_pw_arr, lo, hi)
     r_pencil, _ = band_ratio(ell_full, spectra_pencil[m], theory_pw_arr, lo, hi)
+    set_style(width_in=8.5)  # fonts scale with the figure width
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
     ax.axhspan(-0.05, 0.05, color="0.82", lw=0, label=r"$\pm5\%$")
     ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
@@ -387,7 +390,7 @@ def plot_slab_pencil(m, stem):
     ax.set_ylabel(rf"measured / theory - 1  ($\ell\in[{lo},{hi}]$, $(2\ell+1)$-weighted)")
     ax.set_ylim(-0.6, 0.1)
     ax.grid(alpha=0.25)
-    ax.legend(loc="lower left", fontsize=10)
+    ax.legend(loc="lower left")
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -404,6 +407,7 @@ def fig07_maps(shell=9):
     d1 = {m: _logdelta(density[m], shell) for m in MESHES}
     v = np.percentile(d1[2048], [1, 99])
     mv = dict(min=v[0], max=v[1], cmap="inferno", cbar=False, notext=True, bgcolor=(0.0,) * 4)
+    set_style(width_in=20.0)  # fonts scale with the figure width
     fig = plt.figure(figsize=(20, 12.5))
     for i, m in enumerate(MESHES):
         hp.gnomview(
@@ -433,6 +437,7 @@ def fig08_maps_slab_pencil(shell=9):
         panels.append((f"m{m} slab  (halo {HALO[m]:.1f} Mpc/h)", _logdelta(density[m], shell)))
         panels.append((f"m{m} pencil  (halo {PENCIL_HALO[m]:.1f} Mpc/h)", _logdelta(density_pencil[m], shell)))
     v = np.percentile(panels[0][1], [1, 99])
+    set_style(width_in=20.0)  # fonts scale with the figure width
     fig = plt.figure(figsize=(20, 9.5))
     for i, (ttl, d) in enumerate(panels):
         hp.gnomview(

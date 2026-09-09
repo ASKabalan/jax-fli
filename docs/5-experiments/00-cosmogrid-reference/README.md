@@ -76,6 +76,20 @@ At the matched resolution the two **agree** — confirming the apparent advantag
 
 The DES Y3 Born κ tracks the weak-lensing theory over the same intermediate band, validating the pipeline for the second source distribution.
 
+### The cosmic-variance band of the reference
+
+Every ratio figure of this work (05b/05c, and the thesis `lensing_vs_cosmogrid`) divides our spectra by a CosmoGrid κ reference, so the plotted residual carries the cosmic variance of that reference. The band is measured from the fiducial CosmoGrid permutations themselves: all 200 `perm_XXXX` of `stage3_forecast/fiducial/cosmo_fiducial`, four Stage-3 κ bins each, full-sky `C_ℓ` to ℓ = 1500 (healpy anafast — the same estimator and the same banding, linear bins of 32 multipoles with `(2ℓ+1)` weights, as every figure). The product is published in the dataset under `00-cosmogrid/fiducial_kappa_spectra/` as five parquets: one per 50 permutations (`cosmo_fiducial_part{0..3}.parquet`, one row per perm, array `(4, 1501)`) and `cosmo_fiducial_stats.parquet`, the ensemble summary as a two-row spectra file (row 0 = per-multipole mean across the perms, row 1 = std). The band itself is derived from the parts, not the stats rows: the empirical CV is the std across perms of the bandpowers, which the pointwise std row overestimates in the first band (bin(std row)/bin(mean row) is biased high by ≈ 0.2 where the in-band `C_ℓ` variation is large). The fiducial cosmology (H₀ 67.36, Ω_m 0.26, σ₈ 0.84) is resolved in `2-build.py` from the metainfo's `parameters/fiducial` group — the library's `load_cosmogrid_kappa` only knows the numbered grid cosmologies, so the script patches the resolution locally (no `src/` change). The band is a fractional, cosmology-independent quantity, so the fiducial cosmology differing from the `cosmo_172798` / `cosmo_000001` references does not matter.
+
+Three estimates of the fractional band come out side by side, per bin and bandpower:
+
+![Fiducial cosmic variance: empirical permutations vs jax_cosmo Gaussian vs the closed form](assets/fig09-cosmic-variance.svg)
+
+- **Empirical** — the std/mean of the bandpowers across the 200 permutations. The perms are semi-independent (reshuffles and rotations of only 7 independent fiducial simulations, Kacprzak et al. 2023) — this is the sims-based error bar the ratio panels should draw.
+- **jax_cosmo Gaussian** — `gaussian_cl_covariance` (noise-free, `f_sky=1`), propagated exactly to the same bandpowers. Its floor is the closed form `sqrt(2/Σ(2ℓ+1))`, which it reproduces to ≤ 0.7 % for ℓ ≥ 100; below that the C_ℓ variation inside a band inflates the propagated variance, as it must.
+- The empirical scatter sits **above** the Gaussian band everywhere — 1.2–2.6× at ℓ ≲ 1000, converging toward it at high ℓ — the direction expected from the non-Gaussian (trispectrum) contribution that the Gaussian formula ignores; it is stable between perm halves. The Gaussian number is the idealized floor, the empirical one the conservative band.
+
+The bottom row checks the ensemble itself: the perm-mean against the Limber theory at the fiducial cosmology, pixel-window matched. It sits inside the band for ℓ ≲ 1200 (worst ≈ 1.9× the band at ℓ ~ 500) and only leaves it from above near the nside-512 Nyquist, where the maps' aliasing power — not cosmic variance — takes over; the same reason the ratio figures stop at ℓ ≈ 1300.
+
 ## How to run
 
 The density and forecast-κ are published from the local CosmoGrid files; the Born/ray-traced κ run on the cluster and save parquet, which `publish_local.py` uploads afterwards. The figure scripts are local, CPU.
@@ -92,6 +106,14 @@ bash run.sh                    # submit; then: python publish_local.py --yes
 # 3. Figures from the published spectra (CPU; float64) — no GPU, no re-simulation.
 JAX_PLATFORMS=cpu uv run --no-sync python 0-build.py    # fig01–fig04  (density convergence)
 JAX_PLATFORMS=cpu uv run --no-sync python 1-build.py    # fig05–fig07 + fig08-nz-bins  (lensing)
+
+# 4. Fiducial cosmic-variance band (CPU; reads the local CosmoGrid files, ~10 min).
+#    Writes cosmo_fiducial_part{0..3}.parquet + cosmo_fiducial_stats.parquet into
+#    ../jax-fli-experiments/00-cosmogrid/fiducial_kappa_spectra/; skips if they exist.
+JAX_PLATFORM_NAME=cpu uv run --no-sync python 2-build.py   # fig09-cosmic-variance  (FORCE_REGEN=1 to recompute)
+
+# 5. Publish the product (run from ../jax-fli-experiments):
+#    hf upload ASKabalan/jax-fli-experiments 00-cosmogrid/fiducial_kappa_spectra 00-cosmogrid/fiducial_kappa_spectra --repo-type dataset
 ```
 
 > **Offline cluster (Jean Zay — no internet on compute nodes).** Pre-cache on a login node (`HF_HOME=$WORK/hf_cache python download.py`), then on compute nodes set `HF_HOME=$WORK/hf_cache HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1`; `fli-born-rt` / `fli-dorian-rt` then stream the warm cache without touching the network.

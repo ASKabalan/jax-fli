@@ -197,6 +197,9 @@ spec_b = {
 # fig01–fig04 — per-shell binned C_ell + ratio, the four painting schemes at one native nside
 # =============================================================================
 def plot_schemes_batch(nside, shell_idxs, title, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
@@ -206,7 +209,8 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
             ax_s.plot(leff, dl * spec_b[nside][s][sh], color=SCHEME_COLORS[s], ls=SCHEME_STYLE[s], lw=1.5, zorder=4)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
+        ax_s.set_xlim(*xlim)
+        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -221,6 +225,7 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
                 lw=1.3,
             )
         ax_r.set_xscale("log")
+        ax_r.set_xlim(*xlim)
         ax_r.set_ylim(-0.7, 0.3)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -233,7 +238,7 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
         Line2D([], [], color="k", ls="--", lw=1.4, label=rf"Limber theory $\times\,w_\ell^2$({nside})"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.07))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.07))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -242,6 +247,9 @@ def plot_schemes_batch(nside, shell_idxs, title, stem):
 # fig05 / fig06 — native sampling vs paint@2048→ud_grade→1024, near + far shells, three schemes
 # =============================================================================
 def plot_udsample_grid(native_nside, title, stem):
+    set_style(width_in=18.0)  # fonts scale with the figure width
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig = plt.figure(figsize=(18, 9))
     gs = fig.add_gridspec(2, 3, hspace=0.34, wspace=0.2)
     for r, sh in enumerate([NEAR, FAR]):
@@ -257,7 +265,8 @@ def plot_udsample_grid(native_nside, title, stem):
             ax.plot(leff, dl * ud_b[(s, sh)], color=C_UD, ls="-", lw=1.6, zorder=4)
             ax.set_xscale("log")
             ax.set_yscale("log")
-            ax.set_title(f"{SCHEME_LABEL[s]} — shell {sh} (z={z_shells[sh]:.3f})", fontsize=10)
+            ax.set_xlim(*xlim)
+            ax.set_title(f"{SCHEME_LABEL[s]} — shell {sh} (z={z_shells[sh]:.3f})")
             ax.grid(alpha=0.2, which="both")
             ax.tick_params(labelbottom=False)
             if c == 0:
@@ -269,10 +278,11 @@ def plot_udsample_grid(native_nside, title, stem):
             )
             axr.plot(leff, ud_b[(s, sh)] / theory_b[1024][sh] - 1.0, color=C_UD, ls="-", lw=1.4)
             axr.set_xscale("log")
+            axr.set_xlim(*xlim)
             axr.set_ylim(-0.7, 0.3)
             axr.grid(alpha=0.2, which="both")
             if c == 0:
-                axr.set_ylabel("meas/thy - 1", fontsize=8)
+                axr.set_ylabel("meas/thy - 1")
             axr.set_xlabel(r"$\ell$")
     handles = [
         Line2D([], [], color=C_NATIVE, ls=":", lw=1.6, label=f"native nside {native_nside}"),
@@ -282,7 +292,7 @@ def plot_udsample_grid(native_nside, title, stem):
     if native_nside != 1024:
         handles.append(Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$(1024)"))
     handles.append(Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"))
-    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.0))
+    fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False, bbox_to_anchor=(0.5, 1.0))
     savefig(ASSETS / stem, fig)
 
 
@@ -290,6 +300,9 @@ def plot_udsample_grid(native_nside, title, stem):
 # fig07 — native nside 2048 vs 1024 for two schemes (NGP, RBF08), per shell + ratio
 # =============================================================================
 def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     # nside distinguished by line style (1024 dotted, 2048 solid); scheme by colour.
     style = {1024: dict(ls=":"), 2048: dict(ls="-")}
@@ -303,7 +316,8 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
                 ax_s.plot(leff, dl * spec_b[ns][s][sh], color=SCHEME_COLORS[s], lw=1.5, zorder=4, **style[ns])
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
+        ax_s.set_xlim(*xlim)
+        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -313,6 +327,7 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
             for ns in (1024, 2048):
                 ax_r.plot(leff, spec_b[ns][s][sh] / theory_b[ns][sh] - 1.0, color=SCHEME_COLORS[s], lw=1.4, **style[ns])
         ax_r.set_xscale("log")
+        ax_r.set_xlim(*xlim)
         ax_r.set_ylim(-0.7, 0.3)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -331,7 +346,7 @@ def plot_nside_compare(schemes_sel, shell_idxs, title, stem):
         Line2D([], [], color="k", ls="--", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$(2048)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(handles=handles, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.13))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 

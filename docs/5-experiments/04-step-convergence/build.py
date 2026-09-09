@@ -186,6 +186,9 @@ meas_b_arr = {sol: {st: np.asarray(meas_b[sol][st].array) for st in STEPS} for s
 # fig01–fig08 — per-solver step convergence: C_ell at each step count (top) + ratio to the 50-step run
 # =============================================================================
 def plot_step_convergence(solver, shell_idxs, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shell_idxs):
         ax_s, ax_r = axes[0, col], axes[1, col]
@@ -193,8 +196,8 @@ def plot_step_convergence(solver, shell_idxs, stem):
             ax_s.plot(leff, leff * (leff + 1) / (2 * np.pi) * meas_b_arr[solver][st][sh], color=STEP_COLORS[st], lw=1.5)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
-        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
+        ax_s.set_xlim(*xlim)
+        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -206,7 +209,7 @@ def plot_step_convergence(solver, shell_idxs, stem):
                 leff, meas_b_arr[solver][st][sh] / meas_b_arr[solver][50][sh] - 1.0, color=STEP_COLORS[st], lw=1.3
             )
         ax_r.set_xscale("log")
-        ax_r.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
+        ax_r.set_xlim(*xlim)
         ax_r.set_ylim(-0.03, 0.03)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -215,7 +218,7 @@ def plot_step_convergence(solver, shell_idxs, stem):
     handles = [Line2D([], [], color=STEP_COLORS[st], lw=1.6, label=f"{st} steps") for st in STEPS]
     handles[-1].set_label("50 steps (reference)")
     handles += [Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm2\%$")]
-    fig.legend(handles=handles, loc="upper center", ncol=7, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.06))
+    fig.legend(handles=handles, loc="upper center", ncol=7, frameon=False, bbox_to_anchor=(0.5, 1.06))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -224,6 +227,9 @@ def plot_step_convergence(solver, shell_idxs, stem):
 # fig09 — 20 vs 30 steps, all four solver/stepping variants, near / mid / far shell: C_ell + ratio to theory
 # =============================================================================
 def plot_solvers_near_mid_far(stem):
+    set_style(width_in=16.5)  # fonts scale with the figure width
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     cols = [("near", NEAR_SHELL), ("mid", MID_SHELL), ("far", FAR_SHELL)]
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16.5, 6.4), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, (label, sh) in enumerate(cols):
@@ -243,10 +249,8 @@ def plot_solvers_near_mid_far(stem):
                 )
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
-        ax_s.set_title(
-            rf"{label} shell {sh}:  z = {z_shells[sh]:.3f},  $\chi$ = {chi_shells[sh]:.0f} Mpc/h", fontsize=11
-        )
+        ax_s.set_xlim(*xlim)
+        ax_s.set_title(rf"{label} shell {sh}:  z = {z_shells[sh]:.3f},  $\chi$ = {chi_shells[sh]:.0f} Mpc/h")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -263,7 +267,7 @@ def plot_solvers_near_mid_far(stem):
                     lw=1.3,
                 )
         ax_r.set_xscale("log")
-        ax_r.set_xlim(max(2.0, leff.min() * 0.8), LMAX)
+        ax_r.set_xlim(*xlim)
         ax_r.set_ylim(-0.3, 0.2)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -276,7 +280,7 @@ def plot_solvers_near_mid_far(stem):
         Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber number-counts theory $\times\,w_\ell^2$"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=8, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.07))
+    fig.legend(handles=handles, loc="upper center", ncol=8, frameon=False, bbox_to_anchor=(0.5, 1.07))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 

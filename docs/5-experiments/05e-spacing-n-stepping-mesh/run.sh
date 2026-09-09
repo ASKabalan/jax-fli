@@ -14,7 +14,7 @@ BOX5="5000.0 5000.0 5000.0"
 SIM_MODE="${SIM_MODE:-DENSITY}"  # DENSITY → the mesh ladder; anything else → the 3-bin Born pass
 
 # Shared physics = 05c's drift anchor; --mesh-size and --halo-multiplier are per-run (below).
-COMMON="--sim-mode pm --box-size $BOX5 --solver bf --nb-steps 50 --time-stepping D --min-width 60.0 \
+COMMON="--sim-mode pm --box-size $BOX5 --solver bf --nb-steps 50 --time-stepping D --min-width 60.0 --nb-shells 20 \
 --paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp --shell-spacing equal_vol \
 --drift-on-lightcone --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
 
@@ -61,7 +61,7 @@ else
     read -r M _ <<< "$r"
     DATA="05-spacing-n-stepping/05e-mesh/density/exp5e_m${M}/shell*.parquet"
     echo "Launching 3-bin Born lensing (gauss_legendre) for exp5e_m${M}"
-    launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 4 8 1 00:40:00 -- \
+    launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 8 16 1 00:40:00 -- \
       fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
       --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
       --perf --iterations 3 \

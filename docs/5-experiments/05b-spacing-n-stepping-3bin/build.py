@@ -47,6 +47,7 @@ from datasets import load_dataset
 from huggingface_hub import snapshot_download
 from matplotlib import cm
 from matplotlib.lines import Line2D
+from matplotlib.ticker import NullFormatter
 
 import jax_fli as jfli
 from jax_fli import compute_theory_cl, compute_theory_cl_for_density
@@ -54,7 +55,7 @@ from jax_fli.io import Catalog, get_stage3_nz_shear
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from _exputils import savefig, set_style  # noqa: E402
+from _exputils import DISPLAY_WIDTH_IN, savefig, set_style  # noqa: E402
 
 ASSETS = HERE / "assets"
 REPO = "ASKabalan/jax-fli-experiments"
@@ -308,11 +309,12 @@ def fig01_illustration():
         ("40 shells, no drift", banded_z(40)),
     ]
     vmin, vmax = float(z_of(R0)[0]), float(z_of(R1)[0])  # z grows with distance: near R0 -> min, far R1 -> max
+    set_style(width_in=16.5)  # fonts scale with the figure width
     fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.6), sharex=True, sharey=True)
     sc = None
     for ax, (title, zc) in zip(axes, panels):
         sc = ax.scatter(x, y, c=zc, s=2, cmap="turbo", vmin=vmin, vmax=vmax, rasterized=True)
-        ax.set_title(title, fontsize=12)
+        ax.set_title(title)
         ax.set_xlabel("x [Mpc/h]")
         ax.set_aspect("equal")
     axes[0].set_ylabel("y [Mpc/h]")
@@ -345,6 +347,7 @@ def _thick_ref_cl(target_shell):
 
 
 def fig02_density_shells():
+    set_style(width_in=16.5)  # fonts scale with the figure width
     cols = [("near", NEAR_SHELL), ("mid", MID_SHELL), ("far", FAR_SHELL)]
     drift_b_all = drift_10.bin(nlb=32, lmin=2)
     nodrift_b_all = nodrift_10.bin(nlb=32, lmin=2)
@@ -360,22 +363,21 @@ def fig02_density_shells():
         ax_s.loglog(bc, dl * ref_b, color="k", lw=1.6, label="40-shell reference")
         ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5, label="10-shell, no drift")
         ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5, label="10-shell, with drift")
-        ax_s.set_title(
-            rf"{label} shell {sh}:  $\chi = {0.5 * (edges10[0, sh] + edges10[1, sh]):.0f}$ Mpc/h", fontsize=11
-        )
+        ax_s.set_title(rf"{label} shell {sh}:  $\chi = {0.5 * (edges10[0, sh] + edges10[1, sh]):.0f}$ Mpc/h")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
         # quantify the frozen-epoch bias each run carries vs the reference (largest for the thickest shells)
         inb = (bc >= 50) & (bc <= 800)
         dev_no = np.nanmedian(no_b[inb] / ref_b[inb]) - 1
         dev_dr = np.nanmedian(dr_b[inb] / ref_b[inb]) - 1
         ax_s.text(
-            0.04,
+            0.96,
             0.05,
             f"median bias ($\\ell\\in[50,800]$):\nno drift   {dev_no * 100:+.2f}\\%\nwith drift {dev_dr * 100:+.2f}\\%",
             transform=ax_s.transAxes,
-            fontsize=8.5,
             va="bottom",
-            ha="left",
+            ha="right",
             family="monospace",
         )
         if col == 0:
@@ -395,7 +397,7 @@ def fig02_density_shells():
         Line2D([], [], color="tab:blue", lw=1.6, label="10-shell, with drift"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    fig.legend(handles=handles, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.05))
     fig.tight_layout()
     savefig(ASSETS / "fig02-density-shells", fig)
 
@@ -421,11 +423,19 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
     dr = np.asarray(dr_b_all.array)
     chi = np.asarray(spec_no.comoving_centers)
     dx = BOX / MESH
+    # the per-cell font hierarchy of the original census (7 pt ticks / 8 pt titles), scaled by the
+    # figure-width factor and capped: a 20-in-wide census displayed at README size still zooms to
+    # full size, where oversized per-cell text would crowd the 2.5-in cells
+    fig = container if isinstance(container, plt.Figure) else container.figure
+    s = fig.get_figwidth() / DISPLAY_WIDTH_IN
+    fs_tick = min(7 * s, 11.0)
+    fs_title = min(8 * s, 12.0)
+    fs_lab = min(8 * s, 11.0)
     gs = container.add_gridspec(
         2 * nrows,
         ncols,
         height_ratios=[3, 1] * nrows,
-        hspace=0.45,
+        hspace=0.8,
         wspace=0.32,
         left=0.06,
         right=0.99,
@@ -449,14 +459,19 @@ def _draw_census(container, spec_no, spec_dr, nrows, ncols, *, top=0.9, bottom=0
         for ax in (ax_s, ax_r):
             ax.axvline(lmax_sh, color="0.6", ls=":", lw=0.8)
             ax.grid(True, which="both", ls=":", alpha=0.35)
-            ax.tick_params(labelsize=7)
-        ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=8)
+            ax.tick_params(labelsize=fs_tick)
+            ax.yaxis.offsetText.set_fontsize(fs_tick)
+        # decade-only labels: the auto minor labelling piles up in the short cells
+        ax_s.yaxis.set_minor_formatter(NullFormatter())
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
+        ax_s.set_title(rf"$\chi={chi[i]:.0f}$", fontsize=fs_title)
         ax_s.tick_params(labelbottom=False)
         if c == 0:
-            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=8)
-            ax_r.set_ylabel("meas/th - 1", fontsize=7)
+            ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$", fontsize=fs_lab)
+            ax_r.set_ylabel("meas/th - 1", fontsize=fs_tick)
         if r == nrows - 1:
-            ax_r.set_xlabel(r"$\ell$", fontsize=8)
+            ax_r.set_xlabel(r"$\ell$", fontsize=fs_lab)
 
 
 def _census_legend(target, **kwargs):
@@ -467,11 +482,12 @@ def _census_legend(target, **kwargs):
         Line2D([], [], color="0.6", ls=":", lw=1.2, label=r"$\ell_{\max}\approx\pi\chi/\mathrm{d}x$ (PM Nyquist)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    target.legend(handles=handles, ncol=5, fontsize=9, frameon=False, **kwargs)
+    target.legend(handles=handles, ncol=5, frameon=False, **kwargs)
 
 
 def fig03_density_census_small():
     """The three small runs (5 / 8 / 10 shells) stacked as one figure of sub-blocks."""
+    set_style(width_in=13.0)  # fonts scale with the figure width
     fig = plt.figure(figsize=(13.0, 14.0))
     subs = fig.subfigures(4, 1, height_ratios=[0.18, 1, 2, 2], hspace=0.05)
     _census_legend(subs[0], loc="center")  # dedicated legend strip on top
@@ -483,6 +499,7 @@ def fig03_density_census_small():
 
 def density_census(spec_no, spec_dr, nrows, ncols, stem):
     """One run's census on an nrows x ncols grid (one shell per cell)."""
+    set_style(width_in=2.5 * ncols)  # fonts scale with the figure width
     fig = plt.figure(figsize=(2.5 * ncols, 2.9 * nrows))
     _draw_census(fig, spec_no, spec_dr, nrows, ncols, top=0.9, bottom=0.06)
     _census_legend(fig, loc="upper center", bbox_to_anchor=(0.5, 0.99))
@@ -500,6 +517,7 @@ def fig09_lensing():
     ~16 shells); the drift gives only a small head start (a few % at 5 shells, <1% by 16 shells), so the two
     columns nearly coincide — the Born projection washes the (already small) frozen-epoch error out of the
     convergence, in contrast to the equal-volume 05c where the fat inner shell defeats that averaging."""
+    set_style(width_in=12.0)  # fonts scale with the figure width
     counts = [n for n in NSHELLS_KAPPA if n != 40]
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.88, len(counts))))}
     nodrift_b = {n: kappa_nodrift[n].bin(nlb=32, lmin=2) for n in NSHELLS_KAPPA}
@@ -528,7 +546,9 @@ def fig09_lensing():
             for n in counts:
                 c_b = np.asarray(kb[n].array)[b]
                 ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
-            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            # the axis starts at the first bandpower: nothing is binned below it
+            ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
+            ax_s.set_title(f"bin {b + 1} — {label}")
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
@@ -551,7 +571,7 @@ def fig09_lensing():
         Line2D([], [], color="k", lw=1.8, label="40 shells (reference)"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm3\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     savefig(ASSETS / "fig09-lensing", fig)
 
@@ -564,6 +584,7 @@ def fig10_lensing_theory():
     used, x pixwin^2(2048)) instead of the 40-shell run. All counts track theory at large scales and fall below
     at small scales as the finite PM resolution and Born projection suppress power — a common deficit essentially
     independent of the drift; the per-bin ratio window adapts to each bin's spread."""
+    set_style(width_in=12.0)  # fonts scale with the figure width
     counts = NSHELLS_KAPPA
     colors = {n: c for n, c in zip(counts, cm.viridis(np.linspace(0.0, 0.9, len(counts))))}
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
@@ -591,7 +612,9 @@ def fig10_lensing_theory():
             for n in counts:
                 c_b = np.asarray(kb[n].array)[b]
                 ax_s.loglog(bc, dl * c_b, color=colors[n], lw=1.2)
-            ax_s.set_title(f"bin {b + 1} — {label}", fontsize=11)
+            # the axis starts at the first bandpower: nothing is binned below it
+            ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
+            ax_s.set_title(f"bin {b + 1} — {label}")
             ax_s.grid(True, which="both", ls=":", alpha=0.4)
             ax_s.tick_params(labelbottom=False)
             if col == 0:
@@ -621,7 +644,7 @@ def fig10_lensing_theory():
         ),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=6, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(handles=handles, loc="upper center", ncol=6, frameon=False, bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     savefig(ASSETS / "fig10-lensing-theory", fig)
 
@@ -636,6 +659,7 @@ def fig11_lensing_cosmogrid():
     ratioed to the Limber weak-lensing theory at its own cosmology. With scale-factor shells the 20-shell runs
     track the CosmoGrid reference at low ell and depart only through the PM-resolution roll-off at high ell —
     the shelling itself is sound for lensing (contrast the equal-volume 05c fig11)."""
+    set_style(width_in=16.5)  # fonts scale with the figure width
     pw2 = hp.pixwin(2048, lmax=LMAX) ** 2
     th_own_b = (compute_theory_cl(cosmo, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
     th_cg_b = (compute_theory_cl(cosmo_cg, jnp.arange(LMAX + 1), get_stage3_nz_shear()[:3]) * pw2).bin(nlb=32, lmin=2)
@@ -659,7 +683,9 @@ def fig11_lensing_cosmogrid():
         ax_s.loglog(bc, dl * no_b, color="tab:red", lw=1.5)
         ax_s.loglog(bc, dl * dr_b, color="tab:blue", lw=1.5)
         ax_s.loglog(bc, dl * tho_b, color="0.45", ls="--", lw=1.1)
-        ax_s.set_title(f"bin {b + 1}", fontsize=11)
+        # the axis starts at the first bandpower: nothing is binned below it
+        ax_s.set_xlim(float(bc[0]) * 0.92, LMAX)
+        ax_s.set_title(f"bin {b + 1}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if b == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
@@ -680,7 +706,7 @@ def fig11_lensing_cosmogrid():
         Line2D([], [], color="0.45", ls="--", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (run cosmology)"),
         Line2D([], [], color="k", ls=":", lw=1.4, label=r"Limber theory $\times\,w_\ell^2$ (CosmoGrid cosmology)"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9, frameon=False, bbox_to_anchor=(0.5, 1.05))
+    fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False, bbox_to_anchor=(0.5, 1.05))
     fig.tight_layout()
     savefig(ASSETS / "fig11-lensing-cosmogrid", fig)
 
