@@ -223,10 +223,16 @@ def lensing_mesh(mesh, stem):
     ax_band.set_ylim(min(bars.min(), acc_lo.min()) - 0.03, max(bars.max(), acc_hi.max()) + 0.03)
 
     fig.legend(
-        handles=[Patch(color=c, label=rf"bin {b + 1}, $z_s = {zb:.2f}$") for b, (c, zb) in enumerate(zip(BIN_COLOURS, z))]
+        handles=[
+            Patch(color=c, label=rf"bin {b + 1}, $z_s = {zb:.2f}$") for b, (c, zb) in enumerate(zip(BIN_COLOURS, z))
+        ]
         + [
             Line2D([], [], color="0.3", ls="-", label=rf"{mesh}$^3$ PM mesh"),
-            *([] if not anchor else [Line2D([], [], color="0.3", ls="--", label=r"2560$^3$ anchor (the Exp 05c drift anchor)")]),
+            *(
+                []
+                if not anchor
+                else [Line2D([], [], color="0.3", ls="--", label=r"2560$^3$ anchor (the Exp 05c drift anchor)")]
+            ),
             Line2D([], [], color="0.3", ls="-.", label=r"CosmoGrid $N$-body"),
             Patch(color="0.88", label=r"$\sqrt{2}\times$ empirical cosmic variance (200 CosmoGrid permutations)"),
             Line2D([], [], color="0.3", ls=":", lw=0.9, label="expected cosmology + pixel-window offset"),

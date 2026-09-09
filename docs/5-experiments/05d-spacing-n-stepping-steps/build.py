@@ -229,7 +229,9 @@ def lensing_steps(steps, stem):
     if steps == 50:
         bf_label += " (the Exp 05c anchor)"
     fig.legend(
-        handles=[Patch(color=c, label=rf"bin {b + 1}, $z_s = {zb:.2f}$") for b, (c, zb) in enumerate(zip(BIN_COLOURS, z))]
+        handles=[
+            Patch(color=c, label=rf"bin {b + 1}, $z_s = {zb:.2f}$") for b, (c, zb) in enumerate(zip(BIN_COLOURS, z))
+        ]
         + [
             Line2D([], [], color="0.3", ls="-", label=bf_label),
             Line2D([], [], color="0.3", ls="--", label="KDK a-stepping"),
