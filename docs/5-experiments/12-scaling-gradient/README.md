@@ -43,11 +43,15 @@ All figures are built from the committed `perf_pm.csv` by [`build.py`](build.py)
 
 ![Strong scaling wall-time](assets/fig01-strong-time.svg)
 
+**Strong scaling of the IC gradient, minimum wall-time.** Fixed 1024³ grid, five reverse-mode adjoints, 64–256 GPUs (float64, slab).
+
 The variants span an order of magnitude in speed. **`ckpt-4`** is slowest (≈69 s at 128 GPUs) — with only 4 checkpoints over 20 shells it recomputes almost the entire forward pass on the backward sweep. **`reverse`** is next-slowest (≈47 s) — the step-by-step backsolve is expensive per shell. The heavily-checkpointed variants are ≈5–7× faster: at 128 GPUs `ckpt-8` = 12.4 s, `ckpt-16` = 11.0 s, and **`ckpt-30` = 10.0 s is the fastest of all**. None come close to ideal 1/N scaling (the gradient is recompute- and communication-bound), but the *ranking* is the headline: more checkpoints → less recompute → faster.
 
 ### Strong scaling — peak temporary memory
 
 ![Strong scaling memory](assets/fig02-strong-memory.svg)
+
+**Strong scaling, peak per-device temporary memory.** The same runs; the spread between the adjoints is the memory half of the trade.
 
 Memory is where the trade reverses. **`reverse`** is by far the lightest (9.96 GB at 128 GPUs, and it falls almost perfectly ≈1/N) — its O(1)-in-steps design is the memory-frugal choice. Among the checkpointed variants the footprint rises `ckpt-4` (17.85 GB) < `ckpt-8` (19.35 GB) < `ckpt-16` (**22.35 GB, the peak**) — *then falls back* for `ckpt-30` (18.75 GB). That non-monotonic dip is the surprising result explained below. All curves scale cleanly ≈1/N with GPU count.
 
@@ -55,7 +59,11 @@ Memory is where the trade reverses. **`reverse`** is by far the lightest (9.96 G
 
 ![Weak scaling wall-time](assets/fig03-weak-time.svg)
 
+**Weak scaling of the IC gradient, minimum wall-time.** Fixed 256³ per GPU, 4–256 GPUs, five adjoints.
+
 ![Weak scaling memory](assets/fig04-weak-memory.svg)
+
+**Weak scaling, peak per-device temporary memory.** Flat in the GPU count for every adjoint; the offsets are what each one stores.
 
 At a fixed 256³/GPU the same ranking holds and is flat-ish in memory. Wall-time rises gently with GPU count for every variant (communication growth), preserving `ckpt-30` < `ckpt-16` < `ckpt-8` ≪ `reverse` < `ckpt-4`. Peak memory is essentially flat per variant — `ckpt-16` pinned highest at ≈44.8 GB, `ckpt-30` ≈37–38 GB, and `reverse` lowest at ≈20 GB — confirming the strong-scaling ordering is a property of the adjoint, not of the GPU count.
 

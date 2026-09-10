@@ -48,6 +48,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datasets import load_dataset
 from huggingface_hub import snapshot_download
+from matplotlib.lines import Line2D
 
 from jax_fli import compute_theory_cl
 from jax_fli.io import Catalog, get_des_y3_nz_shear, get_stage3_nz_shear
@@ -143,6 +144,7 @@ def plot_spectra(series, cosmo, nz, z, stem):
     the reference + our lensed sim (2048 & 512) + the 2-bin cross-check, each compared to the same
     Limber theory pixwin-matched to that series' own nside."""
     n_show = len(z)
+    set_style(4.3 * n_show)
     theory = compute_theory_cl(cosmo, jnp.arange(LMAX + 1), nz)  # (nbins, LMAX+1)
     nsides = sorted({ser["nside"] for ser in series})
     theory_m = {ns: pixwin_match(theory, ns) for ns in nsides}
@@ -174,11 +176,12 @@ def plot_spectra(series, cosmo, nz, z, stem):
             dl = ell_b * (ell_b + 1) / (2 * np.pi) * cl_b[i]
             axs.plot(ell_b, dl, color=ser["color"], ls=ser["ls"], lw=1.6, label=ser["label"] if i == 0 else None)
         axs.set(xscale="log", yscale="log")
-        axs.set_title(rf"bin {i + 1}  ($z\approx{z[i]:.2f}$)", fontsize=11)
+        axs.set_xlim(float(ell_b[0]) * 0.92, LMAX)  # the binned band, no dead stretch to ℓ≈2
+        axs.set_title(rf"bin {i + 1}  ($z\approx{z[i]:.2f}$)")
         axs.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
             axs.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
-            axs.legend(frameon=False, fontsize=7.5)
+            axs.legend(frameon=False)
 
         axr.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
         axr.axhline(0.0, color="0.4", ls="--", lw=0.9)
@@ -201,6 +204,7 @@ def plot_spectra(series, cosmo, nz, z, stem):
 # =============================================================================================
 def plot_pdf(lens512, ref512, lens_label, ref_label, z, stem):
     n_show = len(z)
+    set_style(4.7 * n_show)
     lens = mean_sub(lens512)
     ref = mean_sub(ref512)
     fig, axes = plt.subplots(1, n_show, figsize=(4.7 * n_show, 4.3))
@@ -228,6 +232,7 @@ def plot_starlet(lens512, ref512, lens_label, ref_label, z, stem):
     lens_all = mean_sub(lens512)
     ref_all = mean_sub(ref512)
     n = len(z)
+    set_style(4.0 * NSCALES)
     fig, axes = plt.subplots(n, NSCALES, figsize=(4.0 * NSCALES, 3.7 * n))
     for r in range(n):
         lens = lens_all[r].starlet_coefficients(nscales=NSCALES)
@@ -236,7 +241,7 @@ def plot_starlet(lens512, ref512, lens_label, ref_label, z, stem):
             ax = axes[r, sc]
             lo, hi = np.percentile(np.asarray(ref.array[sc]), [0.5, 99.5])
             bins = np.linspace(lo, hi, 60)
-            for st, col, lab in [(lens, C_LENS_LO, lens_label), (ref, C_REF, ref_label)]:
+            for st, col in [(lens, C_LENS_LO), (ref, C_REF)]:
                 ax.hist(
                     np.asarray(st.array[sc]),
                     bins=bins,
@@ -244,7 +249,6 @@ def plot_starlet(lens512, ref512, lens_label, ref_label, z, stem):
                     histtype="step",
                     lw=1.6,
                     color=col,
-                    label=lab if (r == 0 and sc == 0) else None,
                 )
             ax.set(yscale="log")
             ax.grid(alpha=0.3, which="both")
@@ -254,8 +258,12 @@ def plot_starlet(lens512, ref512, lens_label, ref_label, z, stem):
                 ax.set_xlabel("coefficient")
             if sc == 0:
                 ax.set_ylabel(f"bin {r + 1} ($z\\approx{z[r]:.2f}$)\nprobability density")
-                if r == 0:
-                    ax.legend(frameon=False, fontsize=8)
+    # a figure legend rather than an in-axes one: the panels are narrow and the histograms fill them
+    handles = [
+        Line2D([], [], color=C_LENS_LO, lw=1.6, label=lens_label),
+        Line2D([], [], color=C_REF, lw=1.6, label=ref_label),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.03))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -264,6 +272,7 @@ def plot_starlet(lens512, ref512, lens_label, ref_label, z, stem):
 # fig04 / fig09 — starlet coefficient MAPS per scale (mollview), lensed vs reference + difference
 # =============================================================================================
 def plot_starlet_maps(lens512, ref512, lens_label, ref_label, z, stem):
+    set_style(3.4 * NSCALES)
     i = len(z) - 1  # deepest shown bin (strongest lensing signal)
     st_l = np.asarray(mean_sub(lens512)[i].starlet_coefficients(nscales=NSCALES).array)
     st_r = np.asarray(mean_sub(ref512)[i].starlet_coefficients(nscales=NSCALES).array)
@@ -297,6 +306,7 @@ def plot_starlet_maps(lens512, ref512, lens_label, ref_label, z, stem):
 # =============================================================================================
 def plot_maps(lens512, ref512, lens_label, ref_label, z, stem):
     n_show = len(z)
+    set_style(4.7 * n_show)
     lens = mean_sub(lens512)
     ref = mean_sub(ref512)
     diff = lens.replace(array=lens.array[:n_show] - ref.array[:n_show])
@@ -327,8 +337,6 @@ def plot_maps(lens512, ref512, lens_label, ref_label, z, stem):
 
 
 def main():
-    set_style()
-
     # ---- Stage-3: CosmoGrid native κ (512) vs our lensed PM-sim (2048 & 512) + 2-bin ----
     z_s3 = np.asarray(lensed3_spec_s3.z_sources)
     ref_label_s3 = r"CosmoGrid native $\kappa$"

@@ -95,8 +95,11 @@ deconv_b = {k: np.asarray(v.bin(nlb=NLB, lmin=2).array) for k, v in deconv.items
 # fig01 / fig02 — per-shell binned C_ell vs theory (top) + ratio (bottom), CIC vs TSC vs PCS (raw)
 # =============================================================================
 def plot_schemes_batch(data_b, shell_idxs, title, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
     dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
     dl = leff * (leff + 1) / (2 * np.pi)
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(20, 6), gridspec_kw={"height_ratios": [3, 1]}, sharex="col")
     for col, sh in enumerate(shell_idxs):
         ax_s = axes[0, col]
@@ -106,7 +109,8 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
             ax_s.plot(leff, dl * data_b[k][sh], color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.6, zorder=4)
         ax_s.set_xscale("log")
         ax_s.set_yscale("log")
-        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}", fontsize=11)
+        ax_s.set_xlim(*xlim)
+        ax_s.set_title(f"shell {sh}:  z = {z_shells[sh]:.3f}")
         ax_s.grid(True, which="both", ls=":", alpha=0.4)
         if col == 0:
             ax_s.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
@@ -115,6 +119,7 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
         for k in SCHEME_COLORS:
             ax_r.plot(leff, data_b[k][sh] / theory_b[sh] - 1.0, color=SCHEME_COLORS[k], ls=SCHEME_STYLE[k], lw=1.4)
         ax_r.set_xscale("log")
+        ax_r.set_xlim(*xlim)
         ax_r.set_ylim(-0.6, 0.25)
         ax_r.set_xlabel(r"multipole $\ell$")
         ax_r.grid(True, which="both", ls=":", alpha=0.4)
@@ -127,7 +132,7 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
         Line2D([], [], color="k", ls="--", lw=1.4, label=r"Limber number-counts theory $\times\,w_\ell^2$"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=9.5, frameon=False, bbox_to_anchor=(0.5, 1.07))
+    fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False, bbox_to_anchor=(0.5, 1.07))
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -136,9 +141,12 @@ def plot_schemes_batch(data_b, shell_idxs, title, stem):
 # fig03 / fig04 / fig05 — one scheme, raw vs force-deconvolved vs theory, all ten shells (dense 2×5)
 # =============================================================================
 def plot_deconv_grid(scheme, stem):
+    set_style(width_in=20.0)  # fonts scale with the figure width
     rb, db = raw_b[scheme], deconv_b[scheme]
     dl_full = ell_full * (ell_full + 1) / (2 * np.pi)
     dl = leff * (leff + 1) / (2 * np.pi)
+    # the axis spans the bandpowers: nothing is binned below leff[0], and the theory line is trimmed to match
+    xlim = (float(leff[0]) * 0.92, float(leff[-1]) * 1.02)
     fig = plt.figure(figsize=(20, 9.5))
     gs = fig.add_gridspec(2, 5, hspace=0.32, wspace=0.22)
     for i in range(n_shells):
@@ -150,7 +158,8 @@ def plot_deconv_grid(scheme, stem):
         ax_cl.plot(leff, dl * db[i], color=C_DECONV, ls="-", lw=1.5, zorder=4)
         ax_cl.set_xscale("log")
         ax_cl.set_yscale("log")
-        ax_cl.set_title(f"shell {i}:  z = {z_shells[i]:.3f}", fontsize=10)
+        ax_cl.set_xlim(*xlim)
+        ax_cl.set_title(f"shell {i}:  z = {z_shells[i]:.3f}")
         ax_cl.grid(alpha=0.2, which="both")
         ax_cl.tick_params(labelbottom=False)
         if i % 5 == 0:
@@ -163,7 +172,7 @@ def plot_deconv_grid(scheme, stem):
         ax_r.set_ylim(-0.5, 0.2)
         ax_r.grid(alpha=0.2, which="both")
         if i % 5 == 0:
-            ax_r.set_ylabel("meas/thy - 1", fontsize=8)
+            ax_r.set_ylabel("meas/thy - 1")
         if i >= 5:
             ax_r.set_xlabel(r"$\ell$")
     handles = [
@@ -172,7 +181,7 @@ def plot_deconv_grid(scheme, stem):
         Line2D([], [], color="k", ls="--", lw=1.4, label=r"Limber number-counts theory $\times\,w_\ell^2$"),
         Line2D([], [], color="0.7", lw=6, alpha=0.5, label=r"$\pm5\%$"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=4, fontsize=10, frameon=False, bbox_to_anchor=(0.5, 1.0))
+    fig.legend(handles=handles, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.0))
     savefig(ASSETS / stem, fig)
 
 

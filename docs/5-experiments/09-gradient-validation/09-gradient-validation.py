@@ -67,15 +67,15 @@ cosmo = jc.Planck18()
 
 # (key, title, nb_shells) — both spherical, painted at NSIDE
 CASES = [
-    ("single", "single spherical output\n(nb_shells=1)", 1),
-    ("lightcone", "spherical lightcone\n(nb_shells=4)", NB_SHELLS),
+    ("single", "single spherical output\n(1 shell)", 1),
+    ("lightcone", "spherical lightcone\n(4 shells)", NB_SHELLS),
 ]
 # 4 series = solver x adjoint (same colours as the sweep figures).
 SERIES = [
-    ("kdk", "rev", "DoubleKickDrift · reverse adjoint", "#D55E00"),
-    ("bf", "rev", "BullFrog · reverse adjoint", "#E69F00"),
-    ("kdk", "chk", "DoubleKickDrift · checkpointed adjoint", "#0072B2"),
-    ("bf", "chk", "BullFrog · checkpointed adjoint", "#56B4E9"),
+    ("kdk", "rev", r"DoubleKickDrift $\cdot$ reverse adjoint", "#D55E00"),
+    ("bf", "rev", r"BullFrog $\cdot$ reverse adjoint", "#E69F00"),
+    ("kdk", "chk", r"DoubleKickDrift $\cdot$ checkpointed adjoint", "#0072B2"),
+    ("bf", "chk", r"BullFrog $\cdot$ checkpointed adjoint", "#56B4E9"),
 ]
 _ADJ = {"rev": "reverse", "chk": "checkpointed"}
 
@@ -169,7 +169,7 @@ def _plot():
         return
     d = np.load(path)
 
-    set_style()
+    set_style(7.5)
     fig, ax = plt.subplots(figsize=(7.5, 5.0))
     YLO, YHI = 1e-9, 1e-6  # float64 per-voxel FD floor (~1e-8) with headroom
 
@@ -193,7 +193,7 @@ def _plot():
     ax.set_xlim(-0.5, len(CASES) - 0.5)
     ax.set_xticks(list(xpos.values()))
     ax.set_xticklabels([t for _k, t, _nb in CASES])
-    ax.set_ylabel("median |g_i − FD_i| / |FD_i|   (top-16 |grad| voxels)")
+    ax.set_ylabel(r"median $|g_i - \mathrm{FD}_i| / |\mathrm{FD}_i|$   (top-16 $|\nabla|$ voxels)")
     ax.grid(True, which="major", axis="y", ls=":", alpha=0.4, zorder=0)
     ax.set_axisbelow(True)
 
@@ -201,19 +201,7 @@ def _plot():
         Line2D([0], [0], marker="D" if adj == "rev" else "o", ls="none", color=c, mec="0.2", mew=0.5, label=lab)
         for _n, adj, lab, c in SERIES
     ]
-    fig.legend(
-        handles=series_handles, loc="upper center", ncol=2, fontsize=8.5, frameon=False, bbox_to_anchor=(0.5, 1.0)
-    )
-    fig.suptitle(
-        f"Exp 09 — IC-gradient adjoints vs per-voxel finite differences (float64, {RES[0]}³)", y=1.08, fontsize=12
-    )
-    caption = (
-        "Reverse-mode adjoint gradient vs central per-voxel finite differences of the scalar loss "
-        "L=½Σ array² (median over the 16 largest-|grad| voxels, ε=ε_machine^⅓). reverse and checkpointed "
-        "overlap — they compute the same gradient. The sharp FD-free proof is the AD-vs-AD transpose test "
-        "(~1e-12; tests/nbody/test_adjoints.py::test_adjoint_transpose); see the README."
-    )
-    fig.text(0.5, -0.02, caption, ha="center", va="top", fontsize=8, wrap=True, color="0.25")
+    fig.legend(handles=series_handles, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.0))
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     savefig(HERE / "assets" / "fig01-transpose-test", fig)
     print(f"\nSaved figure → {HERE / 'assets' / 'fig01-transpose-test.svg'}")

@@ -36,11 +36,15 @@ Slab `(N, 1)` shards the global mesh along X into `px = #GPUs` equal slabs of lo
 
 ![Strong scaling wall-time](assets/fig01-strong-time.svg)
 
+**Strong scaling of the PM forward model, minimum wall-time.** Fixed 1024³ grid, float32 and float64, 32–256 GPUs under a slab decomposition.
+
 At 1024³ (top) the PM step gets faster with more GPUs but flattens well short of ideal 1/N scaling: float32 goes 4.6 s (32 GPUs) → 2.1 s (256 GPUs) — a **2.2× speedup for 8× the GPUs** (≈27% parallel efficiency), and float64 3.8 s → 3.0 s from 128→256 GPUs. The gap to a perfect 1/N is the slab's communication cost (the X-sharded FFT's all-to-all and the halo exchange), which grows with `px` and eventually dominates the shrinking per-GPU compute. float64 sits ≈1.5× above float32 throughout. The 2048³ panel (bottom) holds two landed points at different GPU counts — float32 at 256 GPUs (7.7 s) and float64 at 512 GPUs (7.65 s) — a cross-precision comparison rather than a scaling curve (the intermediate 2048³ runs weren't run).
 
 ### Strong scaling — peak temporary memory
 
 ![Strong scaling memory](assets/fig02-strong-memory.svg)
+
+**Strong scaling, peak per-device temporary memory.** The same runs; scratch memory falls essentially as 1/N.
 
 Peak per-device scratch memory scales **almost perfectly as 1/N** — float32 1024³ falls 6.53 → 3.26 → 1.63 → 0.91 GB across 32→256 GPUs (halving at each doubling), and float64 is exactly 2× the float32 footprint (7.34 → 3.67 → 1.84 GB). This is the clean result: distributing the mesh distributes the working set, so memory is not the strong-scaling bottleneck here — communication is. The 2048³ panel's two points land at exactly the per-device footprint the 1/N law predicts: float32 6.52 GB at 256 GPUs matches float32 1024³ at 32 GPUs (6.53 GB), and float64 7.34 GB at 512 GPUs matches float64 1024³ at 64 GPUs (7.34 GB) — 8× the cells on 8× the GPUs leaves the per-device working set unchanged.
 
@@ -48,11 +52,15 @@ Peak per-device scratch memory scales **almost perfectly as 1/N** — float32 10
 
 ![Weak scaling wall-time](assets/fig03-weak-time.svg)
 
+**Weak scaling of the PM forward model, minimum wall-time.** Fixed 256³ per GPU, 4–256 GPUs; flat would be ideal.
+
 With a fixed 256³ per GPU, ideal weak scaling would keep wall-time flat. Instead it climbs — float32 1.8 s (4 GPUs) → 4.5 s (256 GPUs), a **2.5× rise over 64× the GPUs** — because the slab's global all-to-all touches more peers as `px` grows even though per-GPU compute is constant. float64 tracks the same shape ≈1.5× higher (2.5 → 6.7 s). The rise is communication, not compute.
 
 ### Weak scaling — peak temporary memory
 
 ![Weak scaling memory](assets/fig04-weak-memory.svg)
+
+**Weak scaling, peak per-device temporary memory.** The same runs; each device holds its fixed local volume regardless of the total.
 
 Memory weak-scales essentially perfectly: peak scratch is flat at **≈3.26 GB (float32)** and **≈7.34 GB (float64)** across all seven GPU counts — each device holds exactly its fixed 256³ working set regardless of the total problem size. float64 is again 2× float32. Per-device memory is fully predictable from the local volume alone.
 

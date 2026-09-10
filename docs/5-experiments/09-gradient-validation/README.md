@@ -79,6 +79,8 @@ A lightcone observable is **not** a single final-state output: the forward model
 
 ![finite differences vs the adjoint](assets/fig01-transpose-test.svg)
 
+**IC-gradient adjoints against per-voxel finite differences.** Both adjoints, both solvers, for a single spherical output and a 4-shell lightcone (float64, 16³).
+
 The `reverse` and `checkpointed` markers **overlap exactly** within each solver group — the two adjoints compute the **same** gradient (bit-for-bit). The per-voxel finite difference confirms that gradient to **~1 × 10⁻⁸ (BullFrog)** and **~5 × 10⁻⁷ (DoubleKickDrift)** for both the single output and the lightcone — both far below 1, confirming the gradient independently of autodiff. The two solvers differ only because the finite difference's *own* truncation error (`∝ ε²·L‴`) sees a different loss curvature for each; it is **not** an adjoint difference (CPU and GPU give the same floor per solver, and `reverse ≡ checkpointed` exactly). The sharper, finite-difference-free proof is the transpose test: `reverse ≡ checkpointed ≡ forward-mode AD` to `~10⁻¹²`. So the gradient is **correct**; the finite difference shown here is the looser, independent cross-check.
 
 ### Number of integration steps
@@ -94,6 +96,8 @@ The `reverse` and `checkpointed` markers **overlap exactly** within each solver 
 | Solvers / Adjoints | DoubleKickDrift, BullFrog / reverse, checkpointed |
 
 ![number of integration steps](assets/fig02-steps.svg)
+
+**Accuracy and memory against the number of integration steps.** Single spherical output at 16³; markers read on the left axis, bars on the right.
 
 **`reverse` is flat — `2.2 MB` at every step count (5 → 80):** it stores *no* trajectory, so it is **O(1) in the integration steps** (it reconstructs each state by inverting the step). `checkpointed` grows — **2.8 → 3.6 MB** — because it stores ~`log₂(steps)` particle-states. Reverse is the lean, flat baseline; the deeper the integration, the more checkpointed pays to keep its stored states. (The accuracy markers also creep upward with steps — more steps is a genuinely different, more nonlinear integration, so the finite difference's truncation grows; it is not a change in the adjoint, and `reverse ≡ checkpointed` throughout.)
 
@@ -112,6 +116,8 @@ The `reverse` and `checkpointed` markers **overlap exactly** within each solver 
 
 ![number of step-checkpoints](assets/fig03-checkpoints.svg)
 
+**Accuracy and memory against the number of step-checkpoints.** Single spherical output at 16³, 50 integration steps; `rev` is the reverse adjoint, which stores none.
+
 This is the pure **memory↔recompute trade**, and `step_checkpoints` **never changes the gradient** — the accuracy markers are **dead flat** across every checkpoint count (DoubleKickDrift ~5e-7, BullFrog ~7e-8), and the N-body suite asserts the invariance (`test_step_checkpoints_invariant`). `checkpointed` climbs with the stored count — **2.2 → 20.6 MB** (1 → 50 checkpoints) — while `reverse` is flat at **2.2 MB**, O(1) in the checkpoints. At 1 checkpoint (maximal recompute) checkpointed *ties* reverse; it crosses reverse around ~5 checkpoints and reaches ~9× by 50. So reverse is the fixed-overhead baseline that wins against the realistic (default and heavier) checkpointing regime. (The memory is solver-independent — BullFrog's bars match DoubleKickDrift's to ~0.1 MB.)
 
 ### Number of saved shells
@@ -129,6 +135,8 @@ This is the pure **memory↔recompute trade**, and `step_checkpoints` **never ch
 | Solvers / Adjoints | DoubleKickDrift, BullFrog / reverse, checkpointed |
 
 ![number of saved shells](assets/fig04-shells.svg)
+
+**Accuracy and memory against the number of saved shells.** Spherical lightcone at 16³, 80 integration steps.
 
 **`reverse` rises slowly — `4.9 → 6.4 MB` over 4 → 64 shells** (DoubleKickDrift) — by ~**one painted HEALPix map per shell** (`npix · 8 B`, the per-shell painting cotangent the reverse scan carries; the trajectory part of the backsolve is O(1) in shells). So reverse is **O(1) in the integration steps and step-checkpoints, but O(nb_shells) in the saved shells with a tiny per-shell constant.** `checkpointed` sits **above** throughout and rises faster — **5.6 → 8.0 MB** — because it stores integration-step states on top. Reverse is the lean lightcone adjoint. (The memory is solver-independent — BullFrog tracks within ~1 MB.)
 
