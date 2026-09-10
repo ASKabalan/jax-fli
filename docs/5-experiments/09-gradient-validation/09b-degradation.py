@@ -75,16 +75,16 @@ SHELLS = [4, 8, 16, 32, 64]
 SOLVER_FULL = {"kdk": "DoubleKickDrift", "bf": "BullFrog"}
 # 4 series = solver x adjoint. reverse = warm, checkpointed = cool; DoubleKickDrift saturated, BullFrog light.
 SERIES = [
-    ("kdk", "rev", "DoubleKickDrift · reverse adjoint", "#D55E00"),  # vermillion
-    ("bf", "rev", "BullFrog · reverse adjoint", "#E69F00"),  # orange
-    ("kdk", "chk", "DoubleKickDrift · checkpointed adjoint", "#0072B2"),  # blue
-    ("bf", "chk", "BullFrog · checkpointed adjoint", "#56B4E9"),  # sky blue
+    ("kdk", "rev", r"DoubleKickDrift $\cdot$ reverse adjoint", "#D55E00"),  # vermillion
+    ("bf", "rev", r"BullFrog $\cdot$ reverse adjoint", "#E69F00"),  # orange
+    ("kdk", "chk", r"DoubleKickDrift $\cdot$ checkpointed adjoint", "#0072B2"),  # blue
+    ("bf", "chk", r"BullFrog $\cdot$ checkpointed adjoint", "#56B4E9"),  # sky blue
 ]
 _ADJ = {"rev": "reverse", "chk": "checkpointed"}
 
 # Accuracy = per-voxel FD median rel error; in float64 it sits at the central-difference floor (~1e-8).
 ACC_LO, ACC_HI = 1e-9, 1e-6
-ACC_LABEL = "median |g_i − FD_i| / |FD_i|   (top-16 |grad| voxels)"
+ACC_LABEL = r"median $|g_i - \mathrm{FD}_i| / |\mathrm{FD}_i|$   (top-16 $|\nabla|$ voxels)"
 
 
 def _ic(res, box, nside):
@@ -272,7 +272,8 @@ def _panel(ax, axr, ticklabels, mem_MB, acc, fail, *, xlabel):
     ax.set_axisbelow(True)
 
 
-def _make_fig(ticklabels, mem, acc, fail, *, xlabel, suptitle, stem, mem_note=None):
+def _make_fig(ticklabels, mem, acc, fail, *, xlabel, stem, mem_note=None):
+    set_style(9.2)
     fig, ax = plt.subplots(figsize=(9.2, 5.4))
     axr = ax.twinx()
     _panel(ax, axr, ticklabels, mem, acc, fail, xlabel=xlabel)
@@ -281,17 +282,16 @@ def _make_fig(ticklabels, mem, acc, fail, *, xlabel, suptitle, stem, mem_note=No
     ax.set_ylabel(ACC_LABEL)
     axr.set_ylabel("XLA temp buffer (MB)")
     if mem_note:
-        axr.text(0.98, 0.02, mem_note, transform=axr.transAxes, ha="right", va="bottom", fontsize=8, color="0.35")
+        axr.text(0.98, 0.02, mem_note, transform=axr.transAxes, ha="right", va="bottom", color="0.35")
 
     series_handles = [Patch(facecolor=c, alpha=0.55, label=lab) for _s, _a, lab, c in SERIES]
     enc_handles = [
         Patch(facecolor="0.6", alpha=0.55, label="bar = XLA temp buffer (memory)"),
         Line2D([0], [0], color="0.3", marker="o", ls="-", lw=1, label="marker = per-voxel FD-vs-adjoint error"),
-        Line2D([0], [0], color="0.3", marker="x", ms=9, mew=2.2, ls="none", label="× = gradient NaN"),
+        Line2D([0], [0], color="0.3", marker="x", ms=9, mew=2.2, ls="none", label=r"$\times$ = gradient NaN"),
     ]
     fig.legend(handles=series_handles, loc="upper left", bbox_to_anchor=(0.07, 0.99), ncol=2, frameon=False)
     fig.legend(handles=enc_handles, loc="upper right", bbox_to_anchor=(0.99, 0.99), ncol=1, frameon=False)
-    fig.suptitle(suptitle, y=1.05, fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.9))
     savefig(HERE / "assets" / stem, fig)
     print(f"Saved figure → {HERE / 'assets' / (stem + '.svg')}")
@@ -307,7 +307,6 @@ def _fig_steps(d):
         acc,
         fail,
         xlabel="integration steps",
-        suptitle=f"Exp 09 — accuracy & memory vs number of integration steps (single spherical output, {RES[0]}³)",
         stem="fig02-steps",
     )
 
@@ -331,7 +330,6 @@ def _fig_checkpoints(d):
         a_rows,
         f_rows,
         xlabel=f"step-checkpoints stored  (rev = reverse adjoint, O(1) memory; {CKPT_STEPS} steps)",
-        suptitle=f"Exp 09 — accuracy & memory vs number of step-checkpoints (single spherical output, {RES[0]}³)",
         stem="fig03-checkpoints",
     )
 
@@ -345,10 +343,9 @@ def _fig_shells(d):
         mem,
         acc,
         fail,
-        xlabel="# shells saved (lightcone snapshots)",
-        suptitle=f"Exp 09 — accuracy & memory vs number of saved shells (spherical lightcone, {NSTEPS_SH} steps, {RES[0]}³)",
+        xlabel="shells saved (lightcone snapshots)",
         stem="fig04-shells",
-        mem_note="reverse ≈ +1 HEALPix map / shell  (npix · 8 B)",
+        mem_note=r"reverse $\approx$ +1 HEALPix map / shell  ($n_\mathrm{pix}\cdot 8$ B)",
     )
 
 
@@ -377,7 +374,6 @@ def _print_summary(d):
 
 
 def _plot(d):
-    set_style()
     _print_summary(d)
     _fig_steps(d)
     _fig_checkpoints(d)

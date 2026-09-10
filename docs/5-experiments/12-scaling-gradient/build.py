@@ -15,14 +15,24 @@ All runs are float64.
     /home/wassim/Projects/NBody/jax-fli/.venv/bin/python build.py    # CPU, loads CSV from HF
 """
 
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from huggingface_hub import snapshot_download
+from jax_hpc_profiler import plotting
 from jax_hpc_profiler.plotting import plot_by_data_size
+from matplotlib.patches import Rectangle
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from _exputils import THESIS_WIDTH_IN, set_style  # noqa: E402
+
+# jax-hpc-profiler appends a rounded black frame to every figure (plotting.py:365), which savefig's
+# tight bbox then clips to a stray arc in the corner. The paper style carries no frame, so the patch
+# the profiler appends is made an invisible zero-size one.
+plotting.FancyBboxPatch = lambda *args, **kwargs: Rectangle((0, 0), 0, 0, visible=False)
 ASSETS = HERE / "assets"
 DATA = HERE / "data"
 
@@ -63,8 +73,8 @@ def plot_strong_time():
         plot_columns=["min_time"],
         label_text="%f%",
         xlabel="Number of GPUs",
-        title="Strong scaling —",
-        figure_size=(6, 4.5),
+        title=None,
+        figure_size=(THESIS_WIDTH_IN, 3.7),
         xscale="log2",
         time_units="s",
         output=str(ASSETS / "fig01-strong-time.svg"),
@@ -81,8 +91,8 @@ def plot_strong_memory():
         memory_units="GB",
         label_text="%f%",
         xlabel="Number of GPUs",
-        title="Strong scaling —",
-        figure_size=(6, 4.5),
+        title=None,
+        figure_size=(THESIS_WIDTH_IN, 3.7),
         xscale="log2",
         output=str(ASSETS / "fig02-strong-memory.svg"),
     )
@@ -97,8 +107,8 @@ def plot_weak_time():
         plot_columns=["min_time"],
         label_text="%f%",
         xlabel="Number of GPUs",
-        title="Weak scaling —",
-        figure_size=(6, 4.5),
+        title=None,
+        figure_size=(THESIS_WIDTH_IN, 3.7),
         xscale="log2",
         time_units="s",
         output=str(ASSETS / "fig03-weak-time.svg"),
@@ -115,15 +125,18 @@ def plot_weak_memory():
         memory_units="GB",
         label_text="%f%",
         xlabel="Number of GPUs",
-        title="Weak scaling —",
-        figure_size=(6, 4.5),
+        title=None,
+        figure_size=(THESIS_WIDTH_IN, 3.7),
         xscale="log2",
         output=str(ASSETS / "fig04-weak-memory.svg"),
     )
 
 
 def main():
-    plt.rcParams.update({"font.size": 11, "svg.fonttype": "none", "savefig.bbox": "tight"})
+    set_style()  # authored at the manuscript's \textwidth, so 8.5 pt is the size that reaches paper
+    # the profiler's log2 axis is a matplotlib `function` scale, on which the automatic minor ticks
+    # land in data units and pile into a picket fence along the top spine — so x minors stay off here.
+    plt.rcParams["xtick.minor.visible"] = False
     ASSETS.mkdir(parents=True, exist_ok=True)
     plot_strong_time()
     plot_strong_memory()

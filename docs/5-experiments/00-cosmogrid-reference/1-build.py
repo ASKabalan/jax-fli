@@ -77,7 +77,6 @@ theory_des = theory_des * born_kappa_des.wavenumber * (born_kappa_des.wavenumber
 # =============================================================================
 # Style + colors
 # =============================================================================
-set_style()
 
 # Distinguish the two pixel windows on the theory line, and the measured series by line style.
 THEORY_LS = {512: ":", 2048: "--"}
@@ -99,11 +98,12 @@ def plot_kappa_set(series, theory, title, stem):
     """series: list of dicts {field, nside, label, color}. Every measured series is compared to
     the SAME base theory, pixwin-matched to that series' own nside (so a 512 series and a 2048
     series compare to different effective theory at high ell)."""
+    n_bins = theory.spectra.shape[0]
+    set_style(width_in=4.2 * n_bins)  # fonts scale with the figure width
     nsides = sorted({s["nside"] for s in series})
     theory_m = {ns: pixwin_match(theory, ns) for ns in nsides}  # full-res, per nside
     theory_b = {ns: theory_m[ns].bin(nlb=NLB, lmin=2) for ns in nsides}
     data_b = [s["field"].bin(nlb=NLB, lmin=2) for s in series]  # binned measured, same edges
-    n_bins = theory.spectra.shape[0]
     z = np.asarray(series[0]["field"].z_sources)  # effective source redshift per bin
 
     fig, axes = plt.subplots(
@@ -135,8 +135,10 @@ def plot_kappa_set(series, theory, title, stem):
         ax_spec.set_ylabel(r"$\ell(\ell+1)\,C_\ell^{\kappa\kappa}/2\pi$")
         ax_spec.grid(True, which="both", ls=":", alpha=0.4)
         ax_spec.set_title(rf"Bin {i + 1}  ($z\approx{z[i]:.2f}$)")
+        # The axis starts at the first bandpower: nothing is binned below it.
+        ax_spec.set_xlim(float(data_b[0].wavenumber[0]) * 0.92, LMAX)
         if i == 0:
-            ax_spec.legend(frameon=False, fontsize=8)
+            ax_spec.legend(frameon=False, loc="upper left")
 
         # --- ratio (log-x): each measured series over its own pixwin-matched theory ---
         ax_ratio.axhspan(-0.05, 0.05, color="0.7", alpha=0.3, label=r"$\pm 5\%$")
@@ -150,7 +152,7 @@ def plot_kappa_set(series, theory, title, stem):
         ax_ratio.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
             ax_ratio.set_ylabel("data / theory - 1")
-            ax_ratio.legend(loc="upper right", frameon=False, fontsize=8)
+            ax_ratio.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
@@ -206,6 +208,7 @@ plot_kappa_set(
 z_grid = jnp.linspace(0.0, 2.0, 300)
 _cm = plt.get_cmap("YlOrRd")
 
+set_style(width_in=13)  # fonts scale with the figure width
 fig, axes = plt.subplots(2, 2, sharex="col", figsize=(13, 6), gridspec_kw={"hspace": 0.05})
 for col, (nz_list, src_cosmo, name) in enumerate([(nz_s3, cg_cosmo, "Stage-3"), (nz_des, des_cosmo, "DES Y3")]):
     colors = [_cm(x) for x in np.linspace(0.35, 0.95, len(nz_list))]
@@ -217,7 +220,7 @@ for col, (nz_list, src_cosmo, name) in enumerate([(nz_s3, cg_cosmo, "Stage-3"), 
     axes[1, col].set_xlabel(r"redshift $z$")
     axes[0, col].set_ylim(bottom=0.0)
     axes[1, col].set_ylim(bottom=0.0)
-    axes[0, col].legend(frameon=False, fontsize=8)
+    axes[0, col].legend(frameon=False, loc="upper right")
     axes[0, col].grid(alpha=0.3)
     axes[1, col].grid(alpha=0.3)
 axes[0, 0].set_ylabel(r"$n(z)$")

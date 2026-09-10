@@ -19,15 +19,32 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+THESIS_WIDTH_IN = 4.98  # the manuscript's \textwidth: figures authored at this width carry literal sizes
+DISPLAY_WIDTH_IN = 9.375  # ~900 px: the width a README figure is displayed at
 
-def set_style() -> None:
-    """Uniform, JCAP-ready matplotlib defaults for experiment figures."""
+
+def set_style(width_in: float | None = None) -> None:
+    """Uniform, JCAP-ready matplotlib defaults for experiment figures.
+
+    Styling matches the thesis figures (Computer Modern serif, inward mirrored ticks). Two
+    sizing regimes:
+
+    * ``width_in=None`` — the exact thesis sizes: 8.5 pt text authored at the printed
+      4.98 in width, so every size is the size that reaches paper. Use it for figures
+      meant to be read at that physical width (the lensing-reference replicas).
+    * ``width_in=<figure width>`` — every font size and line width is scaled by
+      ``width_in / DISPLAY_WIDTH_IN``, which normalises the figure to the ~900 px width a
+      README displays it at: the text then reaches the screen at the same *apparent* size
+      for every figure, large multi-panel strips included. Pass the width of the figure
+      about to be drawn.
+    """
 
     # JCAP text width is roughly 6 inches.
     # Using the golden ratio (~0.618) for height is a standard aesthetic choice.
     fig_width = 6.0
     fig_height = fig_width * 0.618
 
+    s = 1.0 if width_in is None else width_in / DISPLAY_WIDTH_IN
     plt.rcParams.update(
         {
             # --- Figure Size and Resolution ---
@@ -37,26 +54,31 @@ def set_style() -> None:
             "savefig.bbox": "tight",
             "savefig.pad_inches": 0.05,  # Minimize whitespace padding
             "svg.fonttype": "none",
-            # --- Fonts and Text (Matching LaTeX) ---
+            # --- Fonts and Text (Matching LaTeX / the thesis figures) ---
             "text.usetex": True,
             "font.family": "serif",
             "font.serif": ["Computer Modern Roman"],  # The default LaTeX font
-            "font.size": 11,  # JCAP standard body text size
-            "axes.titlesize": 11,
-            "axes.labelsize": 11,
-            "legend.fontsize": 10,
-            "xtick.labelsize": 10,
-            "ytick.labelsize": 10,
+            "font.size": 8.5 * s,
+            "axes.titlesize": 9 * s,
+            "axes.labelsize": 8.5 * s,
+            "legend.fontsize": 8.2 * s,
+            "xtick.labelsize": 8.2 * s,
+            "ytick.labelsize": 8.2 * s,
             # --- Axes and Ticks (Physics Standard) ---
             "axes.grid": False,
-            "axes.linewidth": 1.0,
+            "axes.linewidth": 0.8 * s,
+            "grid.linewidth": 0.5 * s,
+            "lines.linewidth": 1.2 * s,
             "xtick.direction": "in",  # Ticks point inward (physics convention)
             "ytick.direction": "in",
             "xtick.top": True,  # Mirrored ticks on top/right axes
             "ytick.right": True,
-            "xtick.major.size": 5,
-            "ytick.major.width": 1.0,
-            "ytick.major.size": 5,
+            "xtick.major.size": 3.2 * s,
+            "xtick.major.width": 0.8 * s,
+            "ytick.major.size": 3.2 * s,
+            "ytick.major.width": 0.8 * s,
+            "xtick.minor.size": 1.8 * s,
+            "ytick.minor.size": 1.8 * s,
             "xtick.minor.visible": True,  # Minor ticks enabled
             "ytick.minor.visible": True,
         }

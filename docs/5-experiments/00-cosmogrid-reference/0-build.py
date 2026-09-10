@@ -10,6 +10,8 @@ import jax.numpy as jnp
 import numpy as np
 from datasets import load_dataset
 from huggingface_hub import snapshot_download
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 from jax_fli import compute_theory_cl_for_density
 from jax_fli.io import Catalog
@@ -51,8 +53,6 @@ theory_cls = theory_cls * pixwin2
 # =============================================================================
 # Style + colors
 # =============================================================================
-set_style()
-
 C_DATA = "tab:blue"  # CosmoGrid measured (binned bandpowers)
 C_TH = "k"  # Limber theory
 
@@ -67,6 +67,8 @@ def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
     theory_b = shells_th.bin(nlb=NLB)
     leff = data_b.wavenumber  # shared bin centers (effective multipole per bin)
     ratio = data_b.spectra / theory_b.spectra - 1.0
+
+    set_style(width_in=20)  # 5-column strip: fonts scale with the figure width
 
     # 2 rows, 5 columns with a 3:1 height ratio (spectra over ratio)
     fig, axes = plt.subplots(
@@ -93,11 +95,11 @@ def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
         ax_spec.set_ylabel(r"$\ell(\ell+1)\,C_\ell/2\pi$")
         ax_spec.grid(True, which="both", ls=":", alpha=0.4)
         ax_spec.set_title(f"Shell {start_idx + i}")
-        if i == 0:
-            ax_spec.legend(frameon=False)
+        # The axis starts at the first bandpower: nothing is binned below it.
+        ax_spec.set_xlim(float(leff[0]) * 0.92, LMAX)
 
         # --- Second row: binned ratio (log-x) ---
-        ax_ratio.axhspan(-0.05, 0.05, color="0.7", alpha=0.3, label=r"$\pm 5\%$")
+        ax_ratio.axhspan(-0.05, 0.05, color="0.7", alpha=0.3)
         ax_ratio.axhline(0.0, color="0.4", ls="--", lw=1.0)
         ax_ratio.plot(leff, ratio[i], color=C_DATA, ls="-", lw=1.6)
         ax_ratio.set_xscale("log")
@@ -106,8 +108,19 @@ def plot_shell_batch(shells_data, shells_th, ell_array, title, start_idx, stem):
         ax_ratio.grid(True, which="both", ls=":", alpha=0.4)
         if i == 0:
             ax_ratio.set_ylabel("data / theory - 1")
-            ax_ratio.legend(loc="upper right", frameon=False)
 
+    # One legend above all panels: the same two curves repeat in every column.
+    fig.legend(
+        handles=[
+            Line2D([], [], color=C_TH, ls="--", lw=1.3, label=r"Limber theory $\times\,w_\ell^2$"),
+            Line2D([], [], color=C_DATA, ls="-", lw=1.6, label=f"CosmoGrid (binned, nlb={NLB})"),
+            Patch(facecolor="0.7", alpha=0.3, label=r"$\pm 5\%$"),
+        ],
+        loc="upper center",
+        ncol=3,
+        frameon=False,
+        bbox_to_anchor=(0.5, 1.04),
+    )
     fig.tight_layout()
     savefig(ASSETS / stem, fig)
 
@@ -163,6 +176,7 @@ def band_ratio(lo, hi):
     return mb / tb, float(np.sqrt(2.0 / w.sum()))
 
 
+set_style(width_in=2.5 * len(TARGETS))  # 3x2 small multiples: fonts scale with the figure width
 fig, axes = plt.subplots(2, len(TARGETS) // 2, figsize=(2.5 * len(TARGETS), 4.6), sharey=True)
 axes = axes.flatten()
 for ax, ltarget in zip(axes, TARGETS):
@@ -172,11 +186,11 @@ for ax, ltarget in zip(axes, TARGETS):
     ax.axhspan(-cv, cv, color="0.8", lw=0, label=rf"$\pm1\sigma$ CV ({cv:.1%})")
     ax.axhline(0.0, color="0.4", ls="--", lw=1.0)
     ax.plot(chi, ratio - 1, "-", color=C_DATA, lw=1.4)
-    ax.set_title(rf"$\ell \approx$ {ltarget}  (band {lo}–{hi})", fontsize=11)
+    ax.set_title(rf"$\ell \approx$ {ltarget}  (band {lo}–{hi})")
     ax.set_xlabel(r"comoving distance $\chi$  [Mpc/$h$]")
     ax.set_ylim(-0.2, 0.2)
     ax.grid(alpha=0.25)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.legend(loc="upper right")
 axes[0].set_ylabel(r"measured / theory - 1  ($(2\ell+1)$-weighted)")
 fig.tight_layout()
 savefig(ASSETS / "fig04-convergence-pixwin", fig)
