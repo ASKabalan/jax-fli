@@ -85,7 +85,9 @@ examples = [
   "ipykernel",
   "jupyter",
   "ipywidgets",
-  "papermill"
+  "papermill",
+  # jax.debug.visualize_array_sharding (used in the sharding notebooks) needs rich
+  "rich"
 ]
 legacy = ["diffrax"]
 plot = [
@@ -98,6 +100,7 @@ raytrace = ["dorian-raytrace-mpi"]
 sampling = [
   "blackjax",
   "numpyro",
+  "optax",
   "orbax-checkpoint",
   "fastprogress",
   "jax-cadre",
