@@ -170,7 +170,7 @@ EXPERIMENT_TO_SEE
 HANDOUTS
 000_RUNS
 DEL
-results
+results*
 rosenbrock_samples*
 WORK_IN_PROGRESS
 UNTRACKED

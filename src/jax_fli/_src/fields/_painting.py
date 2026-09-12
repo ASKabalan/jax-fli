@@ -319,6 +319,12 @@ def _single_paint_spherical(
     # Observer position in Mpc
     observer_position_mpc = tuple(frac * length for frac, length in zip(observer_position, box_size))
 
+    # Guard against particles exactly at the observer position (r = 0), which produces
+    # unit_vecs = [0,0,0] -> NaN spherical angles in jax_healpy bilinear/rbf interpolation.
+    obs_grid = jnp.array([frac * m for frac, m in zip(observer_position, mesh_size)], dtype=positions.dtype)
+    at_observer = jnp.all(jnp.abs(positions - obs_grid) < 1e-6, axis=-1, keepdims=True)
+    positions = jnp.where(at_observer, positions + 1e-5, positions)
+
     # Position should be already sharded but this is done for the gradient
     # This way in the backward pass the gradient will also be sharded and not cause memory
     if field_sharding is not None:
