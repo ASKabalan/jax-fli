@@ -343,4 +343,3 @@ def test_lpt_grad_script_vs_api(tmp_path, cosmo, grad_mode):
     label = f"lpt grad ({grad_mode})"
     assert script_grad.array.shape == initial_field.array.shape
     compare_fields(script_grad.array, expected_grad, label=label, rtol=1e-5, atol=1e-8, mean_atol=1e-10)
-
