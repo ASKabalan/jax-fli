@@ -249,7 +249,7 @@ def parser() -> ArgumentParser:
         metavar="MODE",
         help="Differentiate the forward model w.r.t. initial conditions: 'none' (forward only), "
         "'reverse', 'checkpoint' (~log2(steps) checkpoints), or 'checkpointed_<N>' (N checkpoints). "
-        "When set, the output becomes the IC-shaped gradient field (pm/lensing modes only).",
+        "When set, the output becomes the IC-shaped gradient field.",
     )
     p.add_argument(
         "--output", "-o", default="sim_output.parquet", help="Output file path (default: sim_output.parquet)"
@@ -310,14 +310,12 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
     if interp == "onion" and nside is None:
         parser.error("--interp onion requires --nside")
 
-    # --grad: valid spec, pm/lensing only, and reverse adjoint requires uniform a-stepping
+    # --grad: valid spec; for pm/lensing, reverse adjoint requires uniform a-stepping
     try:
         compute_grad, grad_adjoint, _ = _parse_grad(getattr(args, "grad", "none"))
     except ValueError as e:
         parser.error(str(e))
-    if compute_grad:
-        if args.sim_mode == "lpt":
-            parser.error("--grad is not supported with --sim-mode lpt (use pm or lensing)")
+    if compute_grad and args.sim_mode != "lpt":
         if grad_adjoint == "reverse":
             if getattr(args, "time_stepping", "a") != "a":
                 parser.error("--grad reverse requires --time-stepping a (the reverse adjoint assumes uniform a-steps)")
@@ -348,6 +346,7 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
         "laplace_fd",
         "dealiased",
         "exact_growth",
+        "compute_grad",
     ],
 )
 def run_lpt(
@@ -365,24 +364,39 @@ def run_lpt(
     laplace_fd=False,
     dealiased=False,
     exact_growth=False,
+    compute_grad=False,
 ):
-    dx, p = jfli.lpt(
-        cosmo,
-        initial_conditions,
-        ts=ts,
-        nb_shells=nb_shells,
-        density_widths=density_widths,
-        order=lpt_order,
-        painting=painting,
-        shell_spacing=shell_spacing,
-        min_width=min_width,
-        paint_order=paint_order,
-        gradient_order=gradient_order,
-        laplace_fd=laplace_fd,
-        dealiased=dealiased,
-        exact_growth=exact_growth,
-    )
-    return dx
+    def _forward(ic):
+        dx, _p = jfli.lpt(
+            cosmo,
+            ic,
+            ts=ts,
+            nb_shells=nb_shells,
+            density_widths=density_widths,
+            order=lpt_order,
+            painting=painting,
+            shell_spacing=shell_spacing,
+            min_width=min_width,
+            paint_order=paint_order,
+            gradient_order=gradient_order,
+            laplace_fd=laplace_fd,
+            dealiased=dealiased,
+            exact_growth=exact_growth,
+        )
+        return dx
+
+    if not compute_grad:
+        return _forward(initial_conditions)
+
+    # --grad: differentiate a scalar machinery-benchmark loss L = 1/2 * sum(observable**2) w.r.t.
+    # the initial-condition array, and return the IC-shaped gradient field. The IC array is the
+    # sole differentiation target; the field's static metadata is carried over via .replace.
+    def _loss(ic_array):
+        observable = _forward(initial_conditions.replace(array=ic_array))
+        return 0.5 * jnp.sum(jnp.square(observable.array))
+
+    grad_array = jax.grad(_loss)(initial_conditions.array)
+    return initial_conditions.replace(array=grad_array)
 
 
 @partial(
@@ -598,6 +612,7 @@ def main() -> None:
             "laplace_fd": args.laplace_fd,
             "dealiased": args.dealiased,
             "exact_growth": args.exact_growth,
+            "compute_grad": compute_grad,
         }
     else:
         run_fn = run_simulations
@@ -636,7 +651,7 @@ def main() -> None:
         # timer re-jits with static_argnums, so every static_argname must appear here or it gets
         # traced (a traced bool then fails the inner jit's static-hash). Keep in sync with the sigs.
         if sim_type == "lpt":
-            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13)
+            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14)
         else:
             # 22 = quadrature (appended last in run_simulations so earlier indices are stable)
             _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22)

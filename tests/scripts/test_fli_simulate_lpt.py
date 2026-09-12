@@ -282,3 +282,65 @@ def test_lpt_flat_script_vs_api(tmp_path, cosmo):
         atol=1e-10,
         err_msg=f"{label}: density_width mismatch",
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: gradient output
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("grad_mode", ["checkpointed_4"])
+def test_lpt_grad_script_vs_api(tmp_path, cosmo, grad_mode):
+    """fli-simulate lpt --grad must differentiate w.r.t IC and match jax.grad API."""
+    out_file = str(tmp_path / f"output_grad_{grad_mode}.parquet")
+
+    # --- subprocess ---
+    cmd = (
+        [
+            "fli-simulate",
+            "--sim-mode",
+            "lpt",
+            "--nside",
+            str(_NSIDE),
+            "--grad",
+            grad_mode,
+        ]
+        + _BASE_CLI
+        + _COMMON_LPT_CLI
+        + [
+            "--scheme",
+            "ngp",
+            "--lpt-order",
+            "1",
+            "--output",
+            out_file,
+        ]
+    )
+    run_sim(cmd)
+
+    # --- load ---
+    catalog = jfli.io.Catalog.from_parquet(out_file)
+    script_grad = catalog.field[0]
+
+    # --- API ---
+    painting = jfli.PaintingOptions(target="spherical", scheme="ngp")
+    initial_field = _make_initial_field(cosmo, nside=_NSIDE)
+
+    def _loss(ic_array):
+        dx = _api_lpt(
+            cosmo,
+            initial_field.replace(array=ic_array),
+            lpt_order=1,
+            dealiased=False,
+            exact_growth=False,
+            painting=painting,
+        )
+        return 0.5 * jnp.sum(jnp.square(dx.array))
+
+    expected_grad = jax.grad(_loss)(initial_field.array)
+
+    # --- compare array ---
+    label = f"lpt grad ({grad_mode})"
+    assert script_grad.array.shape == initial_field.array.shape
+    compare_fields(script_grad.array, expected_grad, label=label, rtol=1e-5, atol=1e-8, mean_atol=1e-10)
+

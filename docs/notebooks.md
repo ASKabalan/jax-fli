@@ -29,7 +29,7 @@ The documentation is organized into four sections:
 
 12. [Probabilistic Modeling](3-sampling-and-inference/12-Probabilistic-Modeling.ipynb) — the forward-model builder, the `Configurations` dataclass, and NumPyro / BlackJAX wrappers.
 13. [Rosenbrock](3-sampling-and-inference/13-Rosen.ipynb) — an MCMC sanity check on a known target before touching cosmology.
-14. [PM mass mapping](3-sampling-and-inference/14-PM-MassMapping.ipynb) — MAP reconstruction of the initial-condition field (mass mapping) at a fixed cosmology on a 1LPT spherical galaxy-overdensity mock, with animation frames and coherence / transfer diagnostics.
+14. [LPT mass mapping](3-sampling-and-inference/14-LPT-MassMapping.ipynb) — MAP reconstruction of the initial-condition field (mass mapping) at a fixed cosmology on a 1LPT spherical galaxy-overdensity mock, with animation frames and coherence / transfer diagnostics.
 
 See the [Sampling & inference](3-sampling-and-inference/README.md) index for the [configuration options](3-sampling-and-inference/configurations-options.md) and the matching command-line entry points.
 

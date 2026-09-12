@@ -15,14 +15,15 @@ GRAD_SPEC="${GRAD_SPEC:-checkpointed_25}"  # gradient checkpointing strategy
 SOLVER="${SOLVER:-bf}"  # "bf" (BullFrog) or "kdk" (KickDriftKick)
 NB_STEPS="${NB_STEPS:-50}"
 TIME_STEPPING="${TIME_STEPPING:-D}"
-NSIDE="${NSIDE:-512}"
+NSIDE="${NSIDE:-2048}"
+PAINT_NSIDE="${PAINT_NSIDE:-512}"
 NB_SHELLS="${NB_SHELLS:-12}"
 ITERATIONS="${ITERATIONS:-100}"
 GPN="${GPUS_PER_NODE:-4}"  # 4 on IDRIS/Jean Zay H100 nodes, 8 on single 8-GPU box
 
 # Shared physics & gradient benchmark configuration
 COMMON="--sim-mode $SIM_MODE --box-size $BOX5 --solver $SOLVER --nb-steps $NB_STEPS --time-stepping $TIME_STEPPING \
---min-width 60.0 --paint-order cic --nside $NSIDE --shells-per-file 1 --nb-shells $NB_SHELLS \
+--min-width 60.0 --paint-order cic --nside $NSIDE --paint-nside $PAINT_NSIDE --shells-per-file 1 --nb-shells $NB_SHELLS \
 --scheme bilinear --shell-spacing equal_vol --drift-on-lightcone \
 --enable-x64 --perf --iterations $ITERATIONS --seed $SEED $COSMO --grad $GRAD_SPEC"
 
