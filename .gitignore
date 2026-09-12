@@ -174,3 +174,4 @@ results*
 rosenbrock_samples*
 WORK_IN_PROGRESS
 UNTRACKED
+SLURM_LOGS
