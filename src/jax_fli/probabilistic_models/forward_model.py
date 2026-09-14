@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-
 import jax
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
@@ -30,6 +28,34 @@ _LENSING_OUTPUTS = ("convergence", "shear", "reduced_shear", "density")
 
 # Simulation pipeline depth: "pm" runs LPT then N-body; "lpt" paints the lightcone from LPT alone.
 _SIM_MODES = ("pm", "lpt")
+
+
+def _resolve_map2alm_method(method: str) -> str:
+    """Downgrade ``'jax_cuda'`` to ``'jax'`` when the platform or the s2fft build cannot run it.
+
+    s2fft's jax_cuda path lowers to the CUDA-only ``healpix_fft_cuda`` primitive (no CPU MLIR rule),
+    so a CPU backend, an s2fft not compiled with CUDA, or no s2fft at all falls back to the
+    pure-JAX transforms. Any other method passes through untouched.
+    """
+    if method != "jax_cuda":
+        return method
+    if jax.devices()[0].platform == "cpu":
+        print("[WARNING] map2alm_method 'jax_cuda' is not available on CPU. Using 'jax' instead.")
+        return "jax"
+    try:
+        from s2fft_lib import _s2fft
+
+        if not _s2fft.COMPILED_WITH_CUDA:
+            print(
+                "[WARNING] map2alm_method 'jax_cuda' is not available because s2fft was not compiled with CUDA. Using 'jax' instead."
+            )
+            return "jax"
+    except ImportError:
+        print(
+            "[WARNING] map2alm_method 'jax_cuda' is not available because s2fft is not installed. Using 'jax' instead."
+        )
+        return "jax"
+    return method
 
 
 def make_full_field_model(
@@ -88,29 +114,8 @@ def make_full_field_model(
             config.observer_position, config.paint_nside or config.nside, config.apodization_scale_deg
         )
 
-    # ===========================================================================
-    # Check for CUDA availability if map2alm_method is set to 'jax_cuda'
-    # ===========================================================================
-    map2alm_method = config.map2alm_method
-    if jax.devices()[0].platform == "cpu" and map2alm_method == "jax_cuda":
-        warnings.warn("map2alm_method 'jax_cuda' is not available on CPU. Using 'jax' instead.")
-        map2alm_method = "jax"
-
-    if map2alm_method == "jax_cuda":
-        try:
-            from s2fft_lib import _s2fft
-
-            if not _s2fft.COMPILED_WITH_CUDA:
-                warnings.warn(
-                    "map2alm_method 'jax_cuda' is not available because s2fft was not compiled with CUDA. Using 'jax' instead."
-                )
-                map2alm_method = "jax"
-        except ImportError:
-            warnings.warn(
-                "map2alm_method 'jax_cuda' is not available because s2fft is not installed. Using 'jax' instead."
-            )
-            map2alm_method = "jax"
-    # ===========================================================================
+    # Downgrade 'jax_cuda' when the platform or the s2fft build cannot run the CUDA SHT.
+    map2alm_method = _resolve_map2alm_method(config.map2alm_method)
 
     def forward_model(cosmo, initial_conditions):
         # warmstart NZ
@@ -187,6 +192,7 @@ def make_full_field_model(
             max_z=config.max_redshift,
             n_integrate=config.n_integrate,
             quadrature=config.quadrature,
+            normalization=config.normalization,
         )
 
         # The apodized observer visibility mask is a Kaiser-Squires concern: apodizing the

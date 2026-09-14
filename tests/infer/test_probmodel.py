@@ -193,3 +193,16 @@ def test_scale_cut_flat_raises():
     """Scale cut is spherical-only: flat geometry with ell_max set raises at model build."""
     with pytest.raises(NotImplementedError, match="spherical-only"):
         jfli.ppl.full_field_probmodel(_cell_config("flat", "convergence", ell_max=12, ell_taper_width=4))
+
+
+def test_map2alm_method_cuda_downgrades_on_cpu():
+    """'jax_cuda' is unavailable off-GPU: the makers warn (downgrade to 'jax') and the scale-cut
+    pixel likelihood still builds and traces instead of hitting the CUDA-only s2fft primitive."""
+    with pytest.warns(UserWarning, match="jax_cuda"):
+        model = jfli.ppl.full_field_probmodel(
+            _cell_config("spherical", "convergence", map2alm_method="jax_cuda", ell_max=12, ell_taper_width=4)
+        )
+    tr = trace(seed(model, 0)).get_trace()
+    loc = tr["observable_0"]["fn"].loc
+    arr = np.asarray(loc.array if hasattr(loc, "array") else loc)
+    assert bool(np.isfinite(arr).all())
