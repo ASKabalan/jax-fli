@@ -55,6 +55,7 @@ class Configurations:
     quadrature: str = (
         "simpson"  # Born quadrature (shell weights + n(z) rule): "midpoint" | "simpson" | "gauss_legendre"
     )
+    normalization: str = "per_plane"  # Overdensity normalization: "per_plane" or "global"
     apodization_scale_deg: float = 1.0  # C2 apodization scale for the observer visibility mask
 
     # Geometry / painting (spherical only for now)
