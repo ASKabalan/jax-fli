@@ -61,7 +61,10 @@ def _maybe_init_distributed() -> None:
         return
     for key in ("VSCODE_PROXY_URI", "no_proxy", "NO_PROXY"):
         os.environ.pop(key, None)
-    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Detected multi-host environment, initializing JAX distributed ...", flush=True)
+    print(
+        f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Detected multi-host environment, initializing JAX distributed ...",
+        flush=True,
+    )
     import jax
 
     jax.distributed.initialize()
@@ -303,7 +306,9 @@ def main() -> None:
     log(f"cosmology fixed at truth  Omega_c={float(theta_truth[0]):.4f}  sigma8={float(theta_truth[1]):.4f}")
 
     # --- potential (notebook section 6) ---
-    param_info, potential_fn, postprocess_fn, _ = initialize_model(jax.random.PRNGKey(0), cond_model, dynamic_args=False)
+    param_info, potential_fn, postprocess_fn, _ = initialize_model(
+        jax.random.PRNGKey(0), cond_model, dynamic_args=False
+    )
     init_params = param_info.z
     log(f"free sites: {list(init_params.keys())}")
     assert set(init_params.keys()) == set(free_sites)
@@ -391,9 +396,7 @@ def main() -> None:
             trans_kappa = kappa_truth.transfer(kappa_run, method="jax")
 
         d_ic = position["initial_conditions"]
-        d_ic_norm = float(
-            jnp.sqrt(jnp.vdot(d_ic - warm["initial_conditions"], d_ic - warm["initial_conditions"]).real)
-        )
+        d_ic_norm = float(jnp.sqrt(jnp.vdot(d_ic - warm["initial_conditions"], d_ic - warm["initial_conditions"]).real))
 
         ic_cat = ic_run.replace(
             name=f"ic_{frame}",
