@@ -5,6 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
+import numpy as np
 from jaxpm.growth import Dplus_to_a, growth_factor
 
 from ..utils import distances as _voronoi_distances
@@ -17,13 +18,38 @@ _VALID_SHELL_SPACINGS = ("comoving", "a", "growth", "equal_vol")
 # ---------------------------------------------------------------------------
 
 
-def _generate_edges_comoving(n, r_max):
-    """Edges uniform in comoving distance."""
-    return jnp.linspace(0.0, r_max, n + 1)
+def _generate_edges_comoving(n, r_max, r_min=0.0):
+    """Edges uniform in comoving distance over [r_min, r_max]."""
+    return jnp.linspace(r_min, r_max, n + 1)
 
 
-def _generate_edges_equal_vol(n, r_max, min_width=0.0):
-    """Edges uniform in volume (r^3), with the outer shells floored to ``min_width``.
+def _equal_vol_floored(n, r_min, r_max, min_width):
+    """Equal volume in r^3 over [r_min, r_max], outer shells floored to ``min_width`` (numpy edges)."""
+    # Count how many outer shells must be floored, peeling from the far edge.
+    n_floor = 0
+    remaining = float(r_max)
+    while n_floor < n:
+        k = n - n_floor  # shells not yet placed
+        natural = remaining - (r_min**3 + (k - 1) / k * (remaining**3 - r_min**3)) ** (1.0 / 3.0)
+        if natural >= min_width:
+            break  # remaining shells are all >= natural >= min_width
+        n_floor += 1
+        remaining -= min_width
+
+    # inner (n - n_floor) shells: equal-volume over [r_min, remaining];
+    # outer n_floor shells: uniform min_width out to r_max.
+    n_inner = n - n_floor
+    if n_inner > 0:
+        inner_edges = (r_min**3 + (remaining**3 - r_min**3) * np.arange(n_inner + 1) / n_inner) ** (1.0 / 3.0)
+    else:
+        inner_edges = np.array([r_min])
+    outer_edges = remaining + min_width * np.arange(1, n_floor + 1)
+    return np.concatenate([inner_edges, outer_edges])
+
+
+def _generate_edges_equal_vol(n, r_max, min_width=0.0, max_width=None, r_min=0.0):
+    """Edges uniform in volume (r^3) over [r_min, r_max], outer shells floored to ``min_width``,
+    inner shells optionally capped at ``max_width``.
 
     Pure equal-volume places edges at ``r_i = r_max (i/n)**(1/3)``, so the
     outermost shells become arbitrarily thin.  When ``min_width`` binds, the
@@ -33,40 +59,46 @@ def _generate_edges_equal_vol(n, r_max, min_width=0.0):
     ``min_width``, every (fatter) inner shell clears it too, so the rest are laid
     down as one pure equal-volume partition.  With ``min_width`` below the natural
     outer width this is a no-op and reproduces the pure equal-volume edges.
+
+    The same rule makes the first shell a ball of radius ``r_max n**(-1/3)``.  ``max_width``
+    caps it: the first ``k`` shells are comoving shells of width ``max_width`` from ``r_min``,
+    and the rule above partitions ``[r_min + k max_width, r_max]`` with the other ``n - k``
+    shells, ``k`` being the smallest count for which that first equal-volume shell is no wider
+    than ``max_width``.  With ``max_width`` at or above the natural first width this is a no-op.
     """
-    # Count how many outer shells must be floored, peeling from the far edge.
-    n_floor = 0
-    remaining = float(r_max)
-    while n_floor < n:
-        k = n - n_floor  # shells not yet placed
-        natural = remaining * (1.0 - ((k - 1) / k) ** (1.0 / 3.0))
-        if natural >= min_width:
-            break  # remaining shells are all >= natural >= min_width
-        n_floor += 1
-        remaining -= min_width
-
-    # inner (n - n_floor) shells: equal-volume over [0, remaining];
-    # outer n_floor shells: uniform min_width out to r_max.
-    n_inner = n - n_floor
-    inner_edges = remaining * (jnp.arange(n_inner + 1) / n_inner) ** (1.0 / 3.0) if n_inner > 0 else jnp.zeros(1)
-    outer_edges = remaining + min_width * jnp.arange(1, n_floor + 1)
-    return jnp.concatenate([inner_edges, outer_edges])
+    # The edges depend on the arguments only, so they are built in numpy (concrete even under jit).
+    r_min, r_max = float(r_min), float(r_max)
+    if max_width is None:
+        return jnp.asarray(_equal_vol_floored(n, r_min, r_max, min_width))
+    for k in range(n):
+        start = r_min + k * max_width
+        if n - k > 1 and start + (n - k) * min_width > r_max:
+            break
+        edges = _equal_vol_floored(n - k, start, r_max, min_width)
+        if edges[1] - edges[0] <= max_width * (1 + 1e-9):
+            return jnp.asarray(np.concatenate([r_min + max_width * np.arange(k), edges]))
+    raise ValueError(
+        f"Cannot place {n} equal_vol shells in [{r_min:.1f}, {r_max:.1f}] Mpc/h with max_width={max_width} and "
+        f"min_width={min_width}: raise max_width or lower the number of shells."
+    )
 
 
-def _generate_edges_a(cosmo, n, r_max):
-    """Edges uniform in scale factor.  *r_max* is comoving Mpc/h."""
+def _generate_edges_a(cosmo, n, r_max, r_min=0.0):
+    """Edges uniform in scale factor over [r_min, r_max].  Distances are comoving Mpc/h."""
     a_start = jc.background.a_of_chi(cosmo, jnp.array(r_max)).squeeze()
-    a_edges = jnp.linspace(a_start, 1.0, n + 1)
+    a_end = 1.0 if r_min <= 0 else jc.background.a_of_chi(cosmo, jnp.array(r_min)).squeeze()
+    a_edges = jnp.linspace(a_start, a_end, n + 1)
     r_edges = jc.background.radial_comoving_distance(cosmo, a_edges)
     return r_edges[::-1]  # ascending r
 
 
-def _generate_edges_growth(cosmo, n, r_max):
-    """Edges uniform in growth factor D+(a).  *r_max* is comoving Mpc/h."""
+def _generate_edges_growth(cosmo, n, r_max, r_min=0.0):
+    """Edges uniform in growth factor D+(a) over [r_min, r_max].  Distances are comoving Mpc/h."""
     a_start = jc.background.a_of_chi(cosmo, jnp.array(r_max)).squeeze()
+    a_end = 1.0 if r_min <= 0 else jc.background.a_of_chi(cosmo, jnp.array(r_min)).squeeze()
     D_start = growth_factor(cosmo, jnp.atleast_1d(a_start)).squeeze()
-    D_today = growth_factor(cosmo, jnp.atleast_1d(1.0)).squeeze()
-    D_edges = jnp.linspace(D_start, D_today, n + 1)
+    D_end = growth_factor(cosmo, jnp.atleast_1d(a_end)).squeeze()
+    D_edges = jnp.linspace(D_start, D_end, n + 1)
     a_edges = Dplus_to_a(cosmo, D_edges)
     r_edges = jc.background.radial_comoving_distance(cosmo, a_edges)
     return r_edges[::-1]  # ascending r
@@ -87,10 +119,11 @@ def _check_min_width(widths, min_width):
         )
 
 
-def _check_min_width_static(shell_spacing, n, r_max, min_width):
+def _check_min_width_static(shell_spacing, n, r_max, min_width, r_min=0.0):
     """Fast pure-Python check before computing edges (comoving / equal_vol only)."""
+    extent = r_max - r_min
     if shell_spacing == "comoving":
-        width = r_max / n
+        width = extent / n
         if width < min_width - 1e-10:
             raise ValueError(
                 f"Minimum shell width {width:.2f} Mpc/h is below min_width={min_width} Mpc/h. "
@@ -99,13 +132,24 @@ def _check_min_width_static(shell_spacing, n, r_max, min_width):
     elif shell_spacing == "equal_vol":
         # min_width reshapes the outer shells (hybrid equal-volume), so the only
         # failure is an outright-infeasible request: N shells of >= min_width
-        # cannot tile [0, r_max].
-        if n * min_width > r_max + 1e-10:
+        # cannot tile [r_min, r_max].
+        if n * min_width > extent + 1e-10:
             raise ValueError(
                 f"Cannot fit {n} equal_vol shells of width >= min_width={min_width} Mpc/h within "
-                f"r_max={r_max:.2f} Mpc/h (need {n * min_width:.2f} Mpc/h). "
+                f"[{r_min:.2f}, {r_max:.2f}] Mpc/h (need {n * min_width:.2f} Mpc/h). "
                 f"Reduce the number of shells/steps or lower min_width."
             )
+
+
+def _check_extent(shell_spacing, r_max, min_width, max_width, r_min):
+    """Validate the inner edge and the equal-volume cap before computing edges."""
+    if not 0.0 <= r_min < r_max:
+        raise ValueError(f"r_min must be in [0, r_max={r_max:.2f}) Mpc/h, got r_min={r_min}.")
+    if max_width is not None:
+        if shell_spacing != "equal_vol":
+            raise ValueError(f"max_width caps equal_vol shells only; got shell_spacing={shell_spacing!r}.")
+        if max_width < min_width:
+            raise ValueError(f"max_width={max_width} must be >= min_width={min_width} Mpc/h.")
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +225,8 @@ def simulation_stepping(
     max_comoving_distance=None,
     shell_spacing="comoving",
     min_width=50.0,
+    max_width=None,
+    r_min=0.0,
     density_widths=None,
     time_stepping="a",
 ):
@@ -214,6 +260,10 @@ def simulation_stepping(
         Shell spacing mode (passed to ``resolve_geometry``).
     min_width : float, default=50.0
         Minimum shell width in Mpc/h (passed to ``resolve_geometry``).
+    max_width : float, optional
+        Cap on the inner ``equal_vol`` shells in Mpc/h (passed to ``resolve_geometry``).
+    r_min : float, default=0.0
+        Inner edge of the lightcone in Mpc/h (passed to ``resolve_geometry``).
     density_widths : array-like, optional
         Override shell widths (passed to ``resolve_geometry``).
     time_stepping : str, default='a'
@@ -236,6 +286,8 @@ def simulation_stepping(
             nb_shells=nb_shells,
             shell_spacing=shell_spacing,
             min_width=min_width,
+            max_width=max_width,
+            r_min=r_min,
             density_widths=density_widths,
         )
         shell_targets = sorted(float(a) for a in shell_ts)
@@ -316,6 +368,8 @@ def resolve_geometry(
     density_widths=None,
     shell_spacing: str = "comoving",
     min_width: float = 50.0,
+    max_width: float | None = None,
+    r_min: float = 0.0,
     box_size_z: float | None = None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Resolve the ``ts`` / ``nb_shells`` specification into canonical geometry.
@@ -339,6 +393,13 @@ def resolve_geometry(
         ``'comoving'``, ``'a'``, ``'growth'``, or ``'equal_vol'``.
     min_width : float, default=50.0
         Minimum shell width in Mpc/h comoving.
+    max_width : float, optional
+        ``equal_vol`` only: cap on the inner shells in Mpc/h comoving. Pure equal volume makes the
+        first shell a ball of radius ``r_max * nb_shells**(-1/3)``; with a cap the inner shells are
+        comoving shells of ``max_width`` until the equal-volume width falls below it.
+    r_min : float, default=0.0
+        Inner edge of the lightcone in Mpc/h comoving (``nb_shells`` path): the shells tile
+        ``[r_min, max_comoving_distance]``.
 
     Returns
     -------
@@ -373,7 +434,9 @@ def resolve_geometry(
     # =====================================================================
     # Path B: Automatic generation from nb_shells
     # =====================================================================
-    return _resolve_nb_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths)
+    return _resolve_nb_shells(
+        cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths, max_width=max_width, r_min=r_min
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -431,19 +494,23 @@ def _resolve_manual_ts(cosmo, ts, density_widths, max_box_comoving, box_size_z):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_nb_shells(cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths):
-    """Generate ``nb_shells`` shells inside the box."""
+def _resolve_nb_shells(
+    cosmo, shell_spacing, nb_shells, max_box_comoving, min_width, density_widths, max_width=None, r_min=0.0
+):
+    """Generate ``nb_shells`` shells inside the box, between ``r_min`` and the box edge."""
+    r_min = float(r_min)
+    _check_extent(shell_spacing, max_box_comoving, min_width, max_width, r_min)
     # Generate edges inside box
     if shell_spacing == "comoving":
-        _check_min_width_static("comoving", nb_shells, max_box_comoving, min_width)
-        r_edges = _generate_edges_comoving(nb_shells, max_box_comoving)
+        _check_min_width_static("comoving", nb_shells, max_box_comoving, min_width, r_min)
+        r_edges = _generate_edges_comoving(nb_shells, max_box_comoving, r_min)
     elif shell_spacing == "equal_vol":
-        _check_min_width_static("equal_vol", nb_shells, max_box_comoving, min_width)
-        r_edges = _generate_edges_equal_vol(nb_shells, max_box_comoving, min_width)
+        _check_min_width_static("equal_vol", nb_shells, max_box_comoving, min_width, r_min)
+        r_edges = _generate_edges_equal_vol(nb_shells, max_box_comoving, min_width, max_width, r_min)
     elif shell_spacing == "a":
-        r_edges = _generate_edges_a(cosmo, nb_shells, max_box_comoving)
+        r_edges = _generate_edges_a(cosmo, nb_shells, max_box_comoving, r_min)
     elif shell_spacing == "growth":
-        r_edges = _generate_edges_growth(cosmo, nb_shells, max_box_comoving)
+        r_edges = _generate_edges_growth(cosmo, nb_shells, max_box_comoving, r_min)
     else:
         raise ValueError(f"Unknown shell_spacing={shell_spacing!r}.")
 

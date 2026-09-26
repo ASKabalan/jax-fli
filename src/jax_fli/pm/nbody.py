@@ -53,6 +53,8 @@ def _validate_t0_cb(lpt_t0, t0):
         "step_checkpoints",
         "shell_spacing",
         "min_width",
+        "max_width",
+        "r_min",
     ],
 )
 def nbody(
@@ -66,6 +68,8 @@ def nbody(
     density_widths=None,
     shell_spacing: str = "a",
     min_width: float = 50.0,
+    max_width: float | None = None,
+    r_min: float = 0.0,
     adjoint: AdjointType | None = "checkpointed",
     checkpoints: int | None = None,
     step_checkpoints: int | None = None,
@@ -92,6 +96,15 @@ def nbody(
         Number of radial lightcone shells (alternative to *ts*).
     density_widths : float or array, optional
         Override shell widths.
+    shell_spacing : str
+        Spacing of the ``nb_shells`` shells: ``'comoving'``, ``'a'``, ``'growth'`` or ``'equal_vol'``.
+    min_width : float, default=50.0
+        Minimum shell width in Mpc/h (floors the thin outer ``equal_vol`` shells).
+    max_width : float, optional
+        ``equal_vol`` only: cap on the inner shells in Mpc/h, so the first shell is not a ball of
+        radius ``r_max * nb_shells**(-1/3)``.
+    r_min : float, default=0.0
+        Inner edge of the lightcone in Mpc/h: the ``nb_shells`` shells tile ``[r_min, r_max]``.
     adjoint : AdjointType or None, default='checkpointed'
         'checkpointed' or 'reverse' for reverse-mode gradients (``grad``/``vjp``); ``None`` selects a
         plain ``jax.lax`` forward loop that supports forward-mode AD (``jvp``/``jacfwd``) but is not
@@ -151,6 +164,8 @@ def nbody(
         density_widths=density_widths,
         shell_spacing=shell_spacing,
         min_width=min_width,
+        max_width=max_width,
+        r_min=r_min,
         box_size_z=dx_field.box_size[2],
     )
     updated_interp = solver.interp_kernel.update_geometry(
