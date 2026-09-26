@@ -19,7 +19,6 @@ import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
-from jax.experimental.multihost_utils import process_allgather
 
 from ...summary_statistics.binned import BinnedStatistic
 from ..base._enums import ConvergenceUnit, DensityUnit, FieldStatus, PhysicalUnit, PositionUnit, SpectralUnit
@@ -112,7 +111,9 @@ def build_summary_features(obj):
 
 def summary_to_row(obj, cosmology: jc.Cosmology, version: int) -> dict | None:
     """Convert one summary-statistic object + cosmology into a 1-row column dict."""
-    array = np.asarray(process_allgather(np.asarray(obj.array), tiled=True))
+    # Spectra are always fully replicated, so np.asarray yields the complete row on
+    # every rank (a tiled process_allgather here would duplicate it process_count()x).
+    array = np.asarray(obj.array)
     bins_arr = getattr(obj, "bins", None)
     tab_norm_arr = getattr(obj, "tab_norm", None)
 
