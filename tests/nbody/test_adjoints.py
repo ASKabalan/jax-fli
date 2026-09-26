@@ -309,8 +309,12 @@ def test_step_checkpoints_invariant(cosmo, jfli_initial_field, perturbed_referen
 # ---------------------------------------------------------------------------
 
 
-# BullFrog's VJP hangs in jax's _pjit_linearize under jax 0.11 (~60s on 0.10) — too slow
-# for CI until fixed upstream; see PR #102.
+# The BullFrog VJP hang in jax's _pjit_linearize (see PR #102; ~60s on jax 0.10, hung on 0.11) was
+# traced to XLA's Eigen intra-op threads deadlocking on large linearized compiles when CPU affinity
+# is low — the same mechanism behind the flaky checkpointed-adjoint CI timeouts. The
+# --xla_cpu_multi_thread_eigen=false flag set in ci.yml clears it (verified locally under
+# `taskset -c 0,1`); the test stays slow-marked because the BullFrog VJP remains the heaviest
+# compile in the file.
 @pytest.mark.slow
 @pytest.mark.parametrize("solver_name", ["KKD", "BullFrog"])
 def test_adjoint_transpose(cosmo, jfli_initial_field, solver_name):

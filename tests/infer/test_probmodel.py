@@ -193,3 +193,48 @@ def test_scale_cut_flat_raises():
     """Scale cut is spherical-only: flat geometry with ell_max set raises at model build."""
     with pytest.raises(NotImplementedError, match="spherical-only"):
         jfli.ppl.full_field_probmodel(_cell_config("flat", "convergence", ell_max=12, ell_taper_width=4))
+
+
+def test_map2alm_method_cuda_downgrades_on_cpu():
+    """'jax_cuda' is unavailable off-GPU: the makers warn (downgrade to 'jax') and the scale-cut
+    pixel likelihood still builds and traces instead of hitting the CUDA-only s2fft primitive."""
+    with pytest.warns(UserWarning, match="jax_cuda"):
+        model = jfli.ppl.full_field_probmodel(
+            _cell_config("spherical", "convergence", map2alm_method="jax_cuda", ell_max=12, ell_taper_width=4)
+        )
+    tr = trace(seed(model, 0)).get_trace()
+    loc = tr["observable_0"]["fn"].loc
+    arr = np.asarray(loc.array if hasattr(loc, "array") else loc)
+    assert bool(np.isfinite(arr).all())
+
+
+def test_capped_equal_vol_resolution_cut_ell_min():
+    """The validated mass-mapping set-up at toy size: capped equal-volume shells from r_min, per-shell
+    resolution cut and a 2 <= ell <= ell_max likelihood. The model traces, the likelihood loc carries no
+    monopole or dipole, and value_and_grad is finite."""
+    cfg = _config(
+        shell_spacing="equal_vol",
+        number_of_shells=4,
+        min_width=20.0,
+        max_width=200.0,  # edges 100, 300, 500, 619, 704 Mpc/h in this 0.25-redshift box
+        r_min=100.0,
+        resolution_cut=True,
+        ell_max=12,
+        ell_taper_width=4,
+        ell_min=2,
+    )
+    model = jfli.ppl.full_field_probmodel(cfg)
+    tr = trace(seed(model, 0)).get_trace()
+    loc = tr["observable_0"]["fn"].loc
+    m = np.asarray(loc.array if hasattr(loc, "array") else loc)
+    cl = np.asarray(jhp.anafast(m, lmax=2 * NSIDE - 1))
+    assert cl[0] < 1e-6 * cl[2:12].max() and cl[1] < 1e-6 * cl[2:12].max()
+    conditioned = condition(model, data={"observable_0": tr["observable_0"]["value"]})
+    _, potential_fn, _, _ = numpyro.infer.util.initialize_model(jax.random.PRNGKey(2), conditioned, dynamic_args=False)
+    pe, g = jax.value_and_grad(potential_fn)({"initial_conditions": jax.random.normal(jax.random.PRNGKey(7), MESH)})
+    assert bool(jnp.isfinite(jnp.asarray(pe))) and bool(jnp.isfinite(g["initial_conditions"]).all())
+
+
+def test_ell_min_needs_ell_max():
+    with pytest.raises(ValueError, match="ell_min"):
+        jfli.ppl.full_field_probmodel(_config(ell_min=2))
