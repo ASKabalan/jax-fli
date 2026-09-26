@@ -5,7 +5,6 @@ from __future__ import annotations
 import jax
 import jax_cosmo as jc
 import numpy as np
-from jax.experimental.multihost_utils import process_allgather
 
 from ...summary_statistics.power_spec import PowerSpectrum
 from ..base._enums import FieldStatus, SpectralUnit
@@ -74,9 +73,12 @@ def build_ps_features(ps: PowerSpectrum, cosmology: jc.Cosmology):
 
 def ps_to_row(ps: PowerSpectrum, cosmology: jc.Cosmology, version: int) -> dict | None:
     """Convert a single PowerSpectrum + cosmology into a 1-row column-oriented dict."""
-    # Gather from all devices (no-op on single device)
-    wavenumber = np.asarray(process_allgather(np.asarray(ps.wavenumber), tiled=True))
-    array = np.asarray(process_allgather(np.asarray(ps.array), tiled=True))
+    # Spectra are always fully replicated, so np.asarray yields the complete row on
+    # every rank. (A tiled process_allgather here would concatenate process_count()
+    # identical per-host copies on multihost runs; np.asarray raises loudly instead
+    # if a spectrum ever arrives non-replicated.)
+    wavenumber = np.asarray(ps.wavenumber)
+    array = np.asarray(ps.array)
 
     if jax.process_index() != 0:
         return None

@@ -76,22 +76,29 @@ jobs:
       - name: Install test environment
         run: uv sync --locked --group tests
 
+      # --xla_cpu_multi_thread_eigen=false: XLA's Eigen intra-op threads deadlock inside
+      # _pjit_linearize on large checkpointed-adjoint compiles when CPU affinity is low
+      # (the flaky 2h47m CI timeouts in tests/nbody/test_adjoints.py). Verified locally:
+      # the hang reproduces under `taskset -c 0,1` and this flag clears it at negligible
+      # runtime cost (~60s vs ~49s on the worst test).
       - name: Run non-distributed, non-scripts tests
         env:
           JAX_PLATFORM_NAME: cpu
           XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+          XLA_FLAGS: "--xla_cpu_multi_thread_eigen=false"
         run: uv run --no-sync pytest -m "not distributed and not scripts and not slow"
 
       - name: Run distributed tests
         env:
           JAX_PLATFORM_NAME: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=8"
+          XLA_FLAGS: "--xla_force_host_platform_device_count=8 --xla_cpu_multi_thread_eigen=false"
         run: uv run --no-sync pytest -m distributed
 
       - name: Run scripts tests
         env:
           JAX_PLATFORM_NAME: cpu
           XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+          XLA_FLAGS: "--xla_cpu_multi_thread_eigen=false"
         run: uv run --no-sync pytest -m scripts
 
   docs:

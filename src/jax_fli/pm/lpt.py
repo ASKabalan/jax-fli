@@ -24,6 +24,8 @@ __all__ = ["lpt"]
         "painting",
         "shell_spacing",
         "min_width",
+        "max_width",
+        "r_min",
         "gradient_order",
         "laplace_fd",
         "dealiased",
@@ -43,6 +45,8 @@ def lpt(
     painting: PaintingOptions = PaintingOptions(target="particles"),
     shell_spacing: str = "comoving",
     min_width: float = 50.0,
+    max_width: float | None = None,
+    r_min: float = 0.0,
     gradient_order: int = 1,
     laplace_fd: bool = False,
     dealiased: bool = False,
@@ -70,6 +74,15 @@ def lpt(
 
     nb_shells : int, optional
         Number of radial lightcone shells (alternative to *ts*).
+    shell_spacing : str
+        Spacing of the ``nb_shells`` shells: ``'comoving'``, ``'a'``, ``'growth'`` or ``'equal_vol'``.
+    min_width : float, default=50.0
+        Minimum shell width in Mpc/h (floors the thin outer ``equal_vol`` shells).
+    max_width : float, optional
+        ``equal_vol`` only: cap on the inner shells in Mpc/h, so the first shell is not a ball of
+        radius ``r_max * nb_shells**(-1/3)``.
+    r_min : float, default=0.0
+        Inner edge of the lightcone in Mpc/h: the ``nb_shells`` shells tile ``[r_min, r_max]``.
     density_width : float or array, optional
         Override shell widths.  When *ts* is a scalar this activates
         single-shell lightcone mode.
@@ -131,6 +144,8 @@ def lpt(
         density_widths=density_widths,
         shell_spacing=shell_spacing,
         min_width=min_width,
+        max_width=max_width,
+        r_min=r_min,
         box_size_z=initial_field.box_size[2],
     )
 

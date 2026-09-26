@@ -296,3 +296,81 @@ class TestSimulationStepping:
     def test_nb_shells_without_max_comoving_raises(self, cosmology):
         with pytest.raises(ValueError, match="max_comoving_distance"):
             simulation_stepping(cosmology, 0.1, 1.0, 10, nb_shells=5)
+
+
+# ---------------------------------------------------------------------------
+# TestCappedEqualVolAndInnerEdge
+# ---------------------------------------------------------------------------
+
+
+def _edges(r_centers, widths):
+    """Ascending shell edges from resolve_geometry's (far -> near) centres and widths."""
+    order = np.argsort(np.asarray(r_centers))
+    r, w = np.asarray(r_centers)[order], np.asarray(widths)[order]
+    return np.concatenate([r - w / 2, [r[-1] + w[-1] / 2]])
+
+
+def _equal_vol_reference(n, r_max, min_width):
+    """The equal_vol rule as it stood before max_width / r_min (outer shells floored at min_width)."""
+    n_floor, remaining = 0, float(r_max)
+    while n_floor < n:
+        k = n - n_floor
+        if remaining * (1.0 - ((k - 1) / k) ** (1.0 / 3.0)) >= min_width:
+            break
+        n_floor += 1
+        remaining -= min_width
+    inner = remaining * (np.arange(n - n_floor + 1) / (n - n_floor)) ** (1.0 / 3.0)
+    return np.concatenate([inner, remaining + min_width * np.arange(1, n_floor + 1)])
+
+
+class TestCappedEqualVolAndInnerEdge:
+    """max_width caps the inner equal_vol shells; r_min moves the inner edge of every spacing."""
+
+    def _resolve(self, cosmology, **kwargs):
+        kwargs.setdefault("nb_shells", 24)
+        _, r_c, dw = resolve_geometry(cosmology, MAX_BOX, box_size_z=MAX_BOX * 2, **kwargs)
+        return _edges(r_c, dw)
+
+    @pytest.mark.parametrize("n, min_width", [(8, 0.0), (24, 20.0), (24, 40.0)])
+    def test_defaults_reproduce_equal_vol(self, cosmology, n, min_width):
+        edges = self._resolve(cosmology, nb_shells=n, shell_spacing="equal_vol", min_width=min_width)
+        np.testing.assert_allclose(edges, _equal_vol_reference(n, MAX_BOX, min_width), rtol=1e-10, atol=1e-8)
+
+    def test_cap(self, cosmology):
+        edges = self._resolve(cosmology, shell_spacing="equal_vol", min_width=20.0, max_width=60.0)
+        widths = np.diff(edges)
+        assert len(widths) == 24
+        assert edges[0] == pytest.approx(0.0, abs=1e-8) and edges[-1] == pytest.approx(MAX_BOX)
+        assert widths.max() <= 60.0 * (1 + 1e-9) and widths.min() >= 20.0 * (1 - 1e-9)
+        k = int(np.sum(np.isclose(widths, 60.0)))
+        assert k > 0 and np.allclose(widths[:k], 60.0)  # comoving inner shells, then equal volume
+        uncapped = self._resolve(cosmology, shell_spacing="equal_vol", min_width=20.0)
+        assert np.diff(uncapped)[0] > 60.0  # the cap binds: pure equal volume starts with a wider ball
+
+    def test_cap_above_ball_is_noop(self, cosmology):
+        uncapped = self._resolve(cosmology, shell_spacing="equal_vol", min_width=20.0)
+        capped = self._resolve(cosmology, shell_spacing="equal_vol", min_width=20.0, max_width=float(MAX_BOX))
+        np.testing.assert_allclose(capped, uncapped, rtol=1e-12)
+
+    @pytest.mark.parametrize("shell_spacing", _VALID_SHELL_SPACINGS)
+    def test_r_min(self, cosmology, shell_spacing):
+        edges = self._resolve(cosmology, nb_shells=NB_SHELLS, shell_spacing=shell_spacing, min_width=10.0, r_min=150.0)
+        assert edges[0] == pytest.approx(150.0, rel=1e-4) and edges[-1] == pytest.approx(MAX_BOX, rel=1e-4)
+        assert np.all(np.diff(edges) > 0)
+
+    def test_r_min_equal_vol_volumes(self, cosmology):
+        edges = self._resolve(cosmology, nb_shells=NB_SHELLS, shell_spacing="equal_vol", min_width=0.0, r_min=150.0)
+        vol = np.diff(edges**3)
+        np.testing.assert_allclose(vol, vol[0], rtol=1e-8)
+
+    def test_r_min_with_cap(self, cosmology):
+        edges = self._resolve(cosmology, shell_spacing="equal_vol", min_width=20.0, max_width=60.0, r_min=120.0)
+        assert edges[0] == pytest.approx(120.0) and np.diff(edges).max() <= 60.0 * (1 + 1e-9)
+
+    def test_invalid(self, cosmology):
+        with pytest.raises(ValueError, match="max_width"):
+            self._resolve(cosmology, shell_spacing="comoving", min_width=10.0, max_width=60.0)
+        with pytest.raises(ValueError, match="max_width"):
+            self._resolve(cosmology, shell_spacing="equal_vol", min_width=50.0, max_width=40.0)
+        with pytest.raises(ValueError, match="r_min"):
+            self._resolve(cosmology, shell_spacing="equal_vol", min_width=10.0, r_min=MAX_BOX + 1.0)

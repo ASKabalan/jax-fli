@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpyro
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
 from numpyro.handlers import reparam
 from numpyro.infer.reparam import TransformReparam
 
@@ -12,7 +15,7 @@ from ..fields import DensityField
 from ..infer import DistributedNormal
 from ..initial import interpolate_initial_conditions
 from .config import Configurations
-from .forward_model import make_full_field_model
+from .forward_model import _resolve_map2alm_method, make_full_field_model
 
 __all__ = ["make_full_field_model", "full_field_probmodel", "mock_probmodel"]
 
@@ -66,9 +69,11 @@ def make_likelihood(config: Configurations):
     The survey ``config.mask`` (if any) enters as an inflated per-pixel sigma (``config.sigma_unobserved``)
     outside the footprint. If ``config.ell_max`` is set, each observable map is first band-limited to
     ``ell_max`` (``map2alm`` -> cosine taper -> ``alm2map``, via ``scale_cut``) before the Gaussian --
-    the field-level scale cut. The scale cut is spherical-only (spin-0 density/convergence via
+    the field-level scale cut; ``config.ell_min`` also removes ``ell < ell_min`` (``2`` drops the monopole and
+    dipole of a convergence map, which shear does not measure). The scale cut is spherical-only (spin-0 density/convergence via
     ``SphericalDensity.scale_cut`` and spin-2 shear via ``SphericalShearField.scale_cut``); flat
-    geometry with ``ell_max`` set raises.
+    geometry with ``ell_max`` set raises. On CPU (or an s2fft not compiled with CUDA) a
+    ``'jax_cuda'`` ``map2alm_method`` downgrades to ``'jax'`` with a warning.
     """
     nz_list = _nz_to_distributions(config.nz_shear)
     geometry = config.geometry
@@ -88,6 +93,9 @@ def make_likelihood(config: Configurations):
 
     # Optional field-level scale cut: band-limit each observable map to ell_max before the Gaussian.
     do_scale_cut = config.ell_max is not None
+    map2alm_method = config.map2alm_method
+    if config.ell_min and not do_scale_cut:
+        raise ValueError("config.ell_min needs the scale cut: set config.ell_max")
     if do_scale_cut:
         if geometry != "spherical":
             raise NotImplementedError("config.ell_max scale cut is spherical-only (no flat scale_cut)")
@@ -96,16 +104,40 @@ def make_likelihood(config: Configurations):
                 f"ell_taper_width must be in (0, ell_max]; got ell_taper_width={config.ell_taper_width}, "
                 f"ell_max={config.ell_max}"
             )
+        if not 0 <= config.ell_min < config.ell_max - config.ell_taper_width:
+            raise ValueError(
+                f"ell_min must be in [0, ell_max - ell_taper_width); got ell_min={config.ell_min}, "
+                f"ell_max={config.ell_max}, ell_taper_width={config.ell_taper_width}"
+            )
+        # The CUDA SHT primitive has no CPU rule: resolve the method once at build time (warns + downgrades).
+        map2alm_method = _resolve_map2alm_method(config.map2alm_method)
 
     def pixel_likelihood(observable):
         pixel_area_arcmin2 = pixel_area(observable)
         observed = []
         for idx, (observable_map, nz) in enumerate(zip(observable, nz_list)):
-            loc = (
-                observable_map.scale_cut(config.ell_max, config.ell_taper_width, method=config.map2alm_method)
-                if do_scale_cut
-                else observable_map
-            )
+            if (
+                do_scale_cut
+                and observable_map.field_sharding is not None
+                and observable_map.field_sharding.mesh.size > 1
+            ):
+                # Replicate before scale_cut so s2fft runs UNSHARDED (SPMD-partitioning the SHT
+                # hangs the compiler); the gradient flows back through the replicate, mirroring
+                # forward_model.py's replicate before get_shear.
+                replicated = NamedSharding(observable_map.field_sharding.mesh, P(*([None] * observable_map.array.ndim)))
+                cut_input = observable_map.replace(
+                    array=jax.lax.with_sharding_constraint(observable_map.array, replicated),
+                    field_sharding=None,
+                )
+                loc = cut_input.scale_cut(
+                    config.ell_max, config.ell_taper_width, l_min=config.ell_min, method=map2alm_method
+                )
+            elif do_scale_cut:
+                loc = observable_map.scale_cut(
+                    config.ell_max, config.ell_taper_width, l_min=config.ell_min, method=map2alm_method
+                )
+            else:
+                loc = observable_map
             sigma_obs = dispersion / jnp.sqrt(nz.gals_per_arcmin2 * pixel_area_arcmin2)
             if mask is None:
                 scale = sigma_obs

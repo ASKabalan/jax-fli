@@ -40,6 +40,13 @@ class Configurations:
     shell_spacing: str = "a"
     time_stepping: str = "D"  # "D" = growth-factor stepping, "a" = uniform a-stepping
     min_width: float = 50.0  # Mpc/h comoving, minimum shell width
+    # equal_vol only: cap on the inner shells (Mpc/h). Pure equal volume makes the first shell a ball of radius
+    # r_max * number_of_shells**(-1/3); with the cap the inner shells are comoving shells of max_width.
+    max_width: float | None = None
+    r_min: float = 0.0  # Mpc/h comoving, inner edge of the lightcone (the shells tile [r_min, r_max])
+    # Low-pass each painted shell at the multipole the mesh resolves at its distance (ell_res = k_Nyq * r_eff)
+    # before Born; removes the particle-lattice pattern of the near-observer shells. Needs ell_max (spherical).
+    resolution_cut: bool = False
 
     # Lensing
     # Observable returned by the forward model:
@@ -55,6 +62,7 @@ class Configurations:
     quadrature: str = (
         "simpson"  # Born quadrature (shell weights + n(z) rule): "midpoint" | "simpson" | "gauss_legendre"
     )
+    normalization: str = "per_plane"  # Overdensity normalization: "per_plane" or "global"
     apodization_scale_deg: float = 1.0  # C2 apodization scale for the observer visibility mask
 
     # Geometry / painting (spherical only for now)
@@ -89,6 +97,7 @@ class Configurations:
     # SphericalShearField.scale_cut) before the per-pixel Gaussian. None -> no scale cut.
     ell_max: int | None = None  # scale cut: cosine taper reaches 0 at this multipole
     ell_taper_width: int = 8  # cosine roll-off width of the scale-cut taper, in ell
+    ell_min: int = 0  # scale cut also removes ell < ell_min (2 drops the monopole and dipole shear cannot see)
 
     # Priors and inference settings
     priors: dict[str, Any]

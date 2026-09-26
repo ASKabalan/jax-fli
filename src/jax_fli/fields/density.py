@@ -18,9 +18,11 @@ from .._src.base._core import AbstractField
 from .._src.base._enums import DensityUnit, FieldStatus, SpectralUnit
 from .._src.base._tri_map import tri_map
 from .._src.fields._plotting import generate_titles, plot_3d_density, prepare_axes
+from .._src.fields._sky_projection import lensing_efficiency
+from .._src.fields._sky_projection import sky_projection as _sky_projection
 from ..summary_statistics import PowerSpectrum, coherence, transfer
 from ..summary_statistics import power as power_fn
-from .lightcone import FlatDensity
+from .lightcone import FlatDensity, SphericalDensity
 from .units import convert_units
 
 
@@ -166,6 +168,64 @@ class DensityField(AbstractField):
         return FlatDensity.FromDensityMetadata(
             array=projection,
             field=projected_field,
+            status=FieldStatus.PROJECTED_DENSITY,
+        )
+
+    def sky_projection(
+        self, cosmo, nz_shear, *, nside: int | None = None, r_min: float = 0.0, r_max: float | None = None
+    ):
+        """Lensing-kernel-weighted projection of this 3D field onto the sky: one HEALPix map per source bin.
+
+        ``P_b(n) = sum_j q_b(chi_j) f(x_obs + chi_j n) dchi``: every line of sight from the observer is
+        sampled once per cell (trilinear) between ``r_min`` and ``r_max`` (default: the lightcone edge,
+        ``max_comoving_radius``) and weighted with the lensing efficiency ``q_b`` of source bin ``b``, the
+        Born weight. This is the source-weighted sky projection used to compare reconstructed and true
+        fields in field-level lensing inference (Porqueres et al. 2021, Fig. 5): lensing constrains these
+        projections, not the radial structure along each line of sight. For a linear density field it is
+        the linear convergence the field would produce without growth.
+
+        Parameters
+        ----------
+        cosmo : jax_cosmo.Cosmology
+            Cosmology for distances and the lensing efficiency.
+        nz_shear : redshift distribution or list of them
+            Source bins (jax_cosmo ``redshift_distribution`` objects).
+        nside : int, optional
+            HEALPix resolution of the output; defaults to the field's ``nside``.
+        r_min : float, default=0.0
+            Inner radius of the projection in Mpc/h (e.g. the inner edge of a lightcone that starts at ``r_min``).
+        r_max : float, optional
+            Outer radius of the projection in Mpc/h; defaults to ``max_comoving_radius``.
+
+        Returns
+        -------
+        SphericalDensity
+            ``(n_bins, npix)`` maps in RING order, with ``z_sources`` set to each bin's mean redshift.
+        """
+        nside = self.nside if nside is None else nside
+        if nside is None:
+            raise ValueError("sky_projection needs an nside (argument or field metadata)")
+        data = jnp.asarray(self.array)
+        if data.ndim != 3:
+            raise ValueError(f"sky_projection expects a single 3D field, got shape {data.shape}")
+        nz_list = list(nz_shear) if isinstance(nz_shear, (list | tuple)) else [nz_shear]
+        r_max = float(self.max_comoving_radius) if r_max is None else float(r_max)
+        dchi = float(np.min(np.asarray(self.box_size, dtype=float) / np.asarray(self.mesh_size, dtype=float)))
+        if not 0.0 <= r_min < r_max:
+            raise ValueError(f"need 0 <= r_min < r_max, got r_min={r_min}, r_max={r_max}")
+        chi = r_min + (jnp.arange(int((r_max - r_min) // dchi)) + 0.5) * dchi
+        weights = lensing_efficiency(cosmo, nz_list, chi)
+        projected = _sky_projection(data, self.mesh_size, self.box_size, self.observer_position, weights, chi, nside)
+        z = jnp.linspace(1e-3, max(float(getattr(nz, "zmax", 3.0)) for nz in nz_list), 512)
+        z_mean = jnp.stack([jnp.trapezoid(z * nz(z), z) / jnp.trapezoid(nz(z), z) for nz in nz_list])
+        n_bins = len(nz_list)
+        return SphericalDensity.FromDensityMetadata(
+            array=projected,
+            field=self.replace(nside=nside),
+            z_sources=z_mean,
+            scale_factors=1.0 / (1.0 + z_mean),
+            comoving_centers=jnp.full(n_bins, 0.5 * (r_min + r_max)),
+            density_width=jnp.full(n_bins, r_max - r_min),
             status=FieldStatus.PROJECTED_DENSITY,
         )
 
