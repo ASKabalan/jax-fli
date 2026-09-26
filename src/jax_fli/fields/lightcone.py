@@ -8,6 +8,7 @@ import jax
 import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
+import numpy as np
 from jax.image import resize
 
 from ..data.masks import build_observer_visibility_mask
@@ -1257,15 +1258,16 @@ class SphericalDensity(AbstractField):
         )
         return coeffs.normalized if normalize else coeffs
 
-    def scale_cut(self, l_cut, l_width, *, return_map: bool = True, method: str = "jax"):
+    def scale_cut(self, l_cut, l_width, *, l_min: int = 0, return_map: bool = True, method: str = "jax"):
         """Map-level scale cut: low-pass the map to ``l_cut`` with a cosine ell-taper.
 
         Transforms to spherical harmonics, applies the taper ``w_ell`` (1 below ``l_cut - l_width``,
         cosine roll-off, 0 at ``l_cut``), then either transforms back to a band-limited map
         (``return_map=True``, default -> a new SphericalDensity) or returns the s2fft 2D ``a_lm``
         array of shape ``(lmax + 1, 2*lmax + 1)`` for inspection (``return_map=False``). This is the
-        pure map-level scale cut (no whitening or packing). Single map only (index a shell first,
-        e.g. ``field[i]``); enable float64 for accurate transforms.
+        pure map-level scale cut (no whitening or packing). ``l_min`` also removes the multipoles
+        ``ell < l_min`` (e.g. ``l_min=2`` drops the monopole and dipole, which shear cannot measure).
+        Single map only (index a shell first, e.g. ``field[i]``); enable float64 for accurate transforms.
         """
         if not 0 < l_width <= l_cut:
             raise ValueError(f"l_width must be in (0, l_cut]; got l_width={l_width}, l_cut={l_cut}")
@@ -1275,6 +1277,7 @@ class SphericalDensity(AbstractField):
         ell = jnp.arange(lmax + 1)
         x = (ell - (l_cut - l_width)) / l_width  # cosine scale-cut taper (mirrors harmonic.py)
         w = jnp.where(ell <= l_cut - l_width, 1.0, jnp.where(ell >= l_cut, 0.0, 0.5 * (1.0 + jnp.cos(jnp.pi * x))))
+        w = jnp.where(ell < l_min, 0.0, w)
         flm = jhp.map2alm(self.array, lmax=lmax, iter=0, pol=False, healpy_ordering=False, method=method)
         flm = flm * w[:, None]  # per-ell taper broadcast over the m axis
         if not return_map:
@@ -1283,6 +1286,39 @@ class SphericalDensity(AbstractField):
             jhp.alm2map(flm, nside=self.nside, lmax=lmax, pol=False, healpy_ordering=False, method=method)
         )
         return self.replace(array=band_limited)
+
+    def resolution_cut(self, ell_max, *, r_centers=None, density_width=None, method: str = "jax"):
+        """Low-pass each lightcone shell at the multipole the particle mesh resolves at its distance.
+
+        A shell between ``r_lo`` and ``r_hi`` carries angular structure only up to
+        ``ell_res = k_Nyq * r_eff``, with ``k_Nyq = pi * mesh / box`` (smallest over the axes) and
+        ``r_eff = 3/4 (r_hi^4 - r_lo^4) / (r_hi^3 - r_lo^3)`` the shell's mass-weighted radius. Above
+        ``ell_res`` a painted shell shows the particle lattice seen from the observer (rows of particles
+        through the observer stacked in the same pixels), which dominates the near-observer shells. Every
+        shell with ``ell_res < ell_max`` is low-passed at ``floor(ell_res)`` (cosine taper ``ell_res / 4``)
+        with :meth:`scale_cut`; the other shells are returned unchanged.
+
+        The shell radii must be concrete: inside ``jit`` pass ``r_centers`` and ``density_width`` (Mpc/h,
+        in the array order of this lightcone) computed outside the trace, e.g. from ``resolve_geometry``.
+        """
+        if self.array.ndim != 2:
+            raise ValueError("resolution_cut expects a lightcone of shape (n_shells, npix)")
+        try:
+            r_c = np.asarray(self.comoving_centers if r_centers is None else r_centers, dtype=float).ravel()
+            width = np.asarray(self.density_width if density_width is None else density_width, dtype=float).ravel()
+        except jax.errors.TracerArrayConversionError as e:
+            raise ValueError("resolution_cut needs concrete shell radii: pass r_centers and density_width") from e
+        if r_c.size != self.array.shape[0] or width.size != r_c.size:
+            raise ValueError(f"{r_c.size} shell radii / {width.size} widths for {self.array.shape[0]} shells")
+        r_lo, r_hi = np.maximum(r_c - width / 2, 0.0), r_c + width / 2
+        r_eff = 0.75 * (r_hi**4 - r_lo**4) / (r_hi**3 - r_lo**3)
+        k_nyq = np.pi * np.min(np.asarray(self.mesh_size, dtype=float) / np.asarray(self.box_size, dtype=float))
+        ell_res = k_nyq * r_eff
+        array = self.array
+        for s in np.flatnonzero(ell_res < ell_max):
+            l_cut = int(max(np.floor(ell_res[s]), 4))
+            array = array.at[s].set(self[int(s)].scale_cut(l_cut, max(l_cut // 4, 1), method=method).array)
+        return self.replace(array=array)
 
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> SphericalDensity:

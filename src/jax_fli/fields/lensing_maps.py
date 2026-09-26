@@ -419,7 +419,7 @@ class SphericalShearField(SphericalDensity):
             unit=self.unit,
         )
 
-    def scale_cut(self, l_cut, l_width, *, return_map: bool = True, method: str = "jax"):
+    def scale_cut(self, l_cut, l_width, *, l_min: int = 0, return_map: bool = True, method: str = "jax"):
         """Spin-2 map-level scale cut: low-pass the shear map to ``l_cut`` with a cosine ell-taper.
 
         Overrides the spin-0 :meth:`SphericalDensity.scale_cut`. Transforms the ``(2, npix)`` shear
@@ -439,6 +439,7 @@ class SphericalShearField(SphericalDensity):
         ell = jnp.arange(lmax + 1)
         x = (ell - (l_cut - l_width)) / l_width  # cosine scale-cut taper (matches SphericalDensity.scale_cut)
         w = jnp.where(ell <= l_cut - l_width, 1.0, jnp.where(ell >= l_cut, 0.0, 0.5 * (1.0 + jnp.cos(jnp.pi * x))))
+        w = jnp.where(ell < l_min, 0.0, w)  # spin-2 has no ell < 2 anyway; kept for API symmetry
         alm_e, alm_b = jhp.map2alm_spin(
             [self.array[0], self.array[1]], spin=2, lmax=lmax, iter=0, healpy_ordering=False, method=method
         )
