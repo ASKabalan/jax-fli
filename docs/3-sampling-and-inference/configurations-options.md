@@ -63,9 +63,12 @@ model = jfli.ppl.full_field_probmodel(config)
 | `nb_steps` | `int` | `100` | Number of integration steps (must be ≥ `number_of_shells`). |
 | `t1` | `float` | `1.0` | Final scale factor. |
 | `number_of_shells` | `int` | `8` | Lightcone shells. |
-| `shell_spacing` | `str` | `"comoving"` | Shell distribution: `"comoving"` or `"a"`. |
+| `shell_spacing` | `str` | `"a"` | Shell distribution: `"comoving"`, `"a"`, `"growth"` or `"equal_vol"`. |
 | `time_stepping` | `str` | `"D"` | Integrator time-stepping variable: `"D"` (growth-factor stepping) or `"a"` (uniform a-stepping). |
 | `min_width` | `float` | `50.0` | Minimum shell width (Mpc/h comoving). |
+| `max_width` | `float \| None` | `None` | `equal_vol` only: cap on the inner shells (Mpc/h). Pure equal volume makes the first shell a ball of radius `r_max · number_of_shells^(-1/3)`; with the cap the inner shells are comoving shells of `max_width` until the equal-volume width falls below it. |
+| `r_min` | `float` | `0.0` | Inner edge of the lightcone (Mpc/h): the shells tile `[r_min, r_max]`. |
+| `resolution_cut` | `bool` | `False` | Low-pass each painted shell at `ell_res = k_Nyq · r_eff` (mass-weighted radius) before Born when `ell_res < ell_max`: removes the particle-lattice pattern of the near-observer shells. Spherical, needs `ell_max`. |
 | `drift_on_lightcone` | `bool` | `False` | Drift particles to their lightcone-crossing epoch (`DriftInterp`). Set `True` for lightcone experiments. |
 | `deconvolution` | `bool` | `False` | Deconvolve the mass-assignment window (solver). |
 | `adjoint` | `str` | `"checkpointed"` | `"checkpointed"` or `"reverse"` (reverse needs a reversible solver + `time_stepping='a'`). |
@@ -107,6 +110,12 @@ Two independent masks:
 | `sigma_unobserved` | `float` | `1e3` | Likelihood σ on pixels with `mask == 0`. |
 
 Observed per-pixel σ inside the footprint is `sigma_e / sqrt(n_gal · pixel_area_arcmin²)`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ell_max` | `int \| None` | `None` | Field-level scale cut: each observable map is band-limited (map2alm → cosine taper → alm2map) before the Gaussian; the taper reaches 0 at `ell_max`. |
+| `ell_taper_width` | `int` | `8` | Width of the cosine roll-off below `ell_max`. |
+| `ell_min` | `int` | `0` | The scale cut also removes `ell < ell_min`; `2` drops the convergence monopole and dipole, which shear does not measure. Needs `ell_max`. |
 
 ## Power-spectrum model (not used by the full-field model)
 
