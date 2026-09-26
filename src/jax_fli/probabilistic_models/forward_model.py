@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 import jax
+import numpy as np
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 
@@ -12,7 +13,17 @@ from ..data import build_observer_visibility_mask
 from ..fields.painting import PaintingOptions
 from ..infer.number_counts import number_counts
 from ..lensing import born
-from ..pm import BullFrog, DoubleKickDrift, DriftInterp, DriftKickDrift, NoCorrection, NoInterp, lpt, nbody
+from ..pm import (
+    BullFrog,
+    DoubleKickDrift,
+    DriftInterp,
+    DriftKickDrift,
+    NoCorrection,
+    NoInterp,
+    lpt,
+    nbody,
+    resolve_geometry,
+)
 from .config import Configurations
 
 __all__ = ["make_full_field_model"]
@@ -30,6 +41,42 @@ _LENSING_OUTPUTS = ("convergence", "shear", "reduced_shear", "density")
 
 # Simulation pipeline depth: "pm" runs LPT then N-body; "lpt" paints the lightcone from LPT alone.
 _SIM_MODES = ("pm", "lpt")
+
+
+def _resolve_map2alm_method(method: str) -> str:
+    """Downgrade ``'jax_cuda'`` to ``'jax'`` when the platform or the s2fft build cannot run it.
+
+    s2fft's jax_cuda path lowers to the CUDA-only ``healpix_fft_cuda`` primitive (no CPU MLIR rule),
+    so a CPU backend, an s2fft not compiled with CUDA, or no s2fft at all falls back to the
+    pure-JAX transforms. Any other method passes through untouched.
+    """
+    if method != "jax_cuda":
+        return method
+    if jax.devices()[0].platform == "cpu":
+        warnings.warn(
+            "map2alm_method 'jax_cuda' is not available on CPU. Using 'jax' instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return "jax"
+    try:
+        from s2fft_lib import _s2fft
+
+        if not _s2fft.COMPILED_WITH_CUDA:
+            warnings.warn(
+                "map2alm_method 'jax_cuda' is not available because s2fft was not compiled with CUDA. Using 'jax' instead.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return "jax"
+    except ImportError:
+        warnings.warn(
+            "map2alm_method 'jax_cuda' is not available because s2fft is not installed. Using 'jax' instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return "jax"
+    return method
 
 
 def make_full_field_model(
@@ -88,29 +135,30 @@ def make_full_field_model(
             config.observer_position, config.paint_nside or config.nside, config.apodization_scale_deg
         )
 
-    # ===========================================================================
-    # Check for CUDA availability if map2alm_method is set to 'jax_cuda'
-    # ===========================================================================
-    map2alm_method = config.map2alm_method
-    if jax.devices()[0].platform == "cpu" and map2alm_method == "jax_cuda":
-        warnings.warn("map2alm_method 'jax_cuda' is not available on CPU. Using 'jax' instead.")
-        map2alm_method = "jax"
+    # Downgrade 'jax_cuda' when the platform or the s2fft build cannot run the CUDA SHT.
+    map2alm_method = _resolve_map2alm_method(config.map2alm_method)
 
-    if map2alm_method == "jax_cuda":
-        try:
-            from s2fft_lib import _s2fft
-
-            if not _s2fft.COMPILED_WITH_CUDA:
-                warnings.warn(
-                    "map2alm_method 'jax_cuda' is not available because s2fft was not compiled with CUDA. Using 'jax' instead."
-                )
-                map2alm_method = "jax"
-        except ImportError:
-            warnings.warn(
-                "map2alm_method 'jax_cuda' is not available because s2fft is not installed. Using 'jax' instead."
-            )
-            map2alm_method = "jax"
-    # ===========================================================================
+    # Resolution cut: the shell radii are resolved once here, outside the trace, with the fiducial cosmology
+    # (exact for comoving / equal_vol shells), and ordered near -> far like the lightcone lpt / nbody return.
+    shell_r, shell_w = None, None
+    if config.resolution_cut:
+        if geometry != "spherical" or config.ell_max is None:
+            raise ValueError("config.resolution_cut needs spherical geometry and config.ell_max")
+        # the lightcone's outer edge, as FieldMetadata.max_comoving_radius computes it
+        box = np.asarray(config.box_size, dtype=float)
+        frac = np.clip(np.asarray(config.observer_position, dtype=float), 0.0, 1.0)
+        max_radius = float(np.min(box / (1.0 + 2.0 * np.minimum(frac, 1.0 - frac))))
+        _, r_c, widths = resolve_geometry(
+            config.fiducial_cosmology(),
+            max_radius,
+            nb_shells=config.number_of_shells,
+            shell_spacing=config.shell_spacing,
+            min_width=config.min_width,
+            max_width=config.max_width,
+            r_min=config.r_min,
+        )
+        order = np.argsort(np.asarray(r_c))
+        shell_r, shell_w = np.asarray(r_c)[order], np.asarray(widths)[order]
 
     def forward_model(cosmo, initial_conditions):
         # warmstart NZ
@@ -134,6 +182,8 @@ def make_full_field_model(
                 painting=painting,
                 shell_spacing=config.shell_spacing,
                 min_width=config.min_width,
+                max_width=config.max_width,
+                r_min=config.r_min,
                 paint_order=config.paint_order,
                 gradient_order=config.gradient_order,
                 laplace_fd=config.laplace_fd,
@@ -162,9 +212,29 @@ def make_full_field_model(
                 nb_shells=config.number_of_shells,
                 shell_spacing=config.shell_spacing,
                 min_width=config.min_width,
+                max_width=config.max_width,
+                r_min=config.r_min,
                 adjoint=config.adjoint,
                 checkpoints=config.checkpoints,
             )
+
+        if shell_r is not None:
+            # Run the per-shell SHTs UNSHARDED, as the likelihood's scale cut does: input AND output replicated.
+            # Left unconstrained, XLA propagates the lightcone's pixel sharding into alm2map and all-gathers right
+            # before its FFT (a {0,1} layout the CPU FFT thunk rejects with a RET_CHECK). Gradients flow through.
+            sharding = lightcone.field_sharding
+            if sharding is not None and sharding.mesh.size > 1:
+                replicated = NamedSharding(sharding.mesh, P(*([None] * lightcone.array.ndim)))
+                cut = lightcone.replace(
+                    array=jax.lax.with_sharding_constraint(lightcone.array, replicated), field_sharding=None
+                ).resolution_cut(config.ell_max, r_centers=shell_r, density_width=shell_w, method=map2alm_method)
+                lightcone = cut.replace(
+                    array=jax.lax.with_sharding_constraint(cut.array, replicated), field_sharding=sharding
+                )
+            else:
+                lightcone = lightcone.resolution_cut(
+                    config.ell_max, r_centers=shell_r, density_width=shell_w, method=map2alm_method
+                )
 
         # Density is a clustering probe (projected galaxy overdensity), not lensing: it
         # skips Born and the Kaiser-Squires branch entirely.
@@ -187,6 +257,7 @@ def make_full_field_model(
             max_z=config.max_redshift,
             n_integrate=config.n_integrate,
             quadrature=config.quadrature,
+            normalization=config.normalization,
         )
 
         # The apodized observer visibility mask is a Kaiser-Squires concern: apodizing the
