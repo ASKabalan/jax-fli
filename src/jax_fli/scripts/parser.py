@@ -325,6 +325,20 @@ def add_integration_settings_args(p, solver_default="kdk", sim_mode_default="pm"
     g.add_argument(
         "--min-width", type=float, default=50.0, dest="min_width", help="Minimum shell width in Mpc/h (default: 50.0)"
     )
+    g.add_argument(
+        "--max-width",
+        type=float,
+        default=None,
+        dest="max_width",
+        help="equal_vol only: cap on the inner shell widths in Mpc/h (default: None, uncapped)",
+    )
+    g.add_argument(
+        "--r-min",
+        type=float,
+        default=0.0,
+        dest="r_min",
+        help="Inner edge of the lightcone in Mpc/h; the shells tile [r_min, r_max] (default: 0.0)",
+    )
 
 
 # ---------------------------------------------------------------------------

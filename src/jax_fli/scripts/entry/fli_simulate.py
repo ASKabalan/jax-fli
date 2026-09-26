@@ -347,6 +347,8 @@ def _validate_args(args: Namespace, parser: ArgumentParser) -> None:
         "dealiased",
         "exact_growth",
         "compute_grad",
+        "max_width",
+        "r_min",
     ],
 )
 def run_lpt(
@@ -365,6 +367,8 @@ def run_lpt(
     dealiased=False,
     exact_growth=False,
     compute_grad=False,
+    max_width=None,
+    r_min=0.0,
 ):
     def _forward(ic):
         dx, _p = jfli.lpt(
@@ -377,6 +381,8 @@ def run_lpt(
             painting=painting,
             shell_spacing=shell_spacing,
             min_width=min_width,
+            max_width=max_width,
+            r_min=r_min,
             paint_order=paint_order,
             gradient_order=gradient_order,
             laplace_fd=laplace_fd,
@@ -417,6 +423,8 @@ def run_lpt(
         "checkpoints",
         "compute_grad",
         "quadrature",
+        "max_width",
+        "r_min",
     ],
 )
 def run_simulations(
@@ -443,6 +451,8 @@ def run_simulations(
     checkpoints=None,
     compute_grad=False,
     quadrature="midpoint",
+    max_width=None,
+    r_min=0.0,
 ):
     def _forward(ic):
         # LPT to particles snapshot at t0, then run NBody
@@ -472,6 +482,8 @@ def run_simulations(
             density_widths=density_widths,
             shell_spacing=shell_spacing,
             min_width=min_width,
+            max_width=max_width,
+            r_min=r_min,
             adjoint=adjoint,
             checkpoints=checkpoints,
         )
@@ -613,6 +625,8 @@ def main() -> None:
             "dealiased": args.dealiased,
             "exact_growth": args.exact_growth,
             "compute_grad": compute_grad,
+            "max_width": getattr(args, "max_width", None),
+            "r_min": getattr(args, "r_min", 0.0),
         }
     else:
         run_fn = run_simulations
@@ -638,6 +652,8 @@ def main() -> None:
             "checkpoints": grad_checkpoints,
             "compute_grad": compute_grad,
             "quadrature": getattr(args, "quadrature", "simpson"),
+            "max_width": getattr(args, "max_width", None),
+            "r_min": getattr(args, "r_min", 0.0),
         }
 
     if args.perf:
@@ -651,10 +667,10 @@ def main() -> None:
         # timer re-jits with static_argnums, so every static_argname must appear here or it gets
         # traced (a traced bool then fails the inner jit's static-hash). Keep in sync with the sigs.
         if sim_type == "lpt":
-            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14)
+            _static_argnums = (3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16)
         else:
-            # 22 = quadrature (appended last in run_simulations so earlier indices are stable)
-            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22)
+            # 22 = quadrature, 23/24 = max_width/r_min (appended last in run_simulations so earlier indices are stable)
+            _static_argnums = (3, 4, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22, 23, 24)
         timer = JaxTimer(save_jaxpr=False, static_argnums=_static_argnums)
         print("Compiling and running first iteration...")
         result = timer.chrono_jit(run_fn, cosmo, initial_field, **run_kwargs)

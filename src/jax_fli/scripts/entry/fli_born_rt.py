@@ -42,6 +42,18 @@ def parser() -> ArgumentParser:
         metavar="N",
         help="Number of timed iterations for --perf (default: 5)",
     )
+    p.add_argument(
+        "--resolution-cut",
+        action="store_true",
+        help="Before Born, low-pass each shell at the multipole the PM mesh resolves at its distance "
+        "(SphericalDensity.resolution_cut, ell_max = 3 nside - 1)",
+    )
+    p.add_argument(
+        "--resolution-cut-method",
+        default="jax_cuda",
+        choices=["jax", "jax_cuda"],
+        help="SHT backend of --resolution-cut; jax_cuda falls back to jax off-GPU (default: jax_cuda)",
+    )
 
     add_source_args(p)
     add_lensing_postproc_args(p)
@@ -49,6 +61,31 @@ def parser() -> ArgumentParser:
     add_lensing_args(p)
     add_distributed_args(p)
     return p
+
+
+def _resolution_cut(lightcone, method):
+    """Low-pass each shell at its mesh-resolved multipole, the SHTs run unsharded.
+
+    As in the forward model's resolution cut, a sharded lightcone is replicated on input AND output:
+    left unconstrained, XLA propagates the pixel sharding into alm2map. The shell radii come from the
+    lightcone's own metadata, which is concrete here (eager, outside any trace).
+    """
+    import jax
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    from jax_fli.probabilistic_models.forward_model import _resolve_map2alm_method
+
+    method = _resolve_map2alm_method(method)
+    ell_max = 3 * lightcone.nside - 1
+    sharding = lightcone.field_sharding
+    if sharding is None or sharding.mesh.size == 1:
+        return lightcone.resolution_cut(ell_max, method=method)
+    replicated = NamedSharding(sharding.mesh, P(*([None] * lightcone.array.ndim)))
+    cut = lightcone.replace(
+        array=jax.lax.with_sharding_constraint(lightcone.array, replicated), field_sharding=None
+    ).resolution_cut(ell_max, method=method)
+    return cut.replace(array=jax.lax.with_sharding_constraint(cut.array, replicated), field_sharding=sharding)
 
 
 def main() -> None:
@@ -74,6 +111,13 @@ def main() -> None:
             f"  density {type(lightcone).__name__} {tuple(lightcone.array.shape)} nside={lightcone.nside} "
             f"| n(z)={len(nz_shear)} bin(s), normalization={args.normalization}, quadrature={args.quadrature}"
         )
+
+    if args.resolution_cut:
+        lightcone = _resolution_cut(lightcone, args.resolution_cut_method)
+        if lead:
+            print(
+                f"  resolution cut applied (ell_max = {3 * lightcone.nside - 1}, method = {args.resolution_cut_method})"
+            )
 
     base = lightcone.name or f"M{lightcone.mesh_size[0]}_B{int(lightcone.box_size[0])}_N{lightcone.nside}"
 
@@ -120,6 +164,7 @@ def main() -> None:
             "quadrature": args.quadrature,
             "n_integrate": str(args.n_integrate),
             "normalization": args.normalization,
+            "resolution_cut": str(args.resolution_cut),
         }
         report_file = str(Path(args.output).parent / "perf_born.csv")
         timer.report(report_file, function=f"born_{args.name or base}", extra_info=extra_info, **metadata)

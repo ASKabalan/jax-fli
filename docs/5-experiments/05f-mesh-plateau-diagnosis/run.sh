@@ -5,8 +5,19 @@
 # nside 2048, drift-on-lightcone, 5 Gpc/h box) and re-runs the FULL mesh ladder
 # (512³–4096³, INCLUDING 2560³) at 100 steps, crossed with:
 #   - Both solvers: BullFrog (bf) and DoubleKickDrift (kdk)
-#   - Both shell-spacing schemes: spacing="a" (05a's voxel-like scheme) and "equal_vol" (05c/05e's)
+#   - Five shell-spacing schemes:
+#       a          uniform in scale factor (05a's voxel-like scheme)
+#       equal_vol  plain equal volume (05c/05e's); its first shell is a ~912 Mpc/h ball
+#       eqvolc_w150_r0 / _r150 / _r300
+#                  controlled equal volume: --max-width 150 caps the inner shells, --r-min 0 / 150 / 300
+#                  Mpc/h is the lightcone's inner edge, --min-width 50 floors the outer shells
 #   - Pencil (2D) decomposition for meshes ≥2048³, slab (1D) for smaller
+#   - Born with and without --resolution-cut (each shell low-passed at ell_res = k_Nyq r_eff first)
+#
+# STATUS: the a / equal_vol density runs are done; the DENSITY stage now launches only the three
+# controlled spacings (override DENSITY_SPACINGS to relaunch others). The LENSING stage covers all
+# five spacings, cut and uncut. A 512³ Colab precursor (scratch/, untracked) was inconclusive at that
+# mesh: controlled w150_r0 ~ a, both far better than plain equal_vol at ell 100–300.
 #
 # HALO SIZING: The 05e plateau raised the question whether halo starvation is the cause.
 # This experiment removes that confound: all six mesh rungs are sized with a UNIFORM
@@ -27,9 +38,9 @@
 # one of: step budget, shell spacing, solver, or a genuine ceiling in the PM/Born approach
 # at this box/resolution.
 #
-# COST ESTIMATE: 24 density configs (6 meshes × 2 solvers × 2 spacings) at 100 steps,
-# pencil decomposition, 01:30:00 per run = ~1450 node-hours (~5800 GPU-hours). Born/κ stage
-# (24 lensing runs, fixed decomposition) adds ~32 node-hours. Total ~1480 node-hours.
+# COST ESTIMATE: the remaining 36 density configs (6 meshes × 2 solvers × 3 controlled spacings) at
+# 100 steps, pencil decomposition, 01:30:00 per run = ~2180 node-hours. Born/κ stage (120 lensing runs =
+# 6 meshes × 2 solvers × 5 spacings × {no cut, cut}, 2 nodes × 40 min) adds ~160 node-hours.
 #
 # This run.sh is NOT automatically submitted (MODE defaults to dryrun). Inspect the
 # dryrun output with MODE=dryrun bash run.sh before committing GPU-hours.
@@ -46,8 +57,20 @@ SIM_MODE="${SIM_MODE:-DENSITY}"  # DENSITY → density ladder; anything else →
 # Time-stepping: D for BullFrog (bf), a (default) for DoubleKickDrift (kdk).
 COMMON_BASE="--sim-mode pm --box-size $BOX5 --nb-steps 100 --time-stepping %TIME_STEPPING% --min-width 50.0 \
 --nb-shells 20 --paint-order cic --nside 2048 --shells-per-file 1 --scheme ngp \
---shell-spacing %SPACING% --solver %SOLVER% --halo-multiplier 0.5 \
+--solver %SOLVER% --halo-multiplier 0.5 \
 --drift-on-lightcone --enable-x64 --perf --iterations 3 --seed $SEED $COSMO"
+
+# Shell-spacing tag → fli-simulate flags.
+spacing_flags() {
+  case "$1" in
+    a)               echo "--shell-spacing a" ;;
+    equal_vol)       echo "--shell-spacing equal_vol" ;;
+    eqvolc_w150_r0)  echo "--shell-spacing equal_vol --max-width 150.0 --r-min 0.0" ;;
+    eqvolc_w150_r150) echo "--shell-spacing equal_vol --max-width 150.0 --r-min 150.0" ;;
+    eqvolc_w150_r300) echo "--shell-spacing equal_vol --max-width 150.0 --r-min 300.0" ;;
+    *) echo "unknown spacing tag: $1" >&2; exit 1 ;;
+  esac
+}
 
 # Mesh ladder with pencil decomposition (slab for small meshes, balanced pencil for ≥2048³).
 #        mesh   nodes  gpn  px  py  (total GPUs = nodes × gpn = px × py)
@@ -61,11 +84,13 @@ RUNS=(
 )
 
 SOLVERS=(bf kdk)
-SPACINGS=(a equal_vol)
+# a / equal_vol densities are already on disk; relaunch them with DENSITY_SPACINGS="a equal_vol ...".
+read -r -a DENSITY_SPACINGS <<< "${DENSITY_SPACINGS:-eqvolc_w150_r0 eqvolc_w150_r150 eqvolc_w150_r300}"
+LENSING_SPACINGS=(a equal_vol eqvolc_w150_r0 eqvolc_w150_r150 eqvolc_w150_r300)
 RUN_LIMIT="01:30:00"
 
 if [ "$SIM_MODE" = "DENSITY" ]; then
-  echo "### 24 density runs: 6 meshes × 2 solvers (bf/kdk) × 2 spacings (a/equal_vol) × 100 steps"
+  echo "### $(( ${#RUNS[@]} * ${#SOLVERS[@]} * ${#DENSITY_SPACINGS[@]} )) density runs: 6 meshes × 2 solvers × spacings (${DENSITY_SPACINGS[*]}) × 100 steps"
   for r in "${RUNS[@]}"; do
     read -r M NODES GPN PX PY <<< "$r"
     for solver in "${SOLVERS[@]}"; do
@@ -75,10 +100,10 @@ if [ "$SIM_MODE" = "DENSITY" ]; then
       else
         time_stepping="a"
       fi
-      for spacing in "${SPACINGS[@]}"; do
+      for spacing in "${DENSITY_SPACINGS[@]}"; do
         tag="exp5f_m${M}_${solver}_${spacing}"
-        COMMON=$(printf "%s" "$COMMON_BASE" | sed "s|%SOLVER%|$solver|g; s|%SPACING%|$spacing|g; s|%TIME_STEPPING%|$time_stepping|g")
-        launch "$NODES" "$GPN" "$PX" "$PY" "$RUN_LIMIT" -- $COMMON \
+        COMMON=$(printf "%s" "$COMMON_BASE" | sed "s|%SOLVER%|$solver|g; s|%TIME_STEPPING%|$time_stepping|g")
+        launch "$NODES" "$GPN" "$PX" "$PY" "$RUN_LIMIT" -- $COMMON $(spacing_flags "$spacing") \
           --mesh-size "$M" "$M" "$M" \
           --output "$RESULTS/exp5f/density/${tag}" --name "${tag}_M%mesh_size%_s%seed%"
       done
@@ -86,8 +111,9 @@ if [ "$SIM_MODE" = "DENSITY" ]; then
   done
 
 else
-  # Born/κ lensing stage: read back the density shells and compute 3-bin lensed convergence.
-  # Reuses 05e's lensing decomposition (px=16, py=1, 2 nodes, 8 gpn) — constant for all 24 configs.
+  # Born/κ lensing stage: read back the density shells and compute 3-bin lensed convergence, once on the
+  # raw shells (kappa_gl) and once after the per-shell resolution cut (kappa_gl_rescut, --resolution-cut).
+  # Reuses 05e's lensing decomposition (px=16, py=1, 2 nodes, 8 gpn) — constant for all configs.
   # (κ is computed on the HEALPix map, independent of the PM mesh's decomposition.)
 
   launch_rt() {
@@ -99,19 +125,23 @@ else
       --pdim "$px" "$py" -- "$@"
   }
 
-  echo "### 24 Born/κ lensing runs (reading back density shells)"
+  echo "### $(( ${#RUNS[@]} * ${#SOLVERS[@]} * ${#LENSING_SPACINGS[@]} * 2 )) Born/κ lensing runs (reading back density shells; no cut + resolution cut)"
   for r in "${RUNS[@]}"; do
     read -r M _ <<< "$r"
     for solver in "${SOLVERS[@]}"; do
-      for spacing in "${SPACINGS[@]}"; do
+      for spacing in "${LENSING_SPACINGS[@]}"; do
         DATA="05-spacing-n-stepping/05f-mesh/density/exp5f_m${M}_${solver}_${spacing}/shell*.parquet"
-        tag="kappa_gl_m${M}_${solver}_${spacing}"
-        echo "Launching Born lensing (gauss_legendre) for ${tag}"
-        launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 8 16 1 00:40:00 -- \
-          fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
-          --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
-          --perf --iterations 3 \
-          --name "$tag" --output "$RESULTS/exp5f/kappa_gl/born_gl_m${M}_${solver}_${spacing}"
+        for cut in "" "_rescut"; do
+          tag="kappa_gl${cut}_m${M}_${solver}_${spacing}"
+          CUT_FLAG=""
+          [ -n "$cut" ] && CUT_FLAG="--resolution-cut"
+          echo "Launching Born lensing (gauss_legendre${cut:+, resolution cut}) for ${tag}"
+          launch_rt "$ACCOUNT" "$CONSTRAINT" "$QOS" 2 8 16 1 00:40:00 -- \
+            fli-born-rt --repo ASKabalan/jax-fli-experiments --data-files "$DATA" \
+            --nz-shear "s3[:3]" --nside 2048 --enable-x64 --normalization global --quadrature gauss_legendre \
+            $CUT_FLAG --perf --iterations 3 \
+            --name "$tag" --output "$RESULTS/exp5f/kappa_gl${cut}/born_gl${cut}_m${M}_${solver}_${spacing}"
+        done
       done
     done
   done
