@@ -2162,15 +2162,15 @@ requires-dist = [
     { name = "ipykernel", marker = "extra == 'examples'" },
     { name = "ipython", marker = "extra == 'examples'" },
     { name = "ipywidgets", marker = "extra == 'examples'" },
-    { name = "jax", specifier = ">=0.11" },
-    { name = "jax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.11" },
+    { name = "jax", specifier = ">=0.11.2" },
+    { name = "jax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.11.2" },
     { name = "jax-cadre", marker = "extra == 'all'" },
     { name = "jax-cadre", marker = "extra == 'sampling'" },
     { name = "jax-cosmo", git = "https://github.com/ASKabalan/jax_cosmo?branch=better-cache" },
     { name = "jax-healpy", extras = ["recommended"], specifier = ">=0.7.0" },
     { name = "jax-hpc-profiler", marker = "extra == 'all'", specifier = ">=0.3.4" },
     { name = "jax-hpc-profiler", marker = "extra == 'benchmark'", specifier = ">=0.3.4" },
-    { name = "jaxdecomp", specifier = ">=0.3.3" },
+    { name = "jaxdecomp", specifier = ">=0.3.4" },
     { name = "jaxpm", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=notebook-and-docs-update" },
     { name = "jaxtyping" },
     { name = "jupyter", marker = "extra == 'examples'" },
@@ -2264,16 +2264,16 @@ wheels = [
 
 [[package]]
 name = "jaxdecomp"
-version = "0.3.3"
+version = "0.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
     { name = "jaxtyping" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/4e/3f6ed4e3534fbf06528c7f28097fb9b63129afcb6a4692dbf9697529dcd1/jaxdecomp-0.3.3.tar.gz", hash = "sha256:997a6fd8b49dab681fe9008e53ed42ba2d332d7e54c6bc12e46a1cbf80f5b1d2", size = 43213825, upload-time = "2026-09-09T19:30:49.071Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/3a/38d86a7ddec60a4a26e0f557e51b767c3ccd231be60fe74fc497a30395ba/jaxdecomp-0.3.4.tar.gz", hash = "sha256:557556472e7656610d63ab497d9b37a32c2f442b2acca5a6484f9f152c14a6c3", size = 43214724, upload-time = "2026-09-26T09:24:22.893Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/64/66a7783c13dd8497858cfdbc4eda7ef762748ae401d02b7e1f7c62889db5/jaxdecomp-0.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:32c0465e64fab474035d09727628a04fb6d3b55d07fdf31b8be5ffe0813bed08", size = 117860, upload-time = "2026-09-09T19:30:45.93Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/3c/85ac2435c65c2d405ebc5935aa9280cb05702dd9fdea7153ed13f93f2596/jaxdecomp-0.3.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:88c9fb444f44c479d665255f31d33a72495539569ab4de0478228f3d9b5074bc", size = 117879, upload-time = "2026-09-09T19:30:47.372Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/6c/09cb14de7afd370d743f30ba98db8f7092afbb2f6914c1dc37f8126e8972/jaxdecomp-0.3.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:29a3c31184fed99f428932b246227aa4a0c70515e5d3116e594b4ec30b61e46b", size = 117942, upload-time = "2026-09-26T09:24:19.703Z" },
+    { url = "https://files.pythonhosted.org/packages/12/16/cce2a89fd5f53cf0f37fd7136bb57a8a298e1be14aa0f53cdacab20e4291/jaxdecomp-0.3.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:797b350f0cb3e95e49ff3de151f404a48d0f2e6cc42d836b8acaaec651deb812", size = 117966, upload-time = "2026-09-26T09:24:21.258Z" },
 ]
 
 [[package]]
@@ -3565,7 +3565,7 @@ name = "nvidia-cublas-cu12"
 version = "12.9.2.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cuda-nvrtc-cu12" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/a2/c96163a0fff1839c0c9548bbdeae7b853b867009e33b9b9264adc238b1cf/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:5572131a59c3eebeeb1c4c8144f772d49372c20124916e072a0e3fc30df421d5", size = 575012079, upload-time = "2026-04-08T18:51:47.303Z" },
@@ -3622,7 +3622,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.26.0.51"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/ae/412ef5533642e63f360db552235337d28c00ddc1dfca807a6ddae95e939c/nvidia_cudnn_cu12-9.26.0.51-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:24458a34856d6b5e83aa9b7041e92a789f0ef390f4d881529fb986df6aecca60", size = 776301552, upload-time = "2026-09-10T16:44:35.71Z" },
@@ -3634,7 +3634,7 @@ name = "nvidia-cufft-cu12"
 version = "11.4.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/2b/76445b0af890da61b501fde30650a1a4bd910607261b209cccb5235d3daa/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1a28c9b12260a1aa7a8fd12f5ebd82d027963d635ba82ff39a1acfa7c4c0fbcf", size = 200822453, upload-time = "2025-06-05T20:05:27.889Z" },
@@ -3646,9 +3646,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.5.82"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/03/99/686ff9bf3a82a531c62b1a5c614476e8dfa24a9d89067aeedf3592ee4538/nvidia_cusolver_cu12-11.7.5.82-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:62efa83e4ace59a4c734d052bb72158e888aa7b770e1a5f601682f16fe5b4fd2", size = 337869834, upload-time = "2025-06-05T20:06:53.125Z" },
@@ -3660,7 +3660,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.10.65"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/6f/8710fbd17cdd1d0fc3fea7d36d5b65ce1933611c31e1861da330206b253a/nvidia_cusparse_cu12-12.5.10.65-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:221c73e7482dd93eda44e65ce567c031c07e2f93f6fa0ecd3ba876a195023e83", size = 366359408, upload-time = "2025-06-05T20:07:42.501Z" },
@@ -3690,7 +3690,7 @@ name = "nvidia-nvshmem-cu12"
 version = "3.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cuda-cccl-cu12" },
+    { name = "nvidia-cuda-cccl-cu12", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/92/62/ec1c9a367ede1ac030b5c2fa37caeaf33c6841beb9c3665497e8bbf70194/nvidia_nvshmem_cu12-3.8.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:313ba41c8aacf03f9524ca83ddb2c62e7b3d82f71af815a35e3739f3d64452b2", size = 280599580, upload-time = "2026-09-22T19:27:39.556Z" },
@@ -3883,7 +3883,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
