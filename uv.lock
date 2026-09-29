@@ -444,8 +444,8 @@ wheels = [
 
 [[package]]
 name = "blackjax"
-version = "0.1.dev686+gb0a2c0709"
-source = { git = "https://github.com/ASKabalan/blackjax?branch=progressbar-mclmc#b0a2c0709912e23518164c0a9d20d235172e3b5d" }
+version = "0.1.dev687+g7e9befcda"
+source = { git = "https://github.com/ASKabalan/blackjax?branch=progressbar-mclmc#7e9befcdaaea0f03d9a4bb588a09490ee6d1e5bd" }
 dependencies = [
     { name = "jax" },
     { name = "jaxlib" },

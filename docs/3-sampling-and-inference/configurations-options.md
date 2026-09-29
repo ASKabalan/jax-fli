@@ -39,6 +39,7 @@ model = jfli.ppl.full_field_probmodel(config)
 | `observer_position` | `tuple[float, float, float]` | `(0.5, 0.5, 0.5)` | Observer in normalized box coords. The center sees the whole sky; **any other position triggers an apodized visibility mask** on the observable (spherical only). See [Masking & likelihood](#masking--likelihood). |
 | `field_sharding` | `Any` | `None` | JAX sharding for distributed arrays. |
 | `log_lightcone` | `bool` | `False` | Register the lightcone as a deterministic site. |
+| `log_observable` | `bool` | `False` | Register the noiseless mean of each observable map (band-limited when `ell_max` is set) as the deterministic site `predicted_observable_i`, so `sample2catalog` saves each draw's prediction during inference. |
 
 ## LPT
 
