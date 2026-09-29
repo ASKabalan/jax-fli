@@ -289,7 +289,7 @@ class CatalogExtract(eqx.Module):
             feature_dict.update(
                 {
                     "ic_mesh_size": Sequence(Value("int32"), length=3),
-                    "ic_box_size": Sequence(Value("float32"), length=3),
+                    "ic_box_size": Sequence(Value("float64"), length=3),
                     "ic_observer_position": Sequence(Value("float32"), length=3),
                     "ic_halo_size": Sequence(Value("int32"), length=2),
                     "ic_status": Value("string"),
@@ -313,7 +313,7 @@ class CatalogExtract(eqx.Module):
             feature_dict.update(
                 {
                     "field_mesh_size": Sequence(Value("int32"), length=3),
-                    "field_box_size": Sequence(Value("float32"), length=3),
+                    "field_box_size": Sequence(Value("float64"), length=3),
                     "field_observer_position": Sequence(Value("float32"), length=3),
                     "field_halo_size": Sequence(Value("int32"), length=2),
                     "field_status": Value("string"),

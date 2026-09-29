@@ -178,6 +178,41 @@ def test_catalog_roundtrip(tmp_path, field_type, batched, n_entries):
     assert error(catalog, reloaded_ds) < 1e-8
 
 
+@pytest.mark.parametrize("batched", [True, False], ids=["batched", "unbatched"])
+@pytest.mark.parametrize("field_type", FIELD_TYPES)
+def test_catalog_per_process_roundtrip(tmp_path, field_type, batched):
+    """per_process=True writes a folder (one part per entry on one process) that loads like the single file."""
+    catalog = make_catalog(field_type, n_entries=3, batched=batched)
+
+    folder = tmp_path / "per_process.parquet"
+    catalog.to_parquet(str(folder), per_process=True)
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "_header.json",
+        "part_000_000000.parquet",
+        "part_001_000000.parquet",
+        "part_002_000000.parquet",
+    ]
+
+    single = str(tmp_path / "single.parquet")
+    catalog.to_parquet(single)
+    from_folder, from_single = Catalog.from_parquet(str(folder)), Catalog.from_parquet(single)
+    assert len(from_folder) == 3
+    for a, b in zip(from_folder.field, from_single.field):
+        assert type(a) is type(b)
+        assert a.array.dtype == b.array.dtype
+        np.testing.assert_array_equal(np.asarray(a.array), np.asarray(b.array))
+    assert error(from_folder, from_single) == 0.0
+    assert error(catalog, from_folder) < 1e-8
+
+
+def test_catalog_per_process_rejects_power_spectra(tmp_path):
+    """per_process is a field-backend option; other backends raise instead of writing something else."""
+    k = jnp.linspace(0.01, 1.0, 8)
+    ps = jfli.PowerSpectrum(wavenumber=k, array=k**-1, name="pk")
+    with pytest.raises(ValueError, match="field backend"):
+        Catalog(field=[ps], cosmology=[jc.Planck18()]).to_parquet(str(tmp_path / "ps"), per_process=True)
+
+
 # ---------------------------------------------------------------------------
 # Edge-case tests
 # ---------------------------------------------------------------------------

@@ -128,8 +128,8 @@ def kappa2shear_spherical(
     If ``sharding`` is a multi-device ``NamedSharding`` the per-bin transform runs inside a
     ``jax.shard_map`` and the shear follows the **lensing convention** ``P([None,] N, None, M)``
     (BINS/N, NPIX/M; mesh axes M = first, N = second). The bins distribute over the N axis when it
-    divides the bin count; a mis-shaped mesh (``N_size > 1`` that does not divide the bins) raises
-    ``ValueError`` (the bad-divisor case — born emits the N=1 *warning*, get_shear stays quiet). A
+    divides the bin count and are replicated over it otherwise (born emits the warning, get_shear stays
+    quiet). A
     single device falls back to the plain ``vmap``. ``debug_sharding`` prints the shape and sharding at
     each stage (works under ``jax.jit``).
     """
@@ -142,7 +142,7 @@ def kappa2shear_spherical(
     mesh = getattr(sharding, "mesh", None)
     if sharding is not None and mesh is not None and mesh.size > 1:
         nbins = kappa.shape[-2] if kappa.ndim >= 2 else 1
-        _, n_axis, _, _, distribute = lensing_axes(sharding, nbins)  # raises the bad-divisor case
+        _, n_axis, _, _, distribute = lensing_axes(sharding, nbins)  # bins replicate when N does not divide them
         bins_axis = n_axis if distribute else None
         return _kappa2shear_spherical_sharded(kappa, sharding, bins_axis, nside, lmax, method, iter, debug_sharding)
     flat = kappa.reshape((-1, npix))
