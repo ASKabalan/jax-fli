@@ -2,12 +2,14 @@
 
 [![Documentation](https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs)](https://jax-fli.readthedocs.io/en/latest/)
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--experiments-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments)
+[![HF Scaling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--scaling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-scaling)
+[![HF Sampling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--sampling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-sampling)
 [![Results Explorer](https://img.shields.io/badge/%F0%9F%A4%97%20Results-Explorer-yellow?)](https://askabalan-jax-fli-results.hf.space/)
 
 **Differentiable cosmological forward modeling on JAX**
 
 <p align="center">
-  <img src="assets/PIPELINE.svg" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved through LPT / PM N-body to a light-cone shell, lensed to convergence and shear, and compared to the observable" width="100%">
+  <img src="assets/PIPELINE.svg" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved by PM N-body, painted onto a light-cone shell, lensed with the Born approximation to convergence and shear, and observed by Euclid" width="100%">
 </p>
 
 ## Overview

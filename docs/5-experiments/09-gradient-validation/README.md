@@ -1,16 +1,8 @@
 # Experiment 09 — Gradient validation
 
-Field-level inference needs the gradient of the forward model with respect to the initial conditions, `∂L/∂δ`. This experiment checks that `jax-fli` computes that gradient **correctly** — by comparing the reverse-mode adjoint against an **independent per-voxel finite difference** — and characterises the **memory** each of its two adjoints needs, for the spherical output the weak-lensing science actually uses:
+**Goal.** Field-level inference needs the gradient of the forward model with respect to the initial conditions, `∂L/∂δ`. We check that `jax-fli` computes this gradient **correctly**, against an independent per-voxel finite difference, and we measure the **memory** of its two adjoints for the spherical output of the weak-lensing science: a single HEALPix shell (`nb_shells=1`, the last shell at `a=1.0`) and a lightcone of several saved shells. Everything runs in **float64 on GPU** at a **16³** mesh, where the finite difference is clean and cheap. At 16³ the scratch memory is a few MB, so the figures show the scaling trend of each adjoint, and [Experiment 12](../12-scaling-gradient/README.md) measures the multi-GB trade at 64³ and beyond.
 
-- **single spherical output** — one HEALPix lightcone shell (`nb_shells=1`), i.e. just the last shell at `a=1.0`.
-- **spherical lightcone** — several saved HEALPix shells (`nb_shells > 1`).
-
-Everything runs in **float64 on GPU** at a small **16³** mesh, where the finite difference is clean and cheap and a full accuracy + memory sweep is fast. Memory is the XLA scratch buffer (`temp_size_in_bytes`) of the compiled gradient; at 16³ it is a few MB, so the figures show the **scaling trend** — `reverse` flat, `checkpointed` growing with what it stores — not production magnitudes. The multi-GB production-scale trade at 64³ is [Experiment 12](../12-scaling-gradient/README.md).
-
-`jax-fli` offers two adjoints:
-
-- **`reverse`** — a reversible backsolve. It stores *no* trajectory (O(1) memory in the integration steps) and reconstructs it on the backward pass by *inverting* each step.
-- **`checkpointed`** — an equinox checkpointed scan. It *recomputes* forward segments instead of inverting them, storing a tunable number of checkpoints.
+`jax-fli` offers two adjoints. **`reverse`** is a reversible backsolve: it stores *no* trajectory (O(1) memory in the integration steps) and reconstructs it on the backward pass by inverting each step. **`checkpointed`** is an equinox checkpointed scan, which recomputes forward segments instead and stores a tunable number of checkpoints. `checkpoints` controls the outer scan over the saved shells, and `step_checkpoints` the inner loop of integration steps between two consecutive shells. Both trade recompute for memory, and **neither changes the gradient value**. For more on PM simulations, see [03-PM-Simulation](../../1-introduction-and-basics/03-PM-Simulation.ipynb).
 
 ```python
 from jax_fli import nbody
@@ -23,136 +15,63 @@ result = nbody(
 )
 ```
 
-The two checkpoint controls are independent: `checkpoints` checkpoints the outer scan over the saved shells, `step_checkpoints` the inner integration-step loop between two consecutive shells. Both trade recompute for memory and — as the tests below show — **neither changes the gradient value**. For more on running PM simulations, see [03-PM-Simulation](../../1-introduction-and-basics/03-PM-Simulation.ipynb).
+| test | figure | swept | fixed |
+| --- | --- | --- | --- |
+| accuracy | fig01 | output: single spherical (`nb_shells=1`), lightcone (`nb_shells=4`) | 20 steps, a = 0.001 → 1.0 |
+| integration steps | fig02 | **5, 10, 15, 20, 30, 50, 80** | single spherical output |
+| step-checkpoints | fig03 | **1, 2, 5, 10, 20, 30, 50** | 50 steps, single spherical output |
+| saved shells | fig04 | `nb_shells` **4, 8, 16, 32, 64** | 80 steps, spherical lightcone |
 
-## Goal of this experiment
-
-We check two things about the two adjoints — `reverse` and `checkpointed`:
-
-1. **Accuracy** — do they return the *true* gradient? Cross-checked against a per-voxel finite difference, in [§ Correctness](#correctness--finite-differences-vs-the-adjoint).
-2. **Cost** — how much scratch memory does each need, and how does that scale with the three controls the forward model exposes? Each test below fixes every degree of freedom but one and sweeps it:
-   - **number of integration steps** → [§ Number of integration steps](#number-of-integration-steps);
-   - **number of step-checkpoints** → [§ Number of step-checkpoints](#number-of-step-checkpoints);
-   - **number of saved lightcone shells** → [§ Number of saved shells](#number-of-saved-shells).
-
-The wall-time and peak-memory side of "cost" at **production resolution** is quantified in [Experiment 12](../12-scaling-gradient/README.md); here we settle accuracy and show how the adjoint *temp* (scratch) memory scales.
+*Fixed:* 16³ mesh, HEALPix `nside` 16, box 1000 Mpc/h, float64 on GPU, solvers DoubleKickDrift and BullFrog, adjoints `reverse` and `checkpointed`.
 
 ## Method
 
-**Loss and outputs.** The observable is the **scalar** loss `L = ½ Σ observable.array²` — exactly the loss `fli-simulate --grad` differentiates ([`scripts/entry/fli_simulate.py`](../../../src/jax_fli/scripts/entry/fli_simulate.py)) — where `observable` is a **spherical HEALPix** painting, either one shell (`nb_shells=1`) or a multi-shell lightcone.
+**Loss.** The observable is a spherical HEALPix painting, and the scalar loss is `L = ½ Σ observable.array²`, the loss that `fli-simulate --grad` differentiates ([`scripts/entry/fli_simulate.py`](../../../src/jax_fli/scripts/entry/fli_simulate.py)).
 
-**The finite-difference test.** For the **16 voxels with the largest `|∂L/∂δ|`** we compare the adjoint's gradient component `g_i` to a central finite difference of the scalar loss,
+**Finite difference.** For the **16 voxels with the largest `|∂L/∂δ|`** we compare the adjoint component `g_i` with a central finite difference of the loss,
 
 FD_i  =  [ L(δ + ε e_i) − L(δ − ε e_i) ] / (2 ε),   ε = machine_eps^(1/3),
 
-and report the **median** relative error `|g_i − FD_i| / |FD_i|` over those 16 voxels. Picking high-signal voxels (large `|g_i|`) and taking the median keeps the FD denominator away from zero, so the check lands at the float64 central-difference floor. That floor is set by the **finite difference's own truncation error** (`∝ ε²·L‴`), so it depends on the solver's loss curvature: BullFrog lands at **~1e-8**, DoubleKickDrift at **~5e-7** — both far below 1, and both **backend-independent** (CPU and GPU agree per solver). The gap is a property of the FD *reference*, not of the adjoint: `reverse ≡ checkpointed` bit-for-bit for each solver, and the transpose test below pins the gradient itself to `~10⁻¹²`.
+and report the **median** relative error `|g_i − FD_i| / |FD_i|` over those voxels. High-signal voxels and the median keep the denominator away from zero, so the check reaches the float64 floor of the central difference. That floor is the truncation error of the finite difference itself (`∝ ε²·L‴`) and depends on the loss curvature of each solver: **~1e-8** for BullFrog and **~5e-7** for DoubleKickDrift, identical on CPU and GPU.
 
-The finite difference is the **looser, independent** cross-check. The sharp, finite-difference-**free** correctness proof is the **AD-vs-AD transpose test**: forward-mode AD `⟨w, Jv⟩` equals the adjoint `⟨Jᵀw, v⟩`, so `reverse ≡ checkpointed ≡ forward-mode AD` to `~10⁻¹²` in float64 — verified for **both** the single output *and* the **4-shell lightcone** (the novel multi-shell accumulation described below, where with one shell there is nothing to accumulate). The N-body suite covers this: the single-output transpose in `tests/nbody/test_adjoints.py::test_adjoint_transpose`, and the lightcone `reverse ≡ checkpointed` equality through *saved snapshots* in `test_reverse_vs_checkpointed_lightcone`.
+**Transpose test.** The sharper proof of correctness uses no finite difference. Forward-mode AD gives `⟨w, Jv⟩` and the adjoint gives `⟨Jᵀw, v⟩`, and the two agree, so `reverse ≡ checkpointed ≡ forward-mode AD` to `~10⁻¹²` in float64, for the single output and for the **4-shell lightcone**. The N-body suite asserts both: `tests/nbody/test_adjoints.py::test_adjoint_transpose` for the single output, and `test_reverse_vs_checkpointed_lightcone` for the lightcone through saved snapshots.
 
-A lightcone observable is **not** a single final-state output: the forward model saves many intermediate snapshots and paints each onto the sky, so its gradient must **accumulate** the cotangent of *every* saved shell back through the one shared particle trajectory. The differentiable particle-mesh codes that predate this — [pmwd](https://github.com/eelregit/pmwd) and [DISCO-DJ](https://github.com/cosmo-sims/DISCO-DJ) — implement the adjoint for the **final state only**; they do not propagate gradients through a multi-snapshot lightcone. `jax-fli` adds that accumulation in its custom reverse-mode: sweeping from the outermost shell inward, it injects each shell's painting cotangent into the running trajectory adjoint, then propagates it back through the integration steps to the initial conditions.
+**Lightcone accumulation.** A lightcone observable is **not** a single final-state output: the forward model saves many intermediate snapshots and paints each onto the sky, so its gradient must **accumulate** the cotangent of *every* saved shell back through the one shared particle trajectory. The differentiable particle-mesh codes that predate this — [pmwd](https://github.com/eelregit/pmwd) and [DISCO-DJ](https://github.com/cosmo-sims/DISCO-DJ) — implement the adjoint for the **final state only**; they do not propagate gradients through a multi-snapshot lightcone. `jax-fli` adds that accumulation in its custom reverse-mode: sweeping from the outermost shell inward, it injects each shell's painting cotangent into the running trajectory adjoint, then propagates it back through the integration steps to the initial conditions.
 
 ![lightcone gradient-accumulation algorithm](assets/algorithm.svg)
 
 *(Rendered from [`lightcone-gradient-algorithm.tex`](lightcone-gradient-algorithm.tex).)*
 
-**How we measure memory.** The XLA scratch buffer `temp_size_in_bytes`, read from the compiled reverse/checkpointed gradient (`jax.jit(jax.grad(...)).lower(x).compile().memory_analysis()`). The `checkpointed` adjoint's stored trajectory lands in this scratch (it appears in the HLO as stacked `[n_stored, …, 3]` particle buffers), so `temp` tracks the memory that distinguishes the two adjoints. On GPU this buffer fully captures the FFT scratch (verified: `reverse` temp scales with the mesh, 6.95× from 16³→32³), but cuFFT is leaner in absolute terms than a CPU run — so the **absolute MB are backend-specific and small at 16³** (single-digit MB). Read the figures for the *scaling trend*; Experiment 12 has the production magnitudes.
-
-**Configs.** **float64 on GPU**, **16³** mesh (`nside=16`, box 1000 Mpc/h). **Accuracy** (fig01): DoubleKickDrift + BullFrog, single spherical output and a 4-shell lightcone. **Memory** sweeps (fig02–04): both solvers, `reverse` vs `checkpointed` — the memory behaviour is solver-independent (the two solvers' scratch matches to ~0.1 MB).
+**Memory.** We read the XLA scratch buffer `temp_size_in_bytes` of the compiled gradient (`jax.jit(jax.grad(...)).lower(x).compile().memory_analysis()`). The stored trajectory of `checkpointed` lands in this buffer, as stacked `[n_stored, …, 3]` particle buffers in the HLO, so `temp` tracks the memory that separates the two adjoints. On GPU the buffer captures the FFT scratch in full (the `reverse` temp grows 6.95× from 16³ to 32³), but cuFFT is leaner than a CPU run, so the absolute MB depend on the backend. The two solvers use the same scratch to within ~0.1 MB.
 
 ## Results
 
-### Correctness — finite differences vs the adjoint
-
-*Do the adjoints return the true gradient?* The panel plots the median per-voxel FD-vs-adjoint relative error for the four solver×adjoint series, for the single spherical output and the 4-shell lightcone.
-
-| Setting | Value |
-| --- | --- |
-| Mesh resolution | 16³ |
-| HEALPix `nside` | 16 |
-| Box size | 1000 Mpc/h |
-| Integration | a = 0.001 → 1.0, 20 steps |
-| Outputs | single spherical (`nb_shells=1`), lightcone (`nb_shells=4`) |
-| Solvers | DoubleKickDrift, BullFrog |
-| Adjoints | reverse, checkpointed |
-| Reference | per-voxel central finite difference, median over the 16 largest-`\|grad\|` voxels |
-| Precision | float64 |
-
 ![finite differences vs the adjoint](assets/fig01-transpose-test.svg)
 
-**IC-gradient adjoints against per-voxel finite differences.** Both adjoints, both solvers, for a single spherical output and a 4-shell lightcone (float64, 16³).
-
-The `reverse` and `checkpointed` markers **overlap exactly** within each solver group — the two adjoints compute the **same** gradient (bit-for-bit). The per-voxel finite difference confirms that gradient to **~1 × 10⁻⁸ (BullFrog)** and **~5 × 10⁻⁷ (DoubleKickDrift)** for both the single output and the lightcone — both far below 1, confirming the gradient independently of autodiff. The two solvers differ only because the finite difference's *own* truncation error (`∝ ε²·L‴`) sees a different loss curvature for each; it is **not** an adjoint difference (CPU and GPU give the same floor per solver, and `reverse ≡ checkpointed` exactly). The sharper, finite-difference-free proof is the transpose test: `reverse ≡ checkpointed ≡ forward-mode AD` to `~10⁻¹²`. So the gradient is **correct**; the finite difference shown here is the looser, independent cross-check.
-
-### Number of integration steps
-
-*How does each adjoint's scratch scale as the integration deepens?* Single spherical output at **16³**; `checkpointed` stores ~`log₂(steps)` integration-step states.
-
-| Setting | Value |
-| --- | --- |
-| Mesh resolution | 16³ |
-| HEALPix `nside` | 16 |
-| **Swept — integration steps** | **5, 10, 15, 20, 30, 50, 80** |
-| Output | single spherical (`nb_shells=1`) |
-| Solvers / Adjoints | DoubleKickDrift, BullFrog / reverse, checkpointed |
+**IC-gradient adjoints against per-voxel finite differences.** Median relative error of both adjoints and both solvers, for a single spherical output and a 4-shell lightcone (float64, 16³). The `reverse` and `checkpointed` markers overlap exactly within each solver group: the two adjoints compute the same gradient, bit for bit. The finite difference confirms it to **~1 × 10⁻⁸ (BullFrog)** and **~5 × 10⁻⁷ (DoubleKickDrift)** for both outputs, independently of automatic differentiation. The two solvers differ because the truncation error of the finite difference sees a different loss curvature in each, and the transpose test pins the gradient itself to `~10⁻¹²`.
 
 ![number of integration steps](assets/fig02-steps.svg)
 
-**Accuracy and memory against the number of integration steps.** Single spherical output at 16³; markers read on the left axis, bars on the right.
-
-**`reverse` is flat — `2.2 MB` at every step count (5 → 80):** it stores *no* trajectory, so it is **O(1) in the integration steps** (it reconstructs each state by inverting the step). `checkpointed` grows — **2.8 → 3.6 MB** — because it stores ~`log₂(steps)` particle-states. Reverse is the lean, flat baseline; the deeper the integration, the more checkpointed pays to keep its stored states. (The accuracy markers also creep upward with steps — more steps is a genuinely different, more nonlinear integration, so the finite difference's truncation grows; it is not a change in the adjoint, and `reverse ≡ checkpointed` throughout.)
-
-### Number of step-checkpoints
-
-*At a fixed 50 steps, what does storing more `step_checkpoints` cost?* `reverse` (flat) vs `checkpointed` storing 1 → 50 integration-step states.
-
-| Setting | Value |
-| --- | --- |
-| Mesh resolution | 16³ |
-| HEALPix `nside` | 16 |
-| Integration steps | 50 (fixed) |
-| **Swept — step-checkpoints** | **1, 2, 5, 10, 20, 30, 50** |
-| Output | single spherical (`nb_shells=1`) |
-| Solvers / Adjoints | DoubleKickDrift, BullFrog / reverse, checkpointed |
+**Accuracy and memory against the number of integration steps.** Single spherical output at 16³, markers on the left axis and bars on the right. `reverse` stays at **2.2 MB** from 5 to 80 steps: it stores no trajectory and is O(1) in the integration steps. `checkpointed` grows from **2.8 to 3.6 MB**, since it stores ~`log₂(steps)` particle states. The accuracy markers creep up with the step count because a longer integration is more nonlinear and the truncation error of the finite difference grows, while `reverse ≡ checkpointed` throughout.
 
 ![number of step-checkpoints](assets/fig03-checkpoints.svg)
 
-**Accuracy and memory against the number of step-checkpoints.** Single spherical output at 16³, 50 integration steps; `rev` is the reverse adjoint, which stores none.
-
-This is the pure **memory↔recompute trade**, and `step_checkpoints` **never changes the gradient** — the accuracy markers are **dead flat** across every checkpoint count (DoubleKickDrift ~5e-7, BullFrog ~7e-8), and the N-body suite asserts the invariance (`test_step_checkpoints_invariant`). `checkpointed` climbs with the stored count — **2.2 → 20.6 MB** (1 → 50 checkpoints) — while `reverse` is flat at **2.2 MB**, O(1) in the checkpoints. At 1 checkpoint (maximal recompute) checkpointed *ties* reverse; it crosses reverse around ~5 checkpoints and reaches ~9× by 50. So reverse is the fixed-overhead baseline that wins against the realistic (default and heavier) checkpointing regime. (The memory is solver-independent — BullFrog's bars match DoubleKickDrift's to ~0.1 MB.)
-
-### Number of saved shells
-
-*For a real lightcone — many saved shells at fixed steps — how does each adjoint scale?* Shell counts start at 4 (a 1–2-shell "lightcone" is degenerate); 80 integration steps so that `nb_shells ≤ n_steps` holds up to
-64. The checkpointed series sets its inner `step_checkpoints` to `⌈log₂(steps between two consecutive shells)⌉ = ⌈log₂(80 / nb_shells)⌉` (5 → 1 as shells go 4 → 64).
-
-| Setting | Value |
-| --- | --- |
-| Mesh resolution | 16³ |
-| HEALPix `nside` | 16 |
-| Integration steps | 80 (fixed) |
-| **Swept — saved shells** (`nb_shells`) | **4, 8, 16, 32, 64** |
-| Output | spherical lightcone |
-| Solvers / Adjoints | DoubleKickDrift, BullFrog / reverse, checkpointed |
+**Accuracy and memory against the number of step-checkpoints.** Single spherical output at 16³, 50 integration steps; `rev` is the reverse adjoint, which stores none. The accuracy is flat across every checkpoint count (DoubleKickDrift ~5e-7, BullFrog ~7e-8), and the N-body suite asserts this invariance (`test_step_checkpoints_invariant`). `checkpointed` climbs from **2.2 to 20.6 MB** between 1 and 50 checkpoints, while `reverse` stays at **2.2 MB**. `checkpointed` ties `reverse` at 1 checkpoint (maximal recompute), crosses it near 5 and reaches ~9× by 50, so `reverse` is the fixed-overhead baseline that wins in the realistic regime of default and heavier checkpointing. BullFrog matches DoubleKickDrift to ~0.1 MB.
 
 ![number of saved shells](assets/fig04-shells.svg)
 
-**Accuracy and memory against the number of saved shells.** Spherical lightcone at 16³, 80 integration steps.
+**Accuracy and memory against the number of saved shells.** Spherical lightcone at 16³ with 80 integration steps, so that `nb_shells ≤ n_steps` holds up to 64; the counts start at 4 because a 1–2-shell lightcone is degenerate. The checkpointed series sets `step_checkpoints = ⌈log₂(80 / nb_shells)⌉`, from 5 to 1 as the shells go from 4 to 64. `reverse` rises slowly, **4.9 → 6.4 MB** (DoubleKickDrift), by about one painted HEALPix map per shell (`npix · 8 B`, the painting cotangent the reverse scan carries), and its trajectory part stays O(1) in the shells. `checkpointed` sits above it throughout and rises faster, **5.6 → 8.0 MB**, because it stores integration-step states on top. BullFrog tracks within ~1 MB.
 
-**`reverse` rises slowly — `4.9 → 6.4 MB` over 4 → 64 shells** (DoubleKickDrift) — by ~**one painted HEALPix map per shell** (`npix · 8 B`, the per-shell painting cotangent the reverse scan carries; the trajectory part of the backsolve is O(1) in shells). So reverse is **O(1) in the integration steps and step-checkpoints, but O(nb_shells) in the saved shells with a tiny per-shell constant.** `checkpointed` sits **above** throughout and rises faster — **5.6 → 8.0 MB** — because it stores integration-step states on top. Reverse is the lean lightcone adjoint. (The memory is solver-independent — BullFrog tracks within ~1 MB.)
+## Summary
 
-**Summary.** Both adjoints compute the **same** IC gradient — the per-voxel finite difference confirms it to `~10⁻⁸` (BullFrog) / `~10⁻⁷` (DoubleKickDrift) and the finite-difference-free transpose test pins it to `~10⁻¹²` (forward-mode AD ≡ reverse ≡ checkpointed), with `reverse` and `checkpointed` overlapping in fig01. They differ in **memory**: `reverse` stores *no* trajectory — **O(1)** in the integration steps and step-checkpoints (flat at 2.2 MB), **O(nb_shells)** in the saved shells with a tiny per-shell constant — so it is the **lean** adjoint. `checkpointed` trades memory for recompute: it ties reverse at 1 checkpoint and climbs to ~9× (20.6 MB) by 50, the realistic regime. These 16³ numbers are a few MB and backend-specific (XLA temp on GPU; cuFFT is leaner than a CPU run) — read them for the **trend**. The multi-GB production-scale trade is [Experiment 12](../12-scaling-gradient/README.md).
+Both adjoints compute the **same** IC gradient: the finite difference confirms it to `~10⁻⁸` (BullFrog) and `~10⁻⁷` (DoubleKickDrift), and the transpose test to `~10⁻¹²`. `reverse` is the lean adjoint: it stores no trajectory, is **O(1)** in the integration steps and the step-checkpoints (flat at 2.2 MB), and is **O(nb_shells)** in the saved shells with a small per-shell constant. `checkpointed` trades memory for recompute, from a tie at 1 checkpoint to ~9× (20.6 MB) at 50. These 16³ numbers are a few MB and depend on the backend, so they give the trend, and [Experiment 12](../12-scaling-gradient/README.md) gives the production-scale trade.
 
 ## How to run
 
-All **float64 on GPU**, 16³. At the CLI, `fli-simulate --grad reverse | checkpointed_<N>` selects the adjoint, wraps the forward model in `jax.grad`, and emits the IC-shaped gradient field. Two scripts reproduce the figures:
+All runs are float64 on GPU at 16³. At the CLI, `fli-simulate --grad reverse | checkpointed_<N>` selects the adjoint, wraps the forward model in `jax.grad` and writes the IC-shaped gradient field. Two scripts reproduce the figures, save the SVGs and cache their results in `data_f64/` (`grad_validation.npz`, `degradation.npz`); `09b-degradation.py` also prints the tables quoted above.
 
 ```bash
 uv run python 09-gradient-validation.py    # fig01 — per-voxel FD vs adjoint   (16³, ~5 min)
 uv run python 09b-degradation.py           # fig02/03/04 — accuracy & memory   (16³, ~50 min)
-```
-
-`09b-degradation.py` prints the run-number tables quoted above. Each script saves committed SVGs (Read the Docs builds without a GPU) plus a `data_f64/*.npz` cache (`grad_validation.npz`, `degradation.npz`). The algorithm figure is rendered from its source:
-
-```bash
 pdflatex lightcone-gradient-algorithm.tex && pdftocairo -svg lightcone-gradient-algorithm.pdf assets/algorithm.svg
 ```

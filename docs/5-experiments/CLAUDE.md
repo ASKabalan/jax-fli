@@ -14,7 +14,7 @@ Every experiment folder contains:
 3. **`assets/`** — committed figures (SVG) and any rendered `.tex`.
 
 ### Cluster (shell-script) experiments
-`run.sh` submits jobs (`fli-launcher` → `fli-simulate`) that write **parquet** `Catalog`s. Those parquet are **pushed to HuggingFace** (`ASKabalan/jax-fli-experiments`). A **local Python script** then loads them back (`load_dataset` → `Catalog.from_dataset`) and renders the **SVG** figures — so the heavy compute is on the cluster and figure-making is reproducible locally without a GPU.
+`run.sh` submits jobs (`fli-launcher` → `fli-simulate`) that write **parquet** `Catalog`s. Those parquet are **pushed to HuggingFace**, into one of three datasets: `ASKabalan/jax-fli-experiments` (accuracy experiments 00–09, the only one the Results Explorer Space reads), `ASKabalan/jax-fli-scaling` (scaling benchmarks, experiments 11–12, HF folders `11-scaling/` and `12-gradient-scaling/`) and `ASKabalan/jax-fli-sampling` (MAP and chain outputs: experiment 13 and notebooks 14, 16, 17). A **local Python script** then loads them back (`load_dataset` → `Catalog.from_dataset`) and renders the **SVG** figures — so the heavy compute is on the cluster and figure-making is reproducible locally without a GPU.
 
 ### Local experiments
 Some experiments run entirely locally (small mesh, CPU) — e.g. [`09-gradient-validation`](09-gradient-validation/) — and ship Python scripts that compute *and* plot directly, with no `run.sh`.
@@ -30,7 +30,7 @@ Lead with the science. **Never open the README with run instructions or CLI invo
 
 In goal, I also want in the Goal section a table of the runs with their parameters
 
-[`09-gradient-validation/README.md`](09-gradient-validation/README.md) is the reference for content quality and ordering.
+[`05f-mesh-plateau-diagnosis/README.md`](05f-mesh-plateau-diagnosis/README.md) is the reference for content quality, length and ordering: one **Goal** paragraph with the run table, a short Method, each figure followed by a bold title and a few sentences, and "How to run" last. Write the prose in the `writing-style` register, and keep it short: the figures carry the results.
 
 ## Figures
 
@@ -112,7 +112,7 @@ files = list_repo_files("ASKabalan/jax-fli-experiments", repo_type="dataset")
 
 etc..
 
-All files in the repo are stored in the `ASKabalan/jax-fli-experiments` dataset on HuggingFace. The `snapshot_download` function is used to download the files locally.
+The accuracy files are stored in the `ASKabalan/jax-fli-experiments` dataset on HuggingFace (scaling in `ASKabalan/jax-fli-scaling`, MAP and chains in `ASKabalan/jax-fli-sampling`; set `REPO` accordingly). The `snapshot_download` function is used to download the files locally.
 
 ```python
 root = snapshot_download(REPO, repo_type="dataset", local_files_only=True)

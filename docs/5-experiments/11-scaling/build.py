@@ -36,7 +36,7 @@ plotting.FancyBboxPatch = lambda *args, **kwargs: Rectangle((0, 0), 0, 0, visibl
 ASSETS = HERE / "assets"
 DATA = HERE / "data"
 
-REPO = "ASKabalan/jax-fli-experiments"
+REPO = "ASKabalan/jax-fli-scaling"
 CSV = "11-scaling/perf/perf_pm.csv"
 
 # --- load the perf CSV from HF (only this ~2 KB file, not the multi-GB density maps) ----------------
