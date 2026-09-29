@@ -2171,7 +2171,7 @@ requires-dist = [
     { name = "jax-hpc-profiler", marker = "extra == 'all'", specifier = ">=0.3.4" },
     { name = "jax-hpc-profiler", marker = "extra == 'benchmark'", specifier = ">=0.3.4" },
     { name = "jaxdecomp", specifier = ">=0.3.4" },
-    { name = "jaxpm", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=notebook-and-docs-update" },
+    { name = "jaxpm", git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=main" },
     { name = "jaxtyping" },
     { name = "jupyter", marker = "extra == 'examples'" },
     { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.0" },
@@ -2312,8 +2312,8 @@ wheels = [
 
 [[package]]
 name = "jaxpm"
-version = "0.1.7.dev82+gffdf2c61a"
-source = { git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=notebook-and-docs-update#ffdf2c61a57a9617bfb69a5572b7e9052eb1f893" }
+version = "0.1.7.dev66+gc9903cc1a"
+source = { git = "https://github.com/DifferentiableUniverseInitiative/JaxPM.git?branch=main#c9903cc1a0e54cb7a0c9203a3cb33085758d942a" }
 dependencies = [
     { name = "jax" },
     { name = "jax-cosmo" },
