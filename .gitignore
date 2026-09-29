@@ -174,3 +174,6 @@ results
 rosenbrock_samples*
 WORK_IN_PROGRESS
 UNTRACKED
+
+# MCMC runs downloaded from Colab (read by docs/3-sampling-and-inference/16 and 17)
+mcmc_results/

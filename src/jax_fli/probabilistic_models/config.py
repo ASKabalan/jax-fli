@@ -92,6 +92,9 @@ class Configurations:
     mask: Any = None
     sigma_unobserved: float = 1e6  # likelihood sigma on pixels outside the survey mask
     log_lightcone: bool = False
+    # Record the noiseless mean of each observable map (band-limited when ell_max is set) as the deterministic
+    # site ``predicted_observable_i``, so sample2catalog saves each draw's prediction during inference.
+    log_observable: bool = False
     # Optional pixel-likelihood scale cut (spherical only): if ell_max is set, each observable map is
     # band-limited to ell_max (map2alm -> cosine taper -> alm2map, via SphericalDensity.scale_cut /
     # SphericalShearField.scale_cut) before the per-pixel Gaussian. None -> no scale cut.

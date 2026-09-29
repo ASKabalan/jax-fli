@@ -145,6 +145,9 @@ def make_likelihood(config: Configurations):
                 # spherical shear is (2, npix) per bin: insert the spin-2 component axis
                 m = mask[None, :] if is_spherical_shear else mask
                 scale = jnp.where(m > 0, sigma_obs, config.sigma_unobserved)
+            if config.log_observable:
+                # the noiseless mean this draw predicts for the data (what the Gaussian compares)
+                numpyro.deterministic(f"predicted_observable_{idx}", loc.array if hasattr(loc, "array") else loc)
             observed.append(numpyro.sample(f"observable_{idx}", DistributedNormal(loc=loc, scale=scale)))
         return observed
 

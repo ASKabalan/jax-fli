@@ -164,14 +164,27 @@ def sample2catalog(config: Configurations):
             sample_catalog = Catalog(field=initial_conditions, cosmology=cosmo)
             sample_catalog.to_parquet(os.path.join(ic_dir, f"samples_{batch_id}.parquet"))
 
-        # Check if samples has lensing observables (convergence or shear)
-        if "observable_0" not in samples:
+        if "lightcone" in samples:
+            lightcone_dir = os.path.join(path, "lightcones")
+            os.makedirs(lightcone_dir, exist_ok=True)
+            lightcone = samples["lightcone"]
+            lightcone = lightcone.replace(name=f"lightcone_batch_{batch_id}")
+            lightcone_catalog = Catalog(field=lightcone, cosmology=cosmo)
+            lightcone_catalog.to_parquet(os.path.join(lightcone_dir, f"lightcone_{batch_id}.parquet"))
+
+        # Lensing observables (convergence or shear): the sampled ``observable_i`` (Predictive mode) or, during
+        # inference where those sites are observed, the ``predicted_observable_i`` recorded with config.log_observable.
+        if "observable_0" in samples:
+            prefix = "observable_"
+        elif "predicted_observable_0" in samples:
+            prefix = "predicted_observable_"
+        else:
             print("No observable samples found, skipping observable catalog saving.")
             return
         fields_dir = os.path.join(path, "observable_fields")
         os.makedirs(fields_dir, exist_ok=True)
         # find out how many tomographic bins there are by counting keys
-        observable_keys = [k for k in samples if k.startswith("observable_") and k.split("_")[-1].isdigit()]
+        observable_keys = [k for k in samples if k.startswith(prefix) and k[len(prefix) :].isdigit()]
         n_bins = len(observable_keys)
         # Create the observable fields class
         observable_meta_data = samples["observable_meta_data"]
@@ -184,7 +197,7 @@ def sample2catalog(config: Configurations):
             for s_idx in range(n_samples):
                 cosmo_s = jax.tree.map(lambda p: p[s_idx], cosmo)
                 meta_s = observable_meta_data[s_idx]
-                observable_s = jnp.stack([samples[f"observable_{i}"][s_idx] for i in range(n_bins)], axis=0)
+                observable_s = jnp.stack([samples[f"{prefix}{i}"][s_idx] for i in range(n_bins)], axis=0)
                 fields_list.append(
                     ObservableFieldCls.FromDensityMetadata(
                         array=observable_s, field=meta_s, name=f"observable_fields_batch_{batch_id}_sample_{s_idx}"
@@ -193,19 +206,11 @@ def sample2catalog(config: Configurations):
                 cosmo_list.append(cosmo_s)
             observable_catalog = Catalog(field=fields_list, cosmology=cosmo_list)
         else:
-            observable_array = jnp.stack([samples[f"observable_{i}"] for i in range(n_bins)], axis=0)
+            observable_array = jnp.stack([samples[f"{prefix}{i}"] for i in range(n_bins)], axis=0)
             observable_field = ObservableFieldCls.FromDensityMetadata(
                 array=observable_array, field=observable_meta_data, name=f"observable_fields_batch_{batch_id}"
             )
             observable_catalog = Catalog(field=observable_field, cosmology=cosmo)
         observable_catalog.to_parquet(os.path.join(fields_dir, f"fields_{batch_id}.parquet"))
-
-        if "lightcone" in samples:
-            lightcone_dir = os.path.join(path, "lightcones")
-            os.makedirs(lightcone_dir, exist_ok=True)
-            lightcone = samples["lightcone"]
-            lightcone = lightcone.replace(name=f"lightcone_batch_{batch_id}")
-            lightcone_catalog = Catalog(field=lightcone, cosmology=cosmo)
-            lightcone_catalog.to_parquet(os.path.join(lightcone_dir, f"lightcone_{batch_id}.parquet"))
 
     return cb
