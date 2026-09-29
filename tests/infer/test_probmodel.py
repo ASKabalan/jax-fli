@@ -238,3 +238,27 @@ def test_capped_equal_vol_resolution_cut_ell_min():
 def test_ell_min_needs_ell_max():
     with pytest.raises(ValueError, match="ell_min"):
         jfli.ppl.full_field_probmodel(_config(ell_min=2))
+
+
+def test_log_observable_records_and_saves_predictions(tmp_path):
+    """With ``log_observable`` the model records the likelihood's noiseless mean as ``predicted_observable_i``,
+    and sample2catalog writes it (and the lightcone) for inference draws, where ``observable_i`` is observed
+    and therefore absent from the samples."""
+    cfg = _config(log_observable=True, log_lightcone=True, ell_max=12, ell_taper_width=4, ell_min=2)
+    model = jfli.ppl.full_field_probmodel(cfg)
+    tr = trace(seed(model, 0)).get_trace()
+    loc = tr["observable_0"]["fn"].loc
+    assert tr["predicted_observable_0"]["type"] == "deterministic"
+    np.testing.assert_array_equal(
+        np.asarray(tr["predicted_observable_0"]["value"]), np.asarray(loc.array if hasattr(loc, "array") else loc)
+    )
+
+    samples = numpyro.infer.Predictive(model, num_samples=2)(jax.random.PRNGKey(1))
+    samples = {k: v for k, v in samples.items() if not (k.startswith("observable_") and k[11:].isdigit())}
+    jfli.infer.sample2catalog(cfg)(samples, str(tmp_path / "samples"), 0)
+    fields = jfli.io.Catalog.from_parquet(str(tmp_path / "samples" / "observable_fields" / "fields_0.parquet"))
+    assert len(fields.field) == 2
+    np.testing.assert_allclose(
+        np.asarray(fields.field[1].array).ravel(), np.asarray(samples["predicted_observable_0"][1]).ravel(), rtol=1e-6
+    )
+    assert (tmp_path / "samples" / "lightcones" / "lightcone_0.parquet").exists()

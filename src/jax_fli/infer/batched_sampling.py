@@ -8,6 +8,7 @@ Two samplers are supported: ``"NUTS"`` and ``"MCLMC"``.
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Callable
 from functools import partial, wraps
 from typing import ParamSpec, TypeVar
@@ -57,6 +58,7 @@ def batched_sampling(
     init_params: PyTree | None = None,
     progress_bar: bool = True,
     print_rate: int | None = None,
+    warmup_chunk: int = 10,
     save_callback: Callable[[dict, str, int, dict | None], None] = default_save,
     post_process: Callable[[dict], dict] | None = None,
     # ── NUTS tuning ──
@@ -99,6 +101,11 @@ def batched_sampling(
         applied once per sample inside the sampling scan. Use it for per-sample field-sized work
         (e.g. recoloring a white ``initial_conditions`` to the physical field with its sampled
         cosmology) so it never runs batched across the whole draw.
+    warmup_chunk : int
+        NUTS and MCLMC warmup iterations per chunk. The warmup state is saved to
+        ``warmup_state`` after each chunk and a ``warmup <step>/<total>`` line is printed
+        and appended to ``warmup.log``; re-running resumes an interrupted warmup and gives
+        the same result as an uninterrupted one.
     max_num_doublings, target_accept : int, float
         NUTS knobs. ``max_num_doublings`` is the leapfrog trajectory doubling depth
         (the BlackJAX equivalent of ``max_tree_depth``); ``target_accept`` is the
@@ -139,6 +146,7 @@ def batched_sampling(
 
     os.makedirs(path, exist_ok=True)
     state_path = f"{path}/sampling_state"
+    warmup_path = f"{path}/warmup_state"
     samples_prefix = f"{path}/samples"
     nb_samples = 0
     init_params = jax.tree.map(jnp.asarray, init_params)
@@ -209,18 +217,16 @@ def batched_sampling(
         if sampler == "NUTS":
             print(f"Tuning NUTS parameters (step size and inverse mass matrix) with {num_warmup} warmup steps...")
             print(f"  ==> max_num_doublings={max_num_doublings}, target_accept={target_accept}")
-            adapt = blackjax.window_adaptation(
-                blackjax.nuts, logdensity_fn, progress_bar=progress_bar, target_acceptance_rate=target_accept
+            # the warmup NUTS iterations get the same doubling cap as the sampling ones
+            adapt = blackjax.chunked_window_adaptation(
+                blackjax.nuts,
+                logdensity_fn,
+                target_acceptance_rate=target_accept,
+                max_num_doublings=max_num_doublings,
             )
-            # jit the adaptation scan (num_warmup baked static via the closure)
-            (last_state, tuned), _ = jax.jit(lambda k, p: adapt.run(k, p, num_warmup))(warmup_key, initial_position)
-            jax.block_until_ready(tuned)
-            parameters = {
-                "step_size": tuned["step_size"],
-                "inverse_mass_matrix": tuned["inverse_mass_matrix"],
-            }
-            np.savez(f"{path}/warmup_params.npz", step_size=tuned["step_size"])
-            print(f"Post warm up, step size is {tuned['step_size']}")
+            run_nuts_chunk = jax.jit(adapt.run_chunk, static_argnums=(2, 3))
+            warmup_state = adapt.init(initial_position)
+            warmup_steps = num_warmup
 
         elif sampler == "MAMS":
             from blackjax.mcmc.adjusted_mclmc_dynamic import rescale
@@ -305,39 +311,61 @@ def batched_sampling(
                 inverse_mass_matrix=jnp.ones(total_dim),
             )
             num_tune = mclmc_num_tune if mclmc_num_tune is not None else num_warmup
-            # progress_bar=False is REQUIRED so the tuning folds into a lax.scan (the default True keeps
-            # it out of a scan); jit it (num_tune / frac_* / diagonal_preconditioning baked static via closure).
-            _mclmc_tune = jax.jit(
-                lambda k, st, p: blackjax.mclmc_find_L_and_step_size(
-                    mclmc_kernel=mclmc_kernel,
-                    logdensity_fn=logdensity_fn,
-                    num_steps=num_tune,
-                    state=st,
-                    rng_key=k,
-                    diagonal_preconditioning=mclmc_diagonal_preconditioning,
-                    params=p,
-                    desired_energy_var=mclmc_desired_energy_var,
-                    frac_tune1=0.4,
-                    frac_tune2=0.4,
-                    frac_tune3=0.2,
-                    num_effective_samples=256,
-                    progress_bar=progress_bar,
-                    print_rate=print_rate,
-                )
+            adapt = blackjax.chunked_mclmc_find_L_and_step_size(
+                mclmc_kernel=mclmc_kernel,
+                num_steps=num_tune,
+                rng_key=warmup_key,
+                logdensity_fn=logdensity_fn,
+                diagonal_preconditioning=mclmc_diagonal_preconditioning,
+                desired_energy_var=mclmc_desired_energy_var,
+                frac_tune1=0.4,
+                frac_tune2=0.4,
+                frac_tune3=0.2,
+                num_effective_samples=256,
             )
-            tuned_state, tuned_params, _ = _mclmc_tune(warmup_key, initial_state, init_mclmc_params)
-            jax.block_until_ready(tuned_state)
-            last_state = tuned_state
-            parameters = {
-                "L": tuned_params.L,
-                "step_size": tuned_params.step_size,
-                "inverse_mass_matrix": tuned_params.inverse_mass_matrix,
-            }
-            np.savez(f"{path}/warmup_params.npz", L=tuned_params.L, step_size=tuned_params.step_size)
-            print(f"Post warm up, L is {tuned_params.L} step size is {tuned_params.step_size}")
+            warmup_state = adapt.init(initial_state, init_mclmc_params)
+            warmup_steps = adapt.num_steps
+
+        if sampler in ("NUTS", "MCLMC"):
+            # the warmup runs in chunks of warmup_chunk iterations and is checkpointed after each one, so an
+            # interrupted warmup resumes where it stopped (same keys, so the same result as an uninterrupted one)
+            if os.path.exists(warmup_path):
+                abstract_warmup = jax.tree.map(ocp.tree.to_shape_dtype_struct, warmup_state)
+                warmup_state = load_sharded(warmup_path, abstract_pytree=abstract_warmup)
+                print(f"Resuming the warmup at step {int(warmup_state.step)}/{warmup_steps}")
+            while int(warmup_state.step) < warmup_steps:
+                length = min(warmup_chunk, warmup_steps - int(warmup_state.step))
+                if sampler == "NUTS":
+                    warmup_state, _ = run_nuts_chunk(warmup_state, warmup_key, num_warmup, length)
+                else:
+                    warmup_state = adapt.run_chunk(warmup_state, length)
+                save_sharded(warmup_state, warmup_path, overwrite=True, dump_structure=False)
+                progress = f"warmup {int(warmup_state.step)}/{warmup_steps}"
+                print(progress, flush=True)
+                with open(f"{path}/warmup.log", "a") as log:
+                    log.write(progress + "\n")
+
+            if sampler == "NUTS":
+                last_state, tuned = adapt.final(warmup_state)
+                parameters = {
+                    "step_size": tuned["step_size"],
+                    "inverse_mass_matrix": tuned["inverse_mass_matrix"],
+                }
+                np.savez(f"{path}/warmup_params.npz", step_size=tuned["step_size"])
+                print(f"Post warm up, step size is {tuned['step_size']}")
+            else:
+                last_state, tuned_params, _ = adapt.final(warmup_state)
+                parameters = {
+                    "L": tuned_params.L,
+                    "step_size": tuned_params.step_size,
+                    "inverse_mass_matrix": tuned_params.inverse_mass_matrix,
+                }
+                np.savez(f"{path}/warmup_params.npz", L=tuned_params.L, step_size=tuned_params.step_size)
+                print(f"Post warm up, L is {tuned_params.L} step size is {tuned_params.step_size}")
 
         inference_state = {"nb_samples": jnp.array(0), "last_state": last_state, "parameters": parameters}
         save_sharded(inference_state, state_path, overwrite=True, dump_structure=False)
+        shutil.rmtree(warmup_path, ignore_errors=True)
 
     if sampler == "NUTS":
         sampler_fn = blackjax.nuts(logdensity_fn, max_num_doublings=max_num_doublings, **parameters)
@@ -402,7 +430,8 @@ def batched_sampling(
         print(f"Sampling batch {i + 1}/{batch_count} using {sampler} (blackjax)...")
         print(f"At sample batch {i + 1}, total samples so far: {nb_samples}")
 
-        run_key, batch_key = jax.random.split(run_key)
+        # the key of batch i depends on i only, so a resumed run does not replay the keys of earlier batches
+        batch_key = jax.random.fold_in(run_key, i)
 
         last_state, samples, infos = run_batch(batch_key, last_state)
         jax.block_until_ready(last_state)
