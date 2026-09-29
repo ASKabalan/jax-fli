@@ -4,8 +4,14 @@
 The model, the truth, the data and the Adam MAP are those of ``14-LPT-MassMapping.ipynb``:
 - 2LPT on a spherical lightcone of capped equal-volume shells from ``--r-min``;
 - a per-shell resolution cut;
-- a kappa likelihood band-limited to ``--ell-min <= ell <= ell_max`` with shape noise ``--sigma-e`` for the DES Y3
-  bins (``--gals-per-arcmin2 15`` gives the notebook's Part II, Stage IV).
+- a kappa likelihood band-limited to ``--ell-min <= ell <= ell_max`` with per-survey source density and
+  shape noise: ``--survey des`` is Stage III (the DES Y3 bins at their own 1.48 /arcmin^2, sigma_e 0.26) and
+  ``--survey euclid`` is Stage IV (Euclid IST:F, Blanchard et al. 2020 Table 4: 30 /arcmin^2 total over the
+  four DES-shaped bins, total ellipticity dispersion 0.30 -> sigma_e = 0.30 / sqrt(2) per component);
+  ``--gals-per-arcmin2`` and ``--sigma-e`` override either survey.
+- At mesh >= 1536 pass ``--ell-max 1024`` explicitly: the mesh resolves far more, but this reconstruction
+  validates 2LPT itself, so the likelihood band stops where the LPT order stays valid, not where the
+  mesh does.
 
 The white IC is sharded in x-slabs over all devices (``(n_dev, 1)`` mesh); kappa is replicated before every spherical
 harmonic transform, because a sharded SHT hangs. Rank 0 writes the notebook's parquet layout:
@@ -14,6 +20,12 @@ harmonic transform, because a sharded SHT hangs. Rank 0 writes the notebook's pa
 - ``metrics.json``, ``loss_history.npz`` and ``summary.json``.
 
 So the notebook's ``load_run`` / ``plot_*`` functions and ``animation/animate_map_prep.py`` read it unchanged.
+
+The 3-D IC (truth and frames) is stored, and its coherence/transfer computed, at ``--paint-density`` in
+``--density-precision`` (the runs: 1024^3 float32 at mesh 1600 and 2048). ``DensityField.ud_sample`` is a sharded
+Fourier resample that keeps every mode below the new Nyquist exactly; float32 storage costs ~1e-16 of the variance
+(notebook 17). At full resolution the gathered float64 mesh host-OOM-killed the 1600^3 runs.
+``MSE_IC`` in ``metrics.json`` stays on the full-resolution fields.
 
 Memory (float64 value-and-gradient, the dominant cost):
 - One A100 80 GB, measured: 745 bytes per voxel, i.e. 53.4 GB at 416^3 (the largest that fits) and 66.7 GB at 448^3
@@ -28,14 +40,26 @@ Memory (float64 value-and-gradient, the dominant cost):
   allows N = 768 with NSIDE 512 (ell_max 399, PAINT_NSIDE 256, the notebook's rule): 745 B * 768^2 * (96 + 32) = 56 GB
   sharded with h = 16, plus the replicated part.
 - N = 832 (70 GB sharded) does not fit reliably, and N = 1024 (125 GB) does not fit.
-- Run ``--memory-only`` on the cluster first: it compiles the value-and-gradient, prints XLA's per-device memory and
-  exits.
+- Run ``--memory-only`` on the cluster first: it compiles the value-and-gradient, reports the per-device memory
+  and exits. The verdict compares the plan -- the measured value-and-gradient temporaries plus the Adam state
+  (position + m + nu, three float64 fields = 3 * N^3 * 8 / n_dev bytes) -- with a 10% margin left for the
+  cuFFT plans outside XLA's pool, against the device limit of the GPUs the job actually got:
+
+    Current GPU has X memory; this run needs Y memory. Consider reducing the number of GPUs for maximum
+    efficiency, or increasing them to allow the Adam minimisation + MAP, or this is a good fit for this
+    number of GPUs.
+
+  ``--memory-report auto`` (default) aborts a run that does not fit before any output is written; ``always``
+  reports and runs on; ``off`` skips the probe entirely.
 
   # 8 GPUs on one node (SLURM), memory check then the run:
   srun -n 8 --gpus-per-task 1 python 15-LPT-Multihost-MassMapping.py --mesh 768 --memory-only
   srun -n 8 --gpus-per-task 1 python 15-LPT-Multihost-MassMapping.py --mesh 768 --out-dir MESH768_DESY3
-  srun -n 8 --gpus-per-task 1 python 15-LPT-Multihost-MassMapping.py --mesh 768 --gals-per-arcmin2 15 \
+  srun -n 8 --gpus-per-task 1 python 15-LPT-Multihost-MassMapping.py --mesh 768 --survey euclid \
       --map-max-iter 400 --out-dir MESH768_STAGE4
+
+  # a lensing run puts the bins on y, e.g. 192 GPUs as 96 x 2:
+  srun python 15-LPT-Multihost-MassMapping.py --mesh 2048 --pdims 96 2 --halo-cells 20 --memory-only
 
   # the same with mpirun on one 8-GPU machine:
   mpirun -np 8 python 15-LPT-Multihost-MassMapping.py --mesh 768 --out-dir MESH768_DESY3
@@ -50,7 +74,9 @@ import os
 os.environ["JAX_ENABLE_X64"] = "True"  # float32 IC gradients diverge through the LPT + painting chain
 # setdefault: an exported JAX_PLATFORMS (the CPU check) wins
 os.environ.setdefault("JAX_PLATFORMS", "cuda,cpu")
-os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
+# JAX reads XLA_PYTHON_CLIENT_ALLOCATOR, not TF_GPU_ALLOCATOR: without it the BFC pool fragmented and the 1632^3
+# V100 run could not place the 14.6 GiB value-and-gradient temporaries in a 32 GB device holding 29 GB free
+os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "cuda_async"
 os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["HF_HUB_OFFLINE"] = "1"
 # The CUDA SHT keeps its cuFFT plans outside XLA's pool: no preallocation, XLA capped at MEM_FRACTION.
@@ -88,6 +114,8 @@ _maybe_init_distributed()
 
 import argparse
 import json
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -101,9 +129,8 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
 import optax
-from jax.experimental.mesh_utils import create_hybrid_device_mesh
 from jax.experimental.multihost_utils import process_allgather, sync_global_devices
-from jax.sharding import AxisType, Mesh, NamedSharding
+from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from numpyro.handlers import condition
 from numpyro.infer.util import potential_energy
@@ -112,6 +139,7 @@ from scipy.special import ndtri
 import jax_fli as jfli
 from jax_fli.data.nz import get_des_y3_nz_shear
 from jax_fli.initial import interpolate_initial_conditions
+from jax_fli.scripts._common import _build_sharding
 
 jax.config.update("jax_enable_x64", True)
 RANK, N_PROC = jax.process_index(), jax.process_count()
@@ -139,17 +167,35 @@ def parse_args():
     )
     p.add_argument("--ell-taper", type=int, default=None, help="cosine taper width (default 12.5%% of ell_max)")
     p.add_argument("--ell-min", type=int, default=2, help="lowest multipole in the likelihood (shear has no ell < 2)")
-    p.add_argument("--halo-cells", type=int, default=16, help="ghost cells on the sharded axis")
+    p.add_argument("--halo-cells", type=int, default=16, help="ghost cells on each sharded axis")
+    p.add_argument(
+        "--pdims", type=int, nargs=2, default=None, help="device grid P_X P_Y (default: n_devices // n_bins, n_bins)"
+    )
     # lightcone
     p.add_argument("--n-shells", type=int, default=22)
     p.add_argument("--min-width", type=float, default=50.0, help="Mpc/h, floor of the outer equal-volume shells")
     p.add_argument("--max-width", type=float, default=150.0, help="Mpc/h, cap of the inner equal-volume shells")
     p.add_argument("--r-min", type=float, default=300.0, help="Mpc/h, inner edge of the lightcone")
     # survey
-    p.add_argument("--des-bins", type=int, nargs="+", default=(1, 2), help="DES Y3 bins (0-based)")
-    p.add_argument("--sigma-e", type=float, default=0.26)
     p.add_argument(
-        "--gals-per-arcmin2", type=float, default=None, help="galaxies/arcmin^2 per bin (default: DES Y3's own)"
+        "--survey",
+        choices=("des", "euclid"),
+        default="des",
+        help="source density and shape noise: des = Stage III (DES Y3 density, sigma_e 0.26); "
+        "euclid = Stage IV (IST:F, 7.5 /arcmin^2 per bin, sigma_e 0.30/sqrt(2) per component)",
+    )
+    p.add_argument("--des-bins", type=int, nargs="+", default=(1, 2), help="DES Y3 bins (0-based)")
+    p.add_argument(
+        "--sigma-e",
+        type=float,
+        default=None,
+        help="intrinsic ellipticity dispersion per component (default: 0.26 for des, 0.30/sqrt(2) for euclid)",
+    )
+    p.add_argument(
+        "--gals-per-arcmin2",
+        type=float,
+        default=None,
+        help="galaxies/arcmin^2 per bin (default: the --survey's own density)",
     )
     p.add_argument("--max-z", type=float, default=1.0)
     # run
@@ -159,7 +205,26 @@ def parse_args():
     p.add_argument("--init-scale", type=float, default=0.3, help="first guess amplitude, in prior standard deviations")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out-dir", type=str, default="results")
-    p.add_argument("--memory-only", action="store_true", help="compile the value-and-gradient, print its memory, exit")
+    p.add_argument(
+        "--paint-density",
+        type=int,
+        default=None,
+        help="mesh the 3-D IC is stored and compared at (Fourier ud_sample, sharded; default: --mesh)",
+    )
+    p.add_argument(
+        "--density-precision",
+        choices=("float16", "float32", "float64"),
+        default="float32",
+        help="dtype of the stored 3-D IC fields",
+    )
+    p.add_argument("--memory-only", action="store_true", help="compile the value-and-gradient, report its memory, exit")
+    p.add_argument(
+        "--memory-report",
+        choices=("auto", "always", "off"),
+        default="auto",
+        help="auto: report the memory verdict and abort a run that does not fit, before any output; "
+        "always: report and run; off: no probe",
+    )
     # backend / cluster
     p.add_argument(
         "--map2alm-method",
@@ -175,27 +240,44 @@ def main() -> None:
     args = parse_args()
     mesh_n, n_bins = args.mesh, len(args.des_bins)
 
-    # ---- device mesh: x-slabs over all devices; hybrid (NVLink inside a node) when the devices span several nodes
+    # ---- device mesh (docs/1-introduction-and-basics/04-SPMD-Basics.md): x over devices, y over the source bins
     n_dev = jax.device_count()
-    pdims = (n_dev, 1)
-    if mesh_n % n_dev:
-        raise ValueError(f"--mesh {mesh_n} must be divisible by the {n_dev} devices")
-    n_slices = len({getattr(d, "slice_index", None) for d in jax.devices()})
-    if n_slices <= 1 or N_PROC == 1 or n_dev <= args.gpus_per_node:
-        dmesh = jax.make_mesh(pdims, ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
-    else:
-        dmesh = Mesh(create_hybrid_device_mesh((args.gpus_per_node, 1), (n_dev // args.gpus_per_node, 1)), ("x", "y"))
-    sharding = NamedSharding(dmesh, P("x", "y"))
+    P_X, P_Y = tuple(args.pdims) if args.pdims else (n_dev // n_bins, n_bins)
+    pdims = (P_X, P_Y)
+    if P_X * P_Y != n_dev:
+        raise ValueError(f"--pdims {pdims} must multiply to the {n_dev} devices")
+    if mesh_n % P_X or mesh_n % P_Y:
+        raise ValueError(f"--mesh {mesh_n} must be divisible by both --pdims {pdims}")
+    dens_mesh = args.paint_density or mesh_n
+    if dens_mesh % P_X or dens_mesh % P_Y:
+        raise ValueError(f"--paint-density {dens_mesh} must be divisible by both --pdims {pdims}")
+    dens_dtype = jnp.dtype(args.density_precision)
+    # the same mesh as the fli-* CLIs: plain on one node, hybrid (NVLink inside a node) across nodes
+    sharding = _build_sharding(argparse.Namespace(pdim=pdims, gpus_per_node=args.gpus_per_node))
+    dmesh = sharding.mesh
     replicated = NamedSharding(dmesh, P())
     halo_size = tuple(args.halo_cells if p > 1 else 0 for p in pdims)
     map2alm = args.map2alm_method if jax.default_backend() == "gpu" else "jax"  # the CUDA SHT has no CPU rule
 
-    # ---- resolution (notebook 14, section 3)
+    # ---- resolution (notebook 14, section 3) ----
+    # surveys follow notebook 14's Parts I and II: Stage III takes the DES Y3 bins at their own density with
+    # sigma_e = 0.26 per component, Stage IV is the Euclid IST:F sample (Blanchard et al. 2020, Table 4:
+    # 30 /arcmin^2 total, total ellipticity dispersion 0.30) spread over the same DES-shaped bins, so
+    # 7.5 /arcmin^2 per bin and sigma_e = 0.30 / sqrt(2) per component
+    surveys = {
+        "des": dict(g_density=None, sigma_e=0.26),
+        "euclid": dict(g_density=[7.5] * 4, sigma_e=0.30 / np.sqrt(2)),
+    }
+    survey = surveys[args.survey]
+    sigma_e = args.sigma_e if args.sigma_e is not None else survey["sigma_e"]
+
     cosmo = jc.Planck18()
     box = tuple(float(x) for x in jfli.utils.compute_box_size_from_redshift(cosmo, args.max_z, (0.5, 0.5, 0.5)))
     L, chi_max = box[0], box[0] / 2
     kw = {} if args.gals_per_arcmin2 is None else {"gals_per_arcmin2": [args.gals_per_arcmin2] * 4}
-    nz_shear = [get_des_y3_nz_shear(zmax=args.max_z, **kw)[i] for i in args.des_bins]
+    nz_shear = [
+        get_des_y3_nz_shear(gals_per_arcmin2=survey["g_density"], zmax=args.max_z, **kw)[i] for i in args.des_bins
+    ]
     chi = np.linspace(1.0, chi_max, 2000)
     z_s = np.linspace(1e-3, args.max_z, 1000)
     chi_s = np.asarray(jc.background.radial_comoving_distance(cosmo, jc.utils.z2a(jnp.asarray(z_s))))
@@ -213,15 +295,20 @@ def main() -> None:
     paint_nside = args.paint_nside or int(2 ** np.ceil(np.log2(ell_max / 2)))
     nside = args.nside or 2 * paint_nside
     n_gal = np.array([float(nz.gals_per_arcmin2) for nz in nz_shear])
-    sigma_b = args.sigma_e / np.sqrt(n_gal * hp.nside2pixarea(nside, degrees=True) * 3600)
-    est_gb = 745 * mesh_n**2 * (mesh_n / n_dev + 2 * halo_size[0]) / 1e9
+    sigma_b = sigma_e / np.sqrt(n_gal * hp.nside2pixarea(nside, degrees=True) * 3600)
+    est_gb = 745 * mesh_n * (mesh_n / pdims[0] + 2 * halo_size[0]) * (mesh_n / pdims[1] + 2 * halo_size[1]) / 1e9
     log(
         f"jax {jax.__version__}  backend {jax.default_backend()}  processes {N_PROC}  devices {n_dev}  mesh {pdims}  "
         f"halo {halo_size}  MEM_FRACTION {os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION']}"
     )
     log(
         f"MESH {mesh_n}^3  cell {L / mesh_n:.2f} Mpc/h  ell {args.ell_min}-{ell_max} (taper {ell_taper})  PAINT_NSIDE {paint_nside}  "
-        f"NSIDE {nside}  galaxies/arcmin^2 {n_gal}  sigma_b {np.round(sigma_b, 5)}  estimated {est_gb:.1f} GB per device"
+        f"NSIDE {nside}  survey {args.survey}  galaxies/arcmin^2 {n_gal}  sigma_e {sigma_e:.3f}  sigma_b {np.round(sigma_b, 5)}"
+        f"  estimated {est_gb:.1f} GB per device"
+    )
+    log(
+        f"stored 3-D IC: {dens_mesh}^3 {args.density_precision} (cell {L / dens_mesh:.2f} Mpc/h, "
+        f"{dens_mesh**3 * dens_dtype.itemsize / 1e9:.2f} GB per frame, gathered on every rank)"
     )
 
     # ---- model (notebook 14, section 4)
@@ -260,7 +347,7 @@ def main() -> None:
         fiducial_cosmology=jc.Planck18,
         nz_shear=nz_shear,
         priors=priors,
-        sigma_e=args.sigma_e,
+        sigma_e=sigma_e,
         ell_max=ell_max,
         ell_taper_width=ell_taper,
         ell_min=args.ell_min,
@@ -274,13 +361,6 @@ def main() -> None:
         np.asarray(jax.random.normal(jax.random.PRNGKey(args.seed + 1000), (n_bins, 12 * nside**2))) * sigma_b[:, None]
     )
     sig = sigma_b[:, None]
-
-    def band(kappa):
-        # kappa band-limited to ell_min <= ell <= ell_max, replicated first (a sharded SHT hangs)
-        k = kappa.replace(array=jax.lax.with_sharding_constraint(kappa.array, replicated), field_sharding=None)
-        return jnp.stack(
-            [k[b].scale_cut(ell_max, ell_taper, l_min=args.ell_min, method=map2alm).array for b in range(n_bins)]
-        )
 
     @jax.jit
     def predict(white):
@@ -296,7 +376,12 @@ def main() -> None:
             field_sharding=sharding,
         )
         kappa, lightcone = forward(cosmo, ic)
-        return ic, lightcone, kappa.replace(array=band(kappa), field_sharding=None)
+        # band-limit the kappa pair to ell_min <= ell <= ell_max, replicated first (a sharded SHT hangs)
+        kappa = kappa.replace(array=jax.lax.with_sharding_constraint(kappa.array, replicated), field_sharding=None)
+        banded = jnp.stack(
+            [kappa[b].scale_cut(ell_max, ell_taper, l_min=args.ell_min, method=map2alm).array for b in range(n_bins)]
+        )
+        return ic, lightcone, kappa.replace(array=banded, field_sharding=None)
 
     base_fid = {
         f"{k}_base": float(ndtri((float(getattr(cosmo, k)) - float(p.low)) / (float(p.high) - float(p.low))))
@@ -308,15 +393,69 @@ def main() -> None:
         conditioned = condition(model, data=obs)
         return jax.jit(lambda w: potential_energy(conditioned, (), {}, {"initial_conditions": w}))
 
-    if args.memory_only:
-        vg = jax.jit(jax.value_and_grad(make_potential(jnp.zeros((n_bins, 12 * nside**2)))))
-        log("compiling value_and_grad ...")
-        m = vg.lower(w_init).compile().memory_analysis()
+    if args.memory_only or args.memory_report != "off":
+        # the probe compiles the value-and-gradient at zeroed data: same shapes, therefore the same XLA memory
+        # as the real run; --memory-only reports and exits, --memory-report auto aborts a run that does not fit
+        probe_vg = jax.jit(jax.value_and_grad(make_potential(jnp.zeros((n_bins, 12 * nside**2)))))
+        log("compiling value_and_grad (memory probe) ...")
+        m = probe_vg.lower(w_init).compile().memory_analysis()
+        temp_gb = m.temp_size_in_bytes / 1e9
+        arg_gb = m.argument_size_in_bytes / 1e9
+        out_gb = m.output_size_in_bytes / 1e9
+
+        # the Adam MAP holds position + m + nu, three float64 fields, sharded like the IC
+        adam_gb = 3 * mesh_n**3 * 8 / n_dev / 1e9
+        plan_gb = temp_gb + adam_gb
+        mem_fraction = float(os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"])
+        bytes_limit = (jax.local_devices()[0].memory_stats() or {}).get("bytes_limit", 0)
+        if bytes_limit:
+            limit_gb, limit_src = bytes_limit / 1e9, "device bytes_limit"
+        elif jax.default_backend() == "gpu":
+            # the cuda_async allocator reports bytes_limit 0: take MEM_FRACTION of the card (all GPUs of a job alike)
+            total_mib = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.split()[0]
+            limit_gb, limit_src = mem_fraction * float(total_mib) * 2**20 / 1e9, "MEM_FRACTION * nvidia-smi total"
+        else:  # CPU check: no device limit, assume an 80 GB card
+            limit_gb, limit_src = mem_fraction * 80.0, f"MEM_FRACTION * 80 GB on backend {jax.default_backend()}"
+        # the smallest device decides for every rank: the memory gate returns through its own named sync, so ranks
+        # reaching different verdicts deadlock at sync_global_devices("out-dir") with a name mismatch
+        limit_gb = float(np.min(process_allgather(np.float64(limit_gb))))
+        margin_gb = 0.10 * limit_gb  # cuFFT plans of the CUDA SHT live outside XLA's pool
+        usable_gb = limit_gb - margin_gb
+        fit = plan_gb <= usable_gb
+
         log(
-            f"per device: temporaries {m.temp_size_in_bytes / 1e9:.2f} GB  arguments {m.argument_size_in_bytes / 1e9:.2f} GB  "
-            f"outputs {m.output_size_in_bytes / 1e9:.2f} GB  (estimate {est_gb:.1f} GB)"
+            f"memory probe per device: temporaries {temp_gb:.2f} GB  arguments {arg_gb:.2f} GB  outputs {out_gb:.2f} GB "
+            f"(estimate {est_gb:.1f} GB); Adam state {adam_gb:.2f} GB -> plan {plan_gb:.1f} GB"
         )
+        log(
+            f"current GPU: {limit_gb:.1f} GB {limit_src} (margin {margin_gb:.1f} GB for the cuFFT plans) -> "
+            f"usable {usable_gb:.1f} GB per device"
+        )
+        if fit:
+            log(
+                f"GOOD FIT: this is a good fit for {n_dev} GPUs; consider reducing the number of GPUs for maximum "
+                f"efficiency if a smaller allocation keeps a healthy margin"
+            )
+        else:
+            more_gpus = int(np.ceil(plan_gb / usable_gb * n_dev / 2.0)) * 2
+            log(
+                f"DOES NOT FIT: plan {plan_gb:.1f} GB > usable {usable_gb:.1f} GB per device. Increase the number of "
+                f"GPUs to about {max(more_gpus, n_dev + n_dev // 8)} to allow the Adam minimisation + MAP at this "
+                f"mesh, or lower --halo-cells (currently {args.halo_cells}), or reduce --mesh"
+            )
+
+    if args.memory_only:
         sync_global_devices("memory-only")
+        return
+
+    if args.memory_report == "auto" and not fit:
+        log("auto memory gate: aborting before the truth pipeline (run with --memory-report always to force)")
+        sync_global_devices("memory-gate")
         return
 
     out = Path(args.out_dir)
@@ -324,26 +463,33 @@ def main() -> None:
         out.mkdir(parents=True, exist_ok=True)
     sync_global_devices("out-dir")
 
-    def save(fld, name):
-        # every rank enters to_parquet (it starts with a process_allgather); only rank 0 writes the file
-        jfli.io.Catalog(field=[fld], cosmology=[cosmo]).to_parquet(str(out / f"{name}.parquet"))
-
     # ---- truth and data (notebook 14, section 5)
     log("truth forward (compiles predict) ...")
     zeros = jnp.zeros(mesh_n)
-    as_catalog = lambda ic, name: ic.replace(
-        name=name, z_sources=zeros, comoving_centers=zeros, scale_factors=zeros, density_width=zeros
-    )
     ic_truth, lightcone_truth, kappa_truth = predict(w_truth)
     lightcone_lattice = predict(normal(jax.random.PRNGKey(0), 0.0))[1]  # IC = 0: the unperturbed lattice
     x_obs = jax.jit(lambda k: k + noise, out_shardings=replicated)(kappa_truth.array)
-    save(as_catalog(ic_truth, "true_ic"), "true_ic")
-    save(lightcone_truth, "truth_density_lightcone")
-    save(lightcone_lattice, "lattice_density_lightcone")
-    save(kappa_truth, "truth_kappa")
-    save(kappa_truth.replace(array=x_obs), "observed_kappa")
-    kappa_truth_np = np.asarray(process_allgather(kappa_truth.array, tiled=True))
-    kappa_truth_host = kappa_truth.replace(array=kappa_truth_np)
+    # every rank enters to_parquet (it starts with a process_allgather); only rank 0 writes the file.
+    # The 3-D IC is stored and compared at --paint-density in --density-precision: at 1600^3 the full float64
+    # mesh gathered on every rank (job 247481) and its coherence/transfer, then computed with host-side k-bins
+    # (job 252573), host-OOM-killed the runs. The spectra are now sharded; the stored frames are still gathered.
+    # Fourier ud_sample keeps every retained mode exactly.
+    ic_truth = ic_truth.replace(
+        name="true_ic", z_sources=zeros, comoving_centers=zeros, scale_factors=zeros, density_width=zeros
+    )
+    ic_truth_ds = ic_truth.ud_sample(dens_mesh)  # float64, for the spectra against every frame
+    ic_truth_stored = ic_truth_ds.apply_fn(jnp.astype, dens_dtype)
+    jfli.io.Catalog(field=[ic_truth_stored], cosmology=[cosmo]).to_parquet(str(out / "true_ic.parquet"))
+    jfli.io.Catalog(field=[lightcone_truth], cosmology=[cosmo]).to_parquet(str(out / "truth_density_lightcone.parquet"))
+    jfli.io.Catalog(field=[lightcone_lattice], cosmology=[cosmo]).to_parquet(
+        str(out / "lattice_density_lightcone.parquet")
+    )
+    jfli.io.Catalog(field=[kappa_truth], cosmology=[cosmo]).to_parquet(str(out / "truth_kappa.parquet"))
+    jfli.io.Catalog(field=[kappa_truth.replace(array=x_obs)], cosmology=[cosmo]).to_parquet(
+        str(out / "observed_kappa.parquet")
+    )
+    kappa_truth_host = process_allgather(kappa_truth, tiled=True)
+    kappa_truth_np = kappa_truth_host.array
     log(f"truth written; kappa rms {np.round(kappa_truth_np.std(axis=1), 5)}  noise per pixel {np.round(sigma_b, 5)}")
 
     # ---- potential and its checks (notebook 14, section 5)
@@ -379,22 +525,24 @@ def main() -> None:
         for path in paths.values():
             path.mkdir(parents=True, exist_ok=True)
             for stale in path.glob("*.parquet"):  # a rerun must not mix frames from an older run
-                stale.unlink()
+                shutil.rmtree(stale) if stale.is_dir() else stale.unlink()  # older runs wrote per-process folders
     sync_global_devices("frame-dirs")
     frames = np.linspace(0, args.map_max_iter, args.n_snapshots + 1).astype(int)
     metrics_rows = []
-    f32 = lambda fld: fld.replace(array=fld.array.astype(jnp.float32))
 
     def snapshot(position, frame, step, loss):
         # every rank: IC, lightcone, kappa and their spectra vs the truth; rank 0 writes the files and the metrics row
         ic, lc, kappa = predict(position)
-        kappa_host = kappa.replace(array=np.asarray(process_allgather(kappa.array, tiled=True)))
+        kappa_host = process_allgather(kappa, tiled=True)
+        ic_ds = ic.replace(
+            name=f"ic_{frame}", z_sources=zeros, comoving_centers=zeros, scale_factors=zeros, density_width=zeros
+        ).ud_sample(dens_mesh)
         fields = {
-            "ic": f32(as_catalog(ic, f"ic_{frame}")),
-            "density": f32(lc),
+            "ic": ic_ds.apply_fn(jnp.astype, dens_dtype),
+            "density": lc.apply_fn(jnp.astype, jnp.float32),
             "kappa": kappa,
-            "coh_ic": ic_truth.coherence(ic).replace(name=f"coh_ic_{frame}"),
-            "trans_ic": ic_truth.transfer(ic).replace(name=f"trans_ic_{frame}"),
+            "coh_ic": ic_truth_ds.coherence(ic_ds).replace(name=f"coh_ic_{frame}"),
+            "trans_ic": ic_truth_ds.transfer(ic_ds).replace(name=f"trans_ic_{frame}"),
             "coh_kappa": kappa_truth_host.coherence(kappa_host, method="healpy").replace(name=f"coh_kappa_{frame}"),
             "trans_kappa": kappa_truth_host.transfer(kappa_host, method="healpy").replace(name=f"trans_kappa_{frame}"),
         }
@@ -452,6 +600,10 @@ def main() -> None:
 
     chi2_map = float(jnp.sum(((x_obs - predict(position)[2].array) / sig) ** 2)) / x_obs.size
     summary = dict(
+        survey=args.survey,
+        sigma_e=sigma_e,
+        memory_report_verdict=("does not fit" if not fit else "fits") if args.memory_report != "off" else "off",
+        memory_plan_gb=round(plan_gb, 2) if args.memory_report != "off" else None,
         potential_truth=potential_truth,
         potential_map=float(potential(position)),
         chi2_truth=chi2_truth,

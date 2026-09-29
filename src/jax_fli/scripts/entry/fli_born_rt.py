@@ -66,11 +66,12 @@ def parser() -> ArgumentParser:
 def _resolution_cut(lightcone, method):
     """Low-pass each shell at its mesh-resolved multipole, the SHTs run unsharded.
 
-    As in the forward model's resolution cut, a sharded lightcone is replicated on input AND output:
-    left unconstrained, XLA propagates the pixel sharding into alm2map. The shell radii come from the
-    lightcone's own metadata, which is concrete here (eager, outside any trace).
+    A sharded lightcone is replicated for the cut, then constrained back to its own layout so Born runs
+    sharded (eager here, so nothing propagates into alm2map). The shell radii come from the lightcone's
+    own metadata, which is concrete here (eager, outside any trace).
     """
     import jax
+    import jax.numpy as jnp
     from jax.sharding import NamedSharding
     from jax.sharding import PartitionSpec as P
 
@@ -78,14 +79,16 @@ def _resolution_cut(lightcone, method):
 
     method = _resolve_map2alm_method(method)
     ell_max = 3 * lightcone.nside - 1
+    lightcone = lightcone.replace(array=jnp.asarray(lightcone.array))  # the loader returns numpy on one device
     sharding = lightcone.field_sharding
     if sharding is None or sharding.mesh.size == 1:
         return lightcone.resolution_cut(ell_max, method=method)
+    in_sharding = lightcone.array.sharding
     replicated = NamedSharding(sharding.mesh, P(*([None] * lightcone.array.ndim)))
     cut = lightcone.replace(
         array=jax.lax.with_sharding_constraint(lightcone.array, replicated), field_sharding=None
     ).resolution_cut(ell_max, method=method)
-    return cut.replace(array=jax.lax.with_sharding_constraint(cut.array, replicated), field_sharding=sharding)
+    return cut.replace(array=jax.lax.with_sharding_constraint(cut.array, in_sharding), field_sharding=sharding)
 
 
 def main() -> None:
@@ -113,6 +116,8 @@ def main() -> None:
         )
 
     if args.resolution_cut:
+        if lead:
+            print(f"Applying resolution cut with method {args.resolution_cut_method}...")
         lightcone = _resolution_cut(lightcone, args.resolution_cut_method)
         if lead:
             print(

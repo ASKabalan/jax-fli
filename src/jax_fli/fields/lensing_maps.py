@@ -193,9 +193,9 @@ class SphericalKappaField(SphericalDensity):
         """Shard the spherical convergence into the lensing layout ``P([None,] "y", "x")`` (BINS/N,
         NPIX/M; batch axes replicated), keeping ``field_sharding`` the canonical 3-D mesh layout.
 
-        Warns when the mesh's second (N) axis has size 1 and there is more than one bin (lensing
-        will not distribute over tomographic bins); raises ``ValueError`` for a mis-shaped mesh whose
-        N axis does not divide the bin count. No-op on a single device or a metadata-only field.
+        Warns when there is more than one bin and the mesh's second (N) axis cannot distribute them
+        (size 1, or a size that does not divide the bin count): the bins are then replicated over N.
+        No-op on a single device or a metadata-only field.
         """
         from .._src.lensing._sharding import _convergence_spec, _is_multi_device, lensing_axes
 
@@ -203,12 +203,19 @@ class SphericalKappaField(SphericalDensity):
             return self
         arr = self.array
         nbins = arr.shape[-2] if arr.ndim >= 2 else 1
-        _, _, _, n_size, _ = lensing_axes(self.field_sharding, nbins)  # raises the bad-divisor case
+        _, n_axis, _, n_size, distribute = lensing_axes(self.field_sharding, nbins)
         if n_size == 1 and nbins > 1:  # nbins == 1 has nothing to distribute regardless of the mesh
             warn(
                 "convergence sharding: the mesh's second (N) axis has size 1, so the lensing "
                 "convergence and shear will not be distributed over tomographic bins. Use a "
                 "(devices // n_bins, n_bins) mesh to distribute lensing over bins.",
+                stacklevel=2,
+            )
+        elif nbins > 1 and not distribute:
+            warn(
+                f"convergence sharding: {nbins} bins do not divide the mesh's second (N) axis {n_axis!r} "
+                f"(size {n_size}), so the bins are replicated over it (pixels stay sharded). Use a "
+                f"(devices // {nbins}, {nbins}) mesh to distribute lensing over bins.",
                 stacklevel=2,
             )
         return self.replace(

@@ -19,6 +19,7 @@ from .._src.io._field_catalog import (
     catalog_to_row,
     row_to_field_cosmo,
 )
+from .._src.io._per_process_catalog import is_per_process_folder, read_per_process, write_per_process
 from .._src.io._power_spec_catalog import (
     PS_CATALOG_VERSION,
     build_ps_features,
@@ -243,8 +244,28 @@ class Catalog(eqx.Module):
         return datasets.concatenate_datasets(ds_list)
 
     @requires_datasets
-    def to_parquet(self, path: str) -> None:
-        """Save Catalog to parquet file."""
+    def to_parquet(self, path: str, per_process: bool = False) -> None:
+        """Save Catalog to parquet file.
+
+        Parameters
+        ----------
+        path : str
+            Output parquet file, or output folder when ``per_process`` is True.
+        per_process : bool, default False
+            Field backend only. Write ``path`` as a folder holding one parquet file per process with
+            that process's own blocks, plus a ``_header.json`` written last, instead of gathering every
+            array onto every process first. Use it for large multi-host fields (a gathered 2048³ float64
+            mesh is 64 GiB on every GPU and every process). Collective: every process must call it.
+            ``from_parquet`` reads the folder back. The default keeps the single-file format unchanged.
+        """
+        if per_process:
+            if self.backend != "field":
+                raise ValueError(f"per_process=True supports the field backend only (got {self.backend!r}).")
+            for entry in self.field:
+                if isinstance(entry.array, jax.core.Tracer):
+                    raise ValueError("Cannot write a catalog inside a jit context (arrays are tracers).")
+            write_per_process(self.field, self.cosmology, self.version, path)
+            return
         ds = self.to_dataset()
         if ds is not None:
             ds.to_parquet(path)
@@ -255,11 +276,17 @@ class Catalog(eqx.Module):
         """Load a Catalog from parquet file.
 
         Automatically detects whether the file contains fields or power spectra
-        from the ``entry_type`` column.
+        from the ``entry_type`` column. A folder written by ``to_parquet(..., per_process=True)`` is
+        detected too: with ``sharding`` each process reads only the blocks of its own shards (any device
+        layout), without it every entry is assembled as one host array.
         """
+        if is_per_process_folder(path):
+            fields, cosmologies, version = read_per_process(path, sharding=sharding)
+            return cls(field=fields, cosmology=cosmologies, version=version)
+
         from datasets import load_dataset
 
-        ds = load_dataset("parquet", data_files=path, split="train").with_format("numpy")
+        ds = load_dataset("parquet", data_files=path, split="train").with_format("numpy", dtype=None)
         return cls.from_dataset(ds, sharding=sharding)
 
     @classmethod
@@ -282,7 +309,8 @@ class Catalog(eqx.Module):
             return cls(field=[e], cosmology=[c], version=v)
 
         elif isinstance(ds, datasets.Dataset | datasets.IterableDataset):
-            ds_jax = ds.with_format("numpy")
+            # dtype=None: datasets' numpy formatter otherwise casts every float array to float32
+            ds_jax = ds.with_format("numpy", dtype=None)
 
             # Detect backend from the first row's entry_type
             first_row = ds_jax[0]

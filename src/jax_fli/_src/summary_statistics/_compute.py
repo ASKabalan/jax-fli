@@ -3,8 +3,10 @@ import jax.core
 import jax.numpy as jnp
 import jax_healpy as jhp
 import numpy as np
+from jaxpm.distributed import fft3d
+from jaxpm.kernels import compensation_kernel, fftk, gridding_shotnoise_kernel
 from jaxpm.spherical import deconvolve_map
-from jaxpm.utils import power_spectrum
+from scipy.special import legendre
 
 
 def _power(
@@ -20,10 +22,15 @@ def _power(
     compensate_order=None,
     shotnoise=None,
 ):
-    """Auto/cross 3D power spectrum via ``jaxpm.utils.power_spectrum``.
+    """Auto/cross 3D power spectrum, sharded in, replicated spectrum out.
 
-    Thin wrapper that forwards jax-fli's binning knobs (``kedges``/``dk``/``kmax``)
-    and the optional grid corrections.
+    The numbers are those of ``jaxpm.utils.power_spectrum`` (same bins, ``norm='ortho'``, corrections, cross
+    term ``|sum P_01|``), but every N^3 step runs on the devices that hold the field: ``fft3d`` (jaxdecomp,
+    distributed when ``mesh`` is sharded), ``|k|`` and the bin indices from ``fftk`` in fft3d's own
+    layout, and the per-bin sums as a scatter-add into a small replicated array (local sums, then an
+    all-reduce). jaxpm builds ``|k|`` and the bin index of every cell with host numpy and bakes them into the
+    program as N^3 constants, and its ``jnp.fft.fftn`` gathers a sharded field: at 1600^3 that host-OOM-killed
+    the multi-host MAP runs.
 
     Parameters
     ----------
@@ -36,26 +43,80 @@ def _power(
         mean number density in the same units as ``box_shape``
         (``nbar = N / box.prod()``; one particle per cell -> ``mesh.prod() / box.prod()``).
     """
-    los_arg = [0.0, 0.0, 1.0] if los is None else los
-
     # jax-fli's contract returns a 1D spectrum for a single multipole, whether
-    # given as a scalar or a length-1 sequence. jaxpm only returns 1D for a
-    # scalar (a length-1 sequence yields a (1, n_k) array), so unwrap to match.
+    # given as a scalar or a length-1 sequence.
     if isinstance(multipoles, (list | tuple)) and len(multipoles) == 1:
         multipoles = multipoles[0]
+    poles = np.atleast_1d(multipoles)
+    mesh_shape = np.array(mesh.shape)
+    box_shape = mesh_shape if box_shape is None else np.asarray(box_shape)
 
-    return power_spectrum(
-        mesh,
-        mesh2,
-        box_shape=box_shape,
-        kedges=kedges,
-        dk=dk,
-        kmax=kmax,
-        multipoles=multipoles,
-        los=los_arg,
-        compensate_order=compensate_order,
-        shotnoise=shotnoise,
-    )
+    # bin edges: jaxpm's rule (host, tiny)
+    if kmax is None:
+        kmax = np.pi * np.min(mesh_shape / box_shape)  # Nyquist
+    if kedges is None or isinstance(kedges, int | float):
+        if kedges is None:
+            dk = 2 * np.pi / np.min(box_shape) * 2 if dk is None else dk  # twice the fundamental
+        elif isinstance(kedges, int):
+            dk = kmax / (kedges + 1)
+        else:
+            dk = kedges
+        if dk <= 0:
+            raise ValueError("dk must be positive and non-zero")
+        kedges = np.arange(dk, kmax, dk) + dk / 2
+    n_bins = len(kedges) + 1
+
+    # Fourier modes, in fft3d's (possibly transposed) layout; fftk gives radians per cell in X, Y, Z order
+    meshk = fft3d(mesh)
+    kvec_cell = fftk(meshk)
+    # physical k per axis computed exactly as jaxpm does (host, N values each): with the default dk the bin
+    # edges sit at odd multiples of the fundamental, so on-axis modes lie exactly on an edge and the last bit
+    # of |k| decides their bin
+    kvec = [
+        jnp.asarray((2 * np.pi * m / b) * np.fft.fftfreq(m)).reshape(k.shape)
+        for k, m, b in zip(kvec_cell, mesh_shape, box_shape)
+    ]
+    kmesh = jnp.sqrt(sum(k**2 for k in kvec))
+    norm = 1.0 / np.prod(mesh_shape)  # norm='ortho' on both transforms
+    if mesh2 is None:
+        mmk = (meshk.real**2 + meshk.imag**2) * norm
+    else:
+        mmk = meshk * fft3d(mesh2).conj() * norm
+
+    # grid corrections, per mode before binning (both are anisotropic)
+    if compensate_order is not None or shotnoise is not None:
+        if shotnoise is not None and mesh2 is None:
+            sn_order, nbar = shotnoise
+            mmk = mmk - gridding_shotnoise_kernel(kvec_cell, sn_order) / (nbar * np.prod(box_shape / mesh_shape))
+        if compensate_order is not None:
+            mmk = mmk * compensation_kernel(kvec_cell, compensate_order) ** 2
+
+    # per-bin sums: each device scatters its own cells, XLA all-reduces the (n_bins,) partial sums
+    dig = jnp.digitize(kmesh, jnp.asarray(kedges))
+
+    def bin_sum(weights):
+        return jnp.zeros(n_bins, dtype=weights.dtype).at[dig].add(weights)
+
+    kcount = bin_sum(jnp.ones_like(kmesh))
+    kavg = (bin_sum(kmesh) / kcount)[1:-1]
+
+    if np.any(poles != 0):
+        los_vec = np.asarray([0.0, 0.0, 1.0] if los is None else los, dtype=float)
+        los_vec = los_vec / np.linalg.norm(los_vec)
+        mu = sum(k * los_i for k, los_i in zip(kvec, los_vec))
+        mu = jnp.where(kmesh == 0, 0.0, mu / jnp.where(kmesh == 0, 1.0, kmesh))
+
+    pk = []
+    for ell in poles:
+        weights = mmk * (2 * ell + 1) * (1.0 if ell == 0 else jnp.polyval(jnp.asarray(legendre(ell).coeffs), mu))
+        if mesh2 is None:
+            psum = bin_sum(weights)
+        else:
+            psum = (bin_sum(weights.real) ** 2 + bin_sum(weights.imag) ** 2) ** 0.5
+        pk.append(psum)
+    pk = (jnp.stack(pk) / kcount)[:, 1:-1] * np.prod(box_shape / mesh_shape)  # cell units -> (Mpc/h)^3
+
+    return kavg, pk[0] if np.ndim(multipoles) == 0 else pk
 
 
 def _flat_cl(map2d, map2=None, *, pixel_size=None, field_size=None, ell_edges=None):
