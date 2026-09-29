@@ -1,0 +1,10 @@
+{
+  "survey": "euclid",
+  "sigma_e": 0.21213203435596423,
+  "memory_report_verdict": "fits",
+  "memory_plan_gb": 5.49,
+  "potential_truth": 36555537.99151992,
+  "potential_map": 23060293.811631978,
+  "chi2_truth": 1.0013627404266596,
+  "chi2_map": 0.9335360045842925
+}
