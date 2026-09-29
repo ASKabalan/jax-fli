@@ -9,7 +9,7 @@
 **Differentiable cosmological forward modeling on JAX**
 
 <p align="center">
-  <img src="assets/PIPELINE.svg" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved through LPT / PM N-body to a light-cone shell, lensed to convergence and shear, and compared to the observable" width="100%">
+  <img src="assets/PIPELINE.svg" alt="jax-fli differentiable forward model: priors on cosmology and initial conditions evolved by PM N-body, painted onto a light-cone shell, lensed with the Born approximation to convergence and shear, and observed by Euclid" width="100%">
 </p>
 
 ## Overview
