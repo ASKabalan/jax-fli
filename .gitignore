@@ -178,6 +178,7 @@ UNTRACKED
 # MCMC runs downloaded from Colab (read by docs/3-sampling-and-inference/16 and 17)
 mcmc_results/
 
-# Agent instruction files, kept local
+# Local-only files: agent instructions and the Colab install notebook
 /AGENTS.md
 /CLAUDE.md
+/docs/3-sampling-and-inference/how_install_in_colab.ipynb
