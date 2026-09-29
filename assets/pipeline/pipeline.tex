@@ -18,8 +18,9 @@
 % transparent background, leaving the canvas size and so this layout untouched.
 %
 % Copied from the thesis (figures/chap6/pipeline.tex) for the jax-fli README, with the
-% Rubin telescope replaced by Euclid (pipeline_images/telescope_euclid.png, rendered
-% from slides/assets/PhD/1_intro/telescopes/telescope_euclid.svg with `rsvg-convert -w 1000`).
+% single Rubin/LSST telescope replaced by Euclid in front of Rubin (pipeline_images/
+% telescope_euclid.png and telescope_rubin.png, rendered from slides/assets/PhD/1_intro/
+% telescopes/telescope_{euclid,lsst_rubin}.svg with `rsvg-convert -w 1000`).
 % pipeline_thesis.pdf is the thesis build, kept for reference.
 %
 % Build:
@@ -90,7 +91,7 @@
 
 % ===========================================================
 %  ROW 1:  priors -> IC -> density -> shell
-%  ROW 2:  lensing -> Euclid
+%  ROW 2:  lensing -> Euclid / Rubin
 %  The wrap sits on the Born step, which is also where the model
 %  stops being a simulation and starts being an observable.
 % ===========================================================
@@ -107,7 +108,9 @@
 
 % -- row 2 --
 \node[imnode] (lens)   at ( 6.4, \rowtwo) {\includegraphics[height=2.9cm]{pipeline_images/04_lensing_map.png}};
-\node[imnode] (euclid) at (14.2, \rowtwo) {\includegraphics[height=3.4cm]{pipeline_images/telescope_euclid.png}};
+% Rubin first, so Euclid is drawn over it
+\node[imnode] (rubin)  at (17.5, \rowtwo+0.3) {\includegraphics[height=2.9cm]{pipeline_images/telescope_rubin.png}};
+\node[imnode] (euclid) at (13.6, \rowtwo) {\includegraphics[height=3.4cm]{pipeline_images/telescope_euclid.png}};
 
 % ===========================================================
 %  CAPTIONS -- pinned per row
@@ -116,7 +119,7 @@
 \node[caplabel, anchor=south] at ($(dens.center)  +(0,2.05)$) {Evolved\\Density Field};
 \node[caplabel, anchor=south] at ($(sphere.center)+(0,2.05)$) {Light-Cone\\Shell};
 \node[caplabel, anchor=south] at ($(lens.center)  +(0,1.75)$) {Lensing Map\\$\kappa\,/\,\gamma$};
-\node[caplabel, anchor=south] at ($(euclid.center)+(0,1.75)$) {Euclid};
+\node[caplabel, anchor=south] at ($(euclid.center)!0.5!(rubin.center)+(0,1.75)$) {Euclid\,/\,Rubin};
 
 % ===========================================================
 %  ARROWS
@@ -158,7 +161,7 @@
   \node[phasebox, fill=likefill, draw=likeline,
         fit=(dens)(sphere), inner xsep=13pt, minimum height=6.9cm] (likebox) {};
   \node[phasebox, fill=obsfill, draw=obsline,
-        fit=(lens)(euclid), inner xsep=13pt, minimum height=6.3cm] (obsbox) {};
+        fit=(lens)(euclid)(rubin.east), inner xsep=13pt, minimum height=6.3cm] (obsbox) {};
 \end{scope}
 
 % phase labels -- centred above each box
