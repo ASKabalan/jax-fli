@@ -16,10 +16,10 @@ The four cases (``NBINS`` source bins; ``M_size``/``N_size`` = mesh axis sizes):
     D  N divides NBINS, N>1   convergence/shear distribute over bins   no warning; P("y", ..., "x")
     A  N == 1                 bins not distributed                     born warns
     B  M == 1 (spherical)     spherical density npix not sharded       nbody warns
-    C  N>1, NBINS % N != 0    mis-shaped lensing mesh                  ValueError
+    C  N>1, NBINS % N != 0    bins replicated over N                   born warns
 
 The warnings live on the *producers* (born for the lensing N axis, nbody for the density M axis);
-``get_shear`` is silent and only raises the bad-divisor ``ValueError``.
+``get_shear`` is silent.
 
 Run locally (8 CPU devices):
     JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=8 \
@@ -49,7 +49,7 @@ META = dict(mesh_size=(32, 32, 32), box_size=(256.0, 256.0, 256.0), nside=NSIDE)
 # Warning / error message fragments (kept in sync with the implementation; used as regex by pytest).
 WARN_BORN_N1 = r"second \(N\) axis has size 1"
 WARN_NBODY_M1 = r"first \(M\) axis has size 1"
-ERR_BAD_DIVISOR = r"Cannot distribute .* bins over the mesh's bins axis"
+WARN_BORN_BAD_DIVISOR = r"bins do not divide the mesh's second \(N\) axis"
 
 
 # --------------------------------------------------------------------------- #
@@ -152,13 +152,17 @@ def test_A_get_shear_replicates_when_N_is_1(kappa_stack, recwarn):
 
 @pytest.mark.distributed
 @pytest.mark.parametrize("kappa_stack", [3], indirect=True)
-def test_C_get_shear_raises_on_bad_divisor(kappa_stack):
-    """Case C: 3 bins on a size-4 N axis -> clean ``ValueError`` (not the XLA IndivisibleError)."""
+def test_C_get_shear_replicates_on_bad_divisor(kappa_stack, recwarn):
+    """Case C: 3 bins on a size-4 N axis -> shear ``P(None, None, "x")`` (bins replicated), bit-exact, silent."""
     mesh = jax.make_mesh((2, 4), ("x", "y"), axis_types=(AxisType.Auto, AxisType.Auto))
-    sharding = NamedSharding(mesh, P(None, "x"))  # constructible (bins replicated)
+    sharding = NamedSharding(mesh, P(None, "x"))  # bins replicated
     field = SphericalKappaField(array=jax.device_put(kappa_stack, sharding), field_sharding=sharding, **META)
-    with pytest.raises(ValueError, match=ERR_BAD_DIVISOR):
-        field.get_shear()
+    reference = SphericalKappaField(array=kappa_stack, **META).get_shear()
+
+    shear = field.get_shear()
+    assert len(recwarn) == 0, [str(w.message) for w in recwarn]  # the warning belongs to born, not get_shear
+    _assert_sharding(shear.array, mesh, P(None, None, "x"))
+    np.testing.assert_array_equal(process_allgather(shear.array, tiled=True), np.asarray(reference.array))
 
 
 @pytest.mark.distributed
@@ -227,11 +231,21 @@ def test_A_born_warns_when_N_is_1(lightcone, cosmo):
 
 @pytest.mark.distributed
 @pytest.mark.parametrize("lightcone", [(2, 4)], indirect=True)
-def test_C_born_raises_on_bad_divisor(lightcone, cosmo):
-    """Case C (mesh (2,4), 3 bins): born raises the bad-divisor ``ValueError``."""
+def test_C_born_replicates_on_bad_divisor(lightcone, cosmo):
+    """Case C (mesh (2,4), 3 bins): born warns and the convergence falls back to ``P(None,"x")``
+    (bins replicated over N); ``born().get_shear()`` matches the single-device shear."""
+    mesh = lightcone.field_sharding.mesh
     nz = jfli.io.get_stage3_nz_shear()[:3]  # 3 bins; 3 % 4 != 0
-    with pytest.raises(ValueError, match=ERR_BAD_DIVISOR):
-        jfli.born(cosmo, lightcone, nz_shear=nz)
+    with pytest.warns(UserWarning, match=WARN_BORN_BAD_DIVISOR):
+        kappa = jfli.born(cosmo, lightcone, nz_shear=nz)
+    assert kappa.field_sharding.spec == P("x", "y")  # field_sharding stays canonical (not transposed)
+    _assert_sharding(kappa.array, mesh, P(None, "x"))  # bins replicated, npix on M
+
+    shear = kappa.get_shear()
+    _assert_sharding(shear.array, mesh, P(None, None, "x"))
+    gathered = process_allgather(kappa.array, tiled=True)
+    ref = SphericalKappaField(array=jnp.asarray(gathered), **META).get_shear()
+    np.testing.assert_array_equal(process_allgather(shear.array, tiled=True), np.asarray(ref.array))
 
 
 # --------------------------------------------------------------------------- #

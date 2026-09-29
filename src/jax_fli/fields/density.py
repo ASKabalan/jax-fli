@@ -640,6 +640,55 @@ class DensityField(AbstractField):
             unit=SpectralUnit.POWER_SPECTRA,
         )
 
+    def ud_sample(self, new_mesh: int | tuple[int, int, int]) -> DensityField:
+        """Band-limited Fourier resampling onto ``new_mesh``, down or up; sharded in, sharded out.
+
+        Every mode with ``|n_i| < min(N_i, new_i) / 2`` is kept exactly and every other mode is zero (the
+        Nyquist planes included): downsampling truncates, upsampling zero-pads, and ``ud_sample(N)`` after
+        ``ud_sample(n)`` returns the band-limited field. Samples sit at ``i * L / n``. Any ratio works (1600 ->
+        1024), since the cube of kept modes is separable: each axis is resampled by an (n, N) matrix.
+
+        On a sharded field each axis is moved off the device mesh before it is contracted. XLA lowers that move
+        to an all-gather over one device-mesh axis, so a device holds at most one slab (N^3 / P_x or N^3 / P_y,
+        2 GB of float64 at 1600^3 on 16 x 16), never the full field. The result is re-sharded like ``self``;
+        ``new_mesh`` should be divisible by the device grid, as ``mesh_size`` is.
+
+        Unlike a block average, the result is not positive: truncation rings, and 1 + delta dips below zero
+        in ~5-8 % of the cells of a z = 0 LPT field (docs/3-sampling-and-inference/17-Field-Compression-Loss).
+        """
+        new_mesh = (new_mesh,) * 3 if isinstance(new_mesh, int) else tuple(int(n) for n in new_mesh)
+        if new_mesh == tuple(self.mesh_size):
+            return self
+        array = self.array
+        n_batch = array.ndim - 3
+        spec = None
+        if self.field_sharding is not None:
+            spec = list(self.field_sharding.spec) + [None] * (3 - len(self.field_sharding.spec))
+
+        for axis in (2, 1, 0):  # z is usually unsharded: contract it first
+            n_src, n_tgt = self.mesh_size[axis], new_mesh[axis]
+            if n_src == n_tgt:
+                continue
+            # 1-D resampler: the kept frequencies of fft(identity) placed at the same frequency in the target
+            # grid, inverse-transformed; n_tgt / n_src keeps the amplitude (and the mean) of every kept mode
+            freq = np.round(np.fft.fftfreq(n_src) * n_src).astype(int)
+            kept = np.abs(freq) < min(n_src, n_tgt) / 2
+            modes = np.zeros((n_tgt, n_src), dtype=complex)
+            modes[freq[kept] % n_tgt] = np.fft.fft(np.eye(n_src), axis=0)[kept]
+            resampler = jnp.asarray(np.fft.ifft(modes, axis=0).real * n_tgt / n_src, dtype=array.dtype)
+
+            if spec is not None and spec[axis] is not None:
+                # move this axis's device-mesh axis to a free spatial axis, then contract locally
+                free = next(a for a in (2, 1, 0) if a != axis and spec[a] is None)
+                spec[axis], spec[free] = None, spec[axis]
+                sharding = jax.sharding.NamedSharding(
+                    self.field_sharding.mesh, jax.sharding.PartitionSpec(*([None] * n_batch + spec))
+                )
+                array = jax.lax.with_sharding_constraint(array, sharding)
+            array = jnp.moveaxis(jnp.tensordot(array, resampler, axes=([n_batch + axis], [1])), -1, n_batch + axis)
+
+        return self.replace(array=array, mesh_size=new_mesh).apply_sharding()
+
     @classmethod
     def full_like(cls, field: AbstractField, fill_value: float = 0.0) -> DensityField:
         """

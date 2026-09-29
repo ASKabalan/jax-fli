@@ -65,6 +65,10 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 
   [![Born convergence per mesh against CosmoGrid, 3072³](05e-spacing-n-stepping-mesh/assets/fig05-lensing-mesh-3072.svg)](05e-spacing-n-stepping-mesh/README.md)
 
+- **05f — [Mesh plateau diagnosis](05f-mesh-plateau-diagnosis/README.md)** ✅ — mesh × solver (bf / kdk) × five shell spacings × Born resolution cut at 100 steps: κ keeps rising up to 4096³; kdk, equal volume capped at 150 Mpc/h from r = 0, 4096³, no cut matches CosmoGrid to within 2% over ℓ ∈ [30, 300).
+
+  [![Born κ / theory against mesh, no resolution cut](05f-mesh-plateau-diagnosis/assets/fig03-kappa-mesh-nocut.svg)](05f-mesh-plateau-diagnosis/README.md)
+
 - **06 — [Match CosmoGrid shells](06-cosmogrid-shells/README.md)** ✅ — per-shell density `C_ℓ` + cross-correlation vs the CosmoGrid shells (needs the CosmoGrid shell edges).
 
   [![sim / CosmoGrid band-power ratio vs comoving distance within a ±5% band](06-cosmogrid-shells/assets/fig02-band-vs-distance.svg)](06-cosmogrid-shells/README.md)
@@ -91,12 +95,11 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 - **12 — [Gradient scaling](12-scaling-gradient/README.md)** ✅ — strong & weak scaling of the initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the former adjoint memory / checkpoint-count study.
   [![PM strong-scaling wall-time, float32 vs float64](12-scaling-gradient/assets/fig01-strong-time.svg)](12-scaling-gradient/README.md)
 
-## Field-level inference (10, 13–14)
+## Field-level inference (14)
 
-- **10 — [Target simulations](10-target-simulations/README.md)** ⚠️ *(not yet submitted)* — the density-shell lightcones that Experiments 13 and 14 condition on: a 1LPT → 2LPT → PM progression at 1024³ plus the 2560³ production target, each over a full-sky and a quadrant geometry. Every physics choice is inherited from an earlier converged experiment. The production run starts from the recreated white noise of CosmoGrid `cosmo_000001/run_0` rather than from a seed. Unlike 13 and 14 below, this one is a forward simulation and is **not** blocked on the inference pipeline — it is simply waiting on cluster time.
+- **14 — [MAP mass mapping with 2LPT on several GPUs](14-map-lpt2-mass-mapping/README.md)** ⚠️ *(pilot only, 300³ on 4 GPUs)* — MAP reconstruction of the IC from two tomographic κ maps, DES Y3 and Euclid noise. The sharded MAP reaches the joint Wiener bound and matches the single-GPU 416³ reconstruction of notebook 14. The 2048³ production runs are pending.
 
-- **13 — [Toy field-level (full sky)](13-inference-toy/README.md)** ⚠️ *(blocked on the inference pipeline)* — smallest end-to-end posterior.
-- **14 — [Field-level vs CosmoGrid shear](14-inference-cosmogrid-shear/README.md)** ⚠️ *(blocked on the inference pipeline)* — DES Y3 mask.
+  [![κ and projected-IC coherence, DES Y3 against Euclid](14-map-lpt2-mass-mapping/assets/fig13-des-vs-euclid-coherence.svg)](14-map-lpt2-mass-mapping/README.md)
 
 ```{toctree}
 :hidden:
@@ -111,13 +114,12 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 05c-spacing-n-stepping-equal-vol/README
 05d-spacing-n-stepping-steps/README
 05e-spacing-n-stepping-mesh/README
+05f-mesh-plateau-diagnosis/README
 06-cosmogrid-shells/README
 07-born-lensing/README
 08-masked-shear/README
 09-gradient-validation/README
-10-target-simulations/README
 11-scaling/README
 12-scaling-gradient/README
-13-inference-toy/README
-14-inference-cosmogrid-shear/README
+14-map-lpt2-mass-mapping/README
 ```

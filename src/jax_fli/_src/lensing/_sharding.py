@@ -8,9 +8,9 @@ convergence/shear and the second spatial dim for 3-D fields). With ``M = "x"``, 
     convergence         (B,) BINS, NPIX    -> P([None,] "y", "x")       BINS/N, NPIX/M
     shear               (B,) BINS, 2, NPIX -> P([None,] "y", None, "x") BINS/N, NPIX/M, comp replicated
 
-To shard BINS over the N axis JAX requires ``BINS % N_size == 0`` (N_size divides BINS). When a real
-N axis (``N_size > 1``) and more than one bin cannot satisfy this, the mesh is mis-shaped for lensing
-and we raise (the *bad-divisor* case). ``N_size == 1`` (no N axis) or a single bin simply replicate.
+To shard BINS over the N axis JAX requires ``BINS % N_size == 0`` (N_size divides BINS). When it
+cannot (``N_size == 1``, a single bin, or the *bad-divisor* case ``BINS % N_size != 0``), BINS is
+replicated over N and NPIX stays sharded over M; the producer (``born`` via ``apply_sharding``) warns.
 
 ``mesh_MN`` and ``lensing_axes`` are the public mesh helpers. ``_convergence_spec`` / ``_shear_spec``
 are the module-private spec builders consumed by the field ``apply_sharding`` methods
@@ -50,16 +50,9 @@ def lensing_axes(field_sharding, nbins: int):
     """``(M, N, M_size, N_size, distribute_bins)`` for ``nbins`` tomographic bins.
 
     ``distribute_bins`` is True iff BINS can shard over the N axis (``N_size > 1`` and
-    ``nbins % N_size == 0``). Raises ``ValueError`` for the bad-divisor mesh: a real N axis
-    (``N_size > 1``) with more than one bin that does not divide evenly.
+    ``nbins % N_size == 0``); otherwise BINS is replicated over N (the bad-divisor mesh included).
     """
     m_axis, n_axis, m_size, n_size = mesh_MN(field_sharding)
-    if n_size > 1 and nbins > 1 and nbins % n_size != 0:
-        raise ValueError(
-            f"Cannot distribute {nbins} convergence bins over the mesh's bins axis {n_axis!r} "
-            f"(size {n_size}): {nbins} % {n_size} != 0. Shape the mesh so its second (N) axis divides "
-            f"the bin count, e.g. jax.make_mesh((devices // {nbins}, {nbins}), ...)."
-        )
     distribute_bins = n_size > 1 and nbins % n_size == 0
     return m_axis, n_axis, m_size, n_size, distribute_bins
 
@@ -68,7 +61,7 @@ def _convergence_spec(field_sharding, nbins: int, ndim: int) -> NamedSharding:
     """Convergence ``NamedSharding`` ``P([None,] N, M)`` (BINS/N, NPIX/M, batch replicated).
 
     ``ndim`` is the convergence array ndim (1 for ``(NPIX,)``, 2 for ``(BINS, NPIX)``, 3 for
-    ``(B, BINS, NPIX)``). Raises for the bad-divisor mesh.
+    ``(B, BINS, NPIX)``). BINS is replicated when N does not divide it.
     """
     m_axis, n_axis, _, _, distribute = lensing_axes(field_sharding, nbins)
     bins_axis = n_axis if distribute else None

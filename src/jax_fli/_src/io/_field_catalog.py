@@ -136,18 +136,21 @@ def _array_feature_for_type(field_type: str, shape: tuple, dtype_str: str):
         raise ValueError(f"Unknown field type: {field_type}")
 
 
-def build_features(field: AbstractField):
+def build_features(field: AbstractField, array=None):
     """Build HuggingFace Features schema for v2 format (batched arrays per row).
 
     For arrays whose total byte size exceeds INT32_MAX, the spatial axis 0 (N0)
     is split into multiple columns named ``array_0``, ``array_1``, … plus two
     metadata columns ``_n_splits`` and ``_original_n0``.  Small arrays keep the
     single ``array`` column from the original schema.
+
+    ``array`` overrides ``field.array`` for the array columns (the per-process writer passes one local
+    block); ``None`` keeps the field's own array.
     """
     from datasets import Features, Sequence, Value
 
     field_type = type(field).__name__
-    array = _ensure_batch_dim(field.array, field_type)
+    array = _ensure_batch_dim(field.array if array is None else array, field_type)
     element_shape = array.shape[1:]
     dtype_str = np.dtype(array.dtype).name
 
@@ -160,7 +163,7 @@ def build_features(field: AbstractField):
         "comoving_centers": Sequence(Value("float64")),
         "density_width": Sequence(Value("float64")),
         "mesh_size": Sequence(Value("int32"), length=3),
-        "box_size": Sequence(Value("float32"), length=3),
+        "box_size": Sequence(Value("float64"), length=3),
         "observer_position": Sequence(Value("float32"), length=3),
         "halo_size": Sequence(Value("int32"), length=2),
         "status": Value("string"),
@@ -211,6 +214,15 @@ def catalog_to_row(field: AbstractField, cosmology: jc.Cosmology, version: int) 
     if jax.process_index() != 0:
         return None
 
+    return row_from_host_array(field, cosmology, version, array)
+
+
+def row_from_host_array(field: AbstractField, cosmology: jc.Cosmology, version: int, array: np.ndarray) -> dict:
+    """Build the 1-row column dict from a host ``array`` already carrying its batch dimension.
+
+    ``catalog_to_row`` passes the gathered global array; the per-process writer passes one local block.
+    """
+    field_type = type(field).__name__
     batch_size = array.shape[0]
 
     z_src = _ensure_1d_metadata(field.z_sources, "z_sources", batch_size)
@@ -283,8 +295,23 @@ def catalog_to_row(field: AbstractField, cosmology: jc.Cosmology, version: int) 
     return data
 
 
-def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cosmology, int]:
-    """Convert a single v2 dataset row to a (field, cosmology, version) tuple."""
+def decode_row_array(item: dict) -> np.ndarray:
+    """Return a row's array with its batch dimension, reassembling split ``array_{i}`` columns."""
+    if "_n_splits" in item:
+        n_splits = int(np.asarray(item["_n_splits"]).flat[0])
+        original_n0 = int(np.asarray(item["_original_n0"]).flat[0])
+        parts = [np.asarray(item[f"array_{i}"]) for i in range(n_splits)]
+        # Each part: (1, split_size, N1, N2); concatenate along N0 and trim padding
+        return np.concatenate(parts, axis=1)[:, :original_n0]
+    return np.asarray(item["array"])
+
+
+def row_to_field_cosmo(item: dict, sharding=None, array=None) -> tuple[AbstractField, jc.Cosmology, int]:
+    """Convert a single v2 dataset row to a (field, cosmology, version) tuple.
+
+    ``array`` replaces the row's own array columns: the per-process reader passes the reassembled
+    global array (batch dimension included, dtype already restored) and reuses this row's metadata.
+    """
     field_classes = {
         "SphericalDensity": SphericalDensity,
         "SphericalKappaField": SphericalKappaField,
@@ -307,25 +334,16 @@ def row_to_field_cosmo(item: dict, sharding=None) -> tuple[AbstractField, jc.Cos
         return tuple(_type(x) for x in v)
 
     # Reconstruct array — handle split columns transparently
-    if "_n_splits" in item:
-        n_splits = int(np.asarray(item["_n_splits"]).flat[0])
-        original_n0 = int(np.asarray(item["_original_n0"]).flat[0])
-        parts = [np.asarray(item[f"array_{i}"]) for i in range(n_splits)]
-        # Each part: (1, split_size, N1, N2); concatenate along N0 and trim padding
-        array = np.concatenate(parts, axis=1)[:, :original_n0]
-        unbatched = array.shape[0] == 1
-        if unbatched:
-            array = array[0]
-    else:
-        array = np.asarray(item["array"])
-        unbatched = array.shape[0] == 1
-        if unbatched:
-            array = array[0]
+    if array is None:
+        array = decode_row_array(item)
+    unbatched = array.shape[0] == 1
+    if unbatched:
+        array = array[0]
 
     # NumpyFormatter silently downcasts floats to float32; restore the original
     # dtype using the stored "array_dtype" metadata column.
     stored_dtype = item.get("array_dtype", None)
-    if stored_dtype is not None:
+    if stored_dtype is not None and array.dtype != np.dtype(str(stored_dtype)):
         array = array.astype(np.dtype(str(stored_dtype)))
 
     def _read_dynamic(key):
