@@ -36,7 +36,7 @@ plotting.FancyBboxPatch = lambda *args, **kwargs: Rectangle((0, 0), 0, 0, visibl
 ASSETS = HERE / "assets"
 DATA = HERE / "data"
 
-REPO = "ASKabalan/jax-fli-experiments"
+REPO = "ASKabalan/jax-fli-scaling"
 CSV = "12-gradient-scaling/perf/perf_pm.csv"
 
 # the plotted adjoint variants, in the order they should appear in the legend (memory ↔ compute trade).

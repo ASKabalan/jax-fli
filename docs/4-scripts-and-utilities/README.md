@@ -1,6 +1,6 @@
 # Scripts & Utilities
 
-`jax-fli` installs a set of console scripts (declared in `pyproject.toml`) that wrap the library for batch and HPC use. Each one runs `jax.distributed.initialize()` *before* importing the package, so the same command works on a single GPU or across many nodes. Every script accepts `--help` for the complete option list.
+`jax-fli` installs a set of scripts that wrap the library for batch and HPC use. They are the files in `bin/`, installed as they are through `[tool.hatch.build.targets.wheel.shared-scripts]` in `pyproject.toml`, because each one runs `jax.distributed.initialize()` *before* importing the package. The same command therefore works on a single GPU or across many nodes, and every script prints its complete option list with `--help`.
 
 | Script | Purpose |
 |--------|---------|
@@ -20,10 +20,10 @@ Most scripts reuse the argument groups defined in `jax_fli.scripts.parser`:
 - **cosmology** — `--Omega-c --Omega-b --h --n-s --sigma8 --w0 --wa --Omega-k --Omega-nu`
 - **integration** — `--sim-mode {lpt,pm} --lpt-order {1,2} --t0 --t1 --solver {kdk,dkd,bf} --nb-steps --nb-shells --time-stepping --paint-order --shell-spacing` (a subset; see `--help`)
 - **simulation** — `--mesh-size --box-size --halo-multiplier --observer-position --seed`
-- **lensing** — `--nz-shear --min-z --max-z --n-integrate --quadrature {midpoint,gauss_legendre}`
+- **lensing** — `--nz-shear --min-z --max-z --n-integrate --quadrature {midpoint,simpson,gauss_legendre}` (default `simpson`)
 - **distributed** — `--pdim --nodes --gpus-per-node`
 
-The defaults are deliberately small (`--mesh-size 64 64 64`, `--box-size 200 200 200`) so a bare invocation runs anywhere.
+The defaults are small (`--mesh-size 64 64 64`, `--box-size 200 200 200`), so a bare invocation runs anywhere.
 
 ```{toctree}
 :hidden:

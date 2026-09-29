@@ -2,17 +2,19 @@
 
 [![Documentation](https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs)](https://jax-fli.readthedocs.io/en/latest/)
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--experiments-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments)
+[![HF Scaling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--scaling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-scaling)
+[![HF Sampling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--sampling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-sampling)
 [![Results Explorer](https://img.shields.io/badge/%F0%9F%A4%97%20Results-Explorer-yellow?)](https://askabalan-jax-fli-results.hf.space/)
 
 End-to-end reproduction studies behind the **jax-fli / jaxpm** methods paper.
 
-Each experiment lives in its own folder with a hand-written `README.md` (the goal + the exact run grid), a `run.sh` that launches the runs, and once the data exists a runnable Python script that saves the figures (SVG for the web, PDF for the paper).
+Each experiment has its own folder with a `README.md` (the goal, the run grid and the results), a `run.sh` that launches the runs, and a Python script that saves the figures once the data exist (SVG for the web, PDF for the paper).
 
-⚠️ marks experiments **not yet run**; ✅ marks finished ones.
+✅ marks finished experiments and ⚠️ experiments with runs still pending.
 
 ## Running
 
-Each experiment's `run.sh` sources the shared [`_launch_common.sh`](_launch_common.sh) and submits via `fli-launcher` → `fli-simulate`:
+The `run.sh` of each experiment sources the shared [`_launch_common.sh`](_launch_common.sh) and submits through `fli-launcher` → `fli-simulate`:
 
 ```bash
 bash run.sh                 # submit to SLURM (MODE=sbatch, the default → the cluster)
@@ -20,9 +22,9 @@ MODE=local  bash run.sh     # run locally via mpirun (use tiny meshes)
 MODE=dryrun bash run.sh     # print the resolved commands, submit nothing
 ```
 
-**Precision:** every run is **float64** (`--enable-x64`) *except* [Experiment 11](11-scaling/README.md) (scaling), which is run in **both** float32 and float64. **All experiments run on the cluster except [Experiment 09](09-gradient-validation/README.md)** — the gradient correctness / stability check runs **locally** (CPU, small mesh) and ships its own Python scripts instead of a `run.sh`.
+Every run is **float64** (`--enable-x64`), except the scaling runs of [Experiment 11](11-scaling/README.md), which use **both** float32 and float64. Every experiment runs on the cluster, except [Experiment 09](09-gradient-validation/README.md), whose gradient checks run **locally** at a 16³ mesh and ship their own Python scripts in place of a `run.sh`.
 
-You can also check the results stored on the [HuggingFace Hub](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments), or explore them interactively using the [Results Explorer dashboard](https://askabalan-jax-fli-results.hf.space/).
+The accuracy runs are stored in the [`jax-fli-experiments`](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments) dataset, which the [Results Explorer dashboard](https://askabalan-jax-fli-results.hf.space/) browses interactively. The scaling benchmarks of experiments 11 and 12 are in [`jax-fli-scaling`](https://huggingface.co/datasets/ASKabalan/jax-fli-scaling), and the MAP and chain outputs of experiment 13 and of notebooks 14, 16 and 17 are in [`jax-fli-sampling`](https://huggingface.co/datasets/ASKabalan/jax-fli-sampling).
 
 ## Simulation accuracy (0–7)
 
@@ -53,9 +55,10 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 - **05b — [Spacing & stepping: drift, 3-bin](05b-spacing-n-stepping-3bin/README.md)** ✅ — the deeper 5 Gpc/h, 2560³, three-source-bin tomographic counterpart of 05a (scale-factor spacing).
 
   [![Tomographic Born κ vs CosmoGrid and Limber theory, three source bins](05b-spacing-n-stepping-3bin/assets/fig11-lensing-cosmogrid.svg)](05b-spacing-n-stepping-3bin/README.md)
+
 - **05c — [Spacing & stepping: equal-volume, 3-bin](05c-spacing-n-stepping-equal-vol/README.md)** ✅ — 05b with **equal-volume** shells (the near-shell shot-noise lever) instead of scale-factor spacing.
 
-[![Equal volume spacing (N=20 shells)](05c-spacing-n-stepping-equal-vol/assets/fig17-lensing-spacing-20.svg)](05c-spacing-n-stepping-equal-vol/README.md)
+  [![Equal volume spacing (N=20 shells)](05c-spacing-n-stepping-equal-vol/assets/fig17-lensing-spacing-20.svg)](05c-spacing-n-stepping-equal-vol/README.md)
 
 - **05d — [Step & stepping convergence (equal-volume, 3-bin)](05d-spacing-n-stepping-steps/README.md)** ✅ — BullFrog D-stepping is step-converged down to 20 steps at the production geometry; KDK a-stepping converges from above (+36% excess at 20 steps, still +8% at 50).
 
@@ -85,21 +88,23 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 
 ## Performance & gradients
 
-- **09 — [Gradient through the lightcone](09-gradient-validation/README.md)** ✅ *(local)* — adjoint `∂L/∂δ` vs finite differences (correctness, float64) + reversible-reconstruction stability: error vs step count (float32) and exactness vs number of saved shells. The lightcone gradient accumulation that pmwd / DISCO-DJ do not provide.
+- **09 — [Gradient through the lightcone](09-gradient-validation/README.md)** ✅ *(local)* — the adjoint `∂L/∂δ` against per-voxel finite differences and the transpose test (float64, 16³), and the scratch memory of the `reverse` and `checkpointed` adjoints against the integration steps, the step-checkpoints and the saved shells. The lightcone gradient accumulation that pmwd / DISCO-DJ do not provide.
 
   [![Adjoint vs finite differences](09-gradient-validation/assets/fig01-transpose-test.svg)](09-gradient-validation/README.md)
 
 - **11 — [Performance: strong & weak scaling](11-scaling/README.md)** ✅ — PM strong & weak scaling (perf + memory) on slab decompositions, in float32 *and* float64.
 
   [![PM strong-scaling wall-time, float32 vs float64](11-scaling/assets/fig01-strong-time.svg)](11-scaling/README.md)
+
 - **12 — [Gradient scaling](12-scaling-gradient/README.md)** ✅ — strong & weak scaling of the initial-condition gradient (`reverse` and `checkpointed` adjoints) on slab decompositions; absorbs the former adjoint memory / checkpoint-count study.
-  [![PM strong-scaling wall-time, float32 vs float64](12-scaling-gradient/assets/fig01-strong-time.svg)](12-scaling-gradient/README.md)
 
-## Field-level inference (14)
+  [![IC-gradient strong-scaling wall-time, five reverse-mode adjoints](12-scaling-gradient/assets/fig01-strong-time.svg)](12-scaling-gradient/README.md)
 
-- **14 — [MAP mass mapping with 2LPT on several GPUs](14-map-lpt2-mass-mapping/README.md)** ⚠️ *(pilot only, 300³ on 4 GPUs)* — MAP reconstruction of the IC from two tomographic κ maps, DES Y3 and Euclid noise. The sharded MAP reaches the joint Wiener bound and matches the single-GPU 416³ reconstruction of notebook 14. The 2048³ production runs are pending.
+## Field-level inference (13)
 
-  [![κ and projected-IC coherence, DES Y3 against Euclid](14-map-lpt2-mass-mapping/assets/fig13-des-vs-euclid-coherence.svg)](14-map-lpt2-mass-mapping/README.md)
+- **13 — [MAP mass mapping with 2LPT](13-map-lpt2-mass-mapping/README.md)** ⚠️ *(416³ runs of notebook 14; the 2048³ multi-GPU runs are pending)* — MAP reconstruction of the IC from two tomographic κ maps, at DES Y3 and Euclid noise. Both MAPs reach the joint Wiener bound, with a κ coherence of 0.71–0.73 for DES Y3 and 0.92–0.93 for Euclid.
+
+  [![κ and projected-IC coherence, DES Y3 against Euclid](13-map-lpt2-mass-mapping/assets/fig13-des-vs-euclid-coherence.svg)](13-map-lpt2-mass-mapping/README.md)
 
 ```{toctree}
 :hidden:
@@ -121,5 +126,5 @@ You can also check the results stored on the [HuggingFace Hub](https://huggingfa
 09-gradient-validation/README
 11-scaling/README
 12-scaling-gradient/README
-14-map-lpt2-mass-mapping/README
+13-map-lpt2-mass-mapping/README
 ```

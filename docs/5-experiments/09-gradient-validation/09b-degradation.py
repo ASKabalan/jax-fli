@@ -20,7 +20,7 @@ gradient that blows up (NaN) still ran and used memory, so its bar is drawn and 
 Runs at **16³** on GPU. Memory is the XLA temp buffer (``temp_size_in_bytes``); on GPU this fully captures
 the FFT scratch (verified: reverse temp scales ~mesh³, 6.95× from 16³→32³), but cuFFT is leaner in absolute
 terms than a CPU run, so the numbers are backend-specific — the *trend* is the point, and production-scale
-magnitudes are Exp 10. The per-voxel finite difference is 32 forward passes/config.
+magnitudes are Exp 12. The per-voxel finite difference is 32 forward passes/config.
 
     uv run python 09b-degradation.py     # 16³, float64, GPU
 """
@@ -59,7 +59,7 @@ DATA = HERE / "data_f64"
 cosmo = jc.Planck18()
 
 # Config — 16³ mesh, nside matched. (fig02 steps) + (fig03 checkpoints): single output.
-RES = (16, 16, 16)  # 16³ on GPU — accuracy + temp-scaling illustration (production magnitudes → Exp 10)
+RES = (16, 16, 16)  # 16³ on GPU — accuracy + temp-scaling illustration (production magnitudes → Exp 12)
 BOX = 1000.0
 NSIDE = 16
 A0 = 0.001

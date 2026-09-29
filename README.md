@@ -2,6 +2,8 @@
 
 [![Documentation](https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs)](https://jax-fli.readthedocs.io/en/latest/)
 [![HF Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--experiments-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-experiments)
+[![HF Scaling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--scaling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-scaling)
+[![HF Sampling](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-jax--fli--sampling-yellow)](https://huggingface.co/datasets/ASKabalan/jax-fli-sampling)
 [![Results Explorer](https://img.shields.io/badge/%F0%9F%A4%97%20Results-Explorer-yellow?)](https://askabalan-jax-fli-results.hf.space/)
 
 **Differentiable cosmological forward modeling on JAX**

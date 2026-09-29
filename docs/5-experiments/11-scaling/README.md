@@ -1,8 +1,6 @@
 # Experiment 11 — PM forward model: strong & weak scaling
 
-**Goal.** Characterize the distributed performance of the **PM forward model** (N-body + lightcone painting) under a **slab `(N, 1)`** decomposition — how fast it runs and how much per-device memory it needs as the GPU count grows. Two questions: **strong scaling** (fixed grid, more GPUs → how much speedup, and how far from the ideal 1/N) and **weak scaling** (fixed work per GPU → does wall-time and memory stay flat). Every run captures **min wall-time *and* peak per-device temporary memory** from `fli-simulate --perf` (XLA `memory_analysis`), in **both float32 and float64** — the precision/perf/memory trade-off is part of the point. Only the PM stage is timed; gradient cost is [Exp 12](../12-scaling-gradient/README.md).
-
-The runs, and the fixed forward-model configuration behind every one of them:
+**Goal.** We measure the distributed performance of the **PM forward model** (N-body and lightcone painting) under a **slab `(N, 1)`** decomposition: how fast it runs and how much per-device memory it needs as the GPU count grows. **Strong scaling** fixes the grid and adds GPUs, to measure the speedup against the ideal 1/N; **weak scaling** fixes the work per GPU, to check that wall-time and memory stay flat. Every run records the **minimum wall-time and the peak per-device temporary memory** from `fli-simulate --perf` (XLA `memory_analysis`), in **float32 and float64**, since the trade between precision, speed and memory is part of the result. Only the PM stage is timed, and the cost of the gradient is [Exp 12](../12-scaling-gradient/README.md).
 
 | Knob | Value |
 |------|-------|
@@ -24,59 +22,36 @@ The runs, and the fixed forward-model configuration behind every one of them:
 | Weak (256³/GPU) | `(256·px, 256, 256)` | float32 | 4, 8, 16, 32, 64, 128, 256 |
 | Weak (256³/GPU) | `(256·px, 256, 256)` | float64 | 4, 8, 16, 32, 64, 128, 256 |
 
-Two hard limits shape which runs exist. **Even halo:** the ghost zone `halo = int((M/px)·0.5)` must be even (odd halo crashes jaxpm `slice_unpad`), so at `halo_multiplier 0.5` a **1024³ slab tops out at 256 GPUs**. **Per-GPU memory:** each ladder starts at the smallest GPU count whose local volume fits (≈300³ cells/GPU in float64 for this heavier 5 Gpc/h model, ≈2× in float32). The weak grids are anisotropic by construction (the slab shards only X) — perf/memory benchmarks, not science runs.
+Two limits set which runs exist. The ghost zone `halo = int((M/px)·0.5)` must be **even**, since an odd halo crashes the `slice_unpad` of jaxpm, so at `halo_multiplier 0.5` a **1024³ slab tops out at 256 GPUs**. Each ladder starts at the smallest GPU count whose local volume fits in memory, ≈300³ cells per GPU in float64 for this 5 Gpc/h model and ≈2× that in float32. The weak grids are anisotropic by construction, since the slab shards only X, and serve as benchmarks of performance and memory.
 
 ## Method
 
-Slab `(N, 1)` shards the global mesh along X into `px = #GPUs` equal slabs of local shape `(M/px, M, M)`; Y and Z stay per-GPU depth. Strong scaling holds the global grid fixed and grows `px` (each GPU does less work → time should fall as 1/N and per-device memory as 1/N). Weak scaling holds the **local** volume fixed at 256³ by setting the global mesh to `(256·px, 256, 256)` (each GPU always does the same work → time and per-device memory should stay flat). All figures are built from the committed `perf_pm.csv` by [`build.py`](build.py) using [`jax-hpc-profiler`](https://pypi.org/project/jax-hpc-profiler/); the x-axis is the GPU count (log₂), with one line per precision (float32, float64).
+The slab `(N, 1)` shards the global mesh along X into `px = #GPUs` slabs of local shape `(M/px, M, M)`. Strong scaling holds the global grid fixed and grows `px`, so the time and the per-device memory should fall as 1/N. Weak scaling holds the **local** volume at 256³ with a global mesh of `(256·px, 256, 256)`, so the time and the per-device memory should stay flat. [`build.py`](build.py) draws every figure from `perf_pm.csv` with [`jax-hpc-profiler`](https://pypi.org/project/jax-hpc-profiler/), with the GPU count on a log₂ axis and one line per precision.
 
 ## Results
 
-### Strong scaling — wall-time
-
 ![Strong scaling wall-time](assets/fig01-strong-time.svg)
 
-**Strong scaling of the PM forward model, minimum wall-time.** Fixed 1024³ grid, float32 and float64, 32–256 GPUs under a slab decomposition.
-
-At 1024³ (top) the PM step gets faster with more GPUs but flattens well short of ideal 1/N scaling: float32 goes 4.6 s (32 GPUs) → 2.1 s (256 GPUs) — a **2.2× speedup for 8× the GPUs** (≈27% parallel efficiency), and float64 3.8 s → 3.0 s from 128→256 GPUs. The gap to a perfect 1/N is the slab's communication cost (the X-sharded FFT's all-to-all and the halo exchange), which grows with `px` and eventually dominates the shrinking per-GPU compute. float64 sits ≈1.5× above float32 throughout. The 2048³ panel (bottom) holds two landed points at different GPU counts — float32 at 256 GPUs (7.7 s) and float64 at 512 GPUs (7.65 s) — a cross-precision comparison rather than a scaling curve (the intermediate 2048³ runs weren't run).
-
-### Strong scaling — peak temporary memory
+**Strong scaling of the PM forward model, minimum wall-time.** Fixed grids, float32 and float64, under a slab decomposition. At 1024³ (top) the PM step gets faster with more GPUs and flattens well short of the ideal 1/N: float32 goes from 4.6 s at 32 GPUs to 2.1 s at 256, a **2.2× speedup for 8× the GPUs** (≈27% parallel efficiency), and float64 from 3.8 s to 3.0 s between 128 and 256 GPUs. The communication of the slab, the all-to-all of the X-sharded FFT and the halo exchange, grows with `px` until it dominates the shrinking per-GPU compute. float64 sits ≈1.5× above float32 throughout. The 2048³ panel (bottom) holds float32 at 256 GPUs (7.7 s) and float64 at 512 GPUs (7.65 s), a comparison across precisions; the intermediate 2048³ runs, and the `g512_f32` / `g256_f64` counterparts, were not run or did not finish.
 
 ![Strong scaling memory](assets/fig02-strong-memory.svg)
 
-**Strong scaling, peak per-device temporary memory.** The same runs; scratch memory falls essentially as 1/N.
-
-Peak per-device scratch memory scales **almost perfectly as 1/N** — float32 1024³ falls 6.53 → 3.26 → 1.63 → 0.91 GB across 32→256 GPUs (halving at each doubling), and float64 is exactly 2× the float32 footprint (7.34 → 3.67 → 1.84 GB). This is the clean result: distributing the mesh distributes the working set, so memory is not the strong-scaling bottleneck here — communication is. The 2048³ panel's two points land at exactly the per-device footprint the 1/N law predicts: float32 6.52 GB at 256 GPUs matches float32 1024³ at 32 GPUs (6.53 GB), and float64 7.34 GB at 512 GPUs matches float64 1024³ at 64 GPUs (7.34 GB) — 8× the cells on 8× the GPUs leaves the per-device working set unchanged.
-
-### Weak scaling — wall-time
+**Strong scaling, peak per-device temporary memory.** The same runs. The scratch memory falls **almost exactly as 1/N**: float32 1024³ goes 6.53 → 3.26 → 1.63 → 0.91 GB from 32 to 256 GPUs, halving at each doubling, and float64 is exactly 2× float32 (7.34 → 3.67 → 1.84 GB). The two 2048³ points land on the footprint the 1/N law predicts: float32 at 256 GPUs (6.52 GB) matches float32 1024³ at 32 GPUs (6.53 GB), and float64 at 512 GPUs (7.34 GB) matches float64 1024³ at 64 GPUs (7.34 GB), since 8× the cells on 8× the GPUs leaves the working set per device unchanged. Distributing the mesh distributes the working set, so communication limits the strong scaling and memory does not.
 
 ![Weak scaling wall-time](assets/fig03-weak-time.svg)
 
-**Weak scaling of the PM forward model, minimum wall-time.** Fixed 256³ per GPU, 4–256 GPUs; flat would be ideal.
-
-With a fixed 256³ per GPU, ideal weak scaling would keep wall-time flat. Instead it climbs — float32 1.8 s (4 GPUs) → 4.5 s (256 GPUs), a **2.5× rise over 64× the GPUs** — because the slab's global all-to-all touches more peers as `px` grows even though per-GPU compute is constant. float64 tracks the same shape ≈1.5× higher (2.5 → 6.7 s). The rise is communication, not compute.
-
-### Weak scaling — peak temporary memory
+**Weak scaling of the PM forward model, minimum wall-time.** Fixed 256³ per GPU, 4–256 GPUs, where flat would be ideal. The time climbs, for float32 from 1.8 s at 4 GPUs to 4.5 s at 256, a **2.5× rise over 64× the GPUs**, because the global all-to-all of the slab touches more peers as `px` grows while the compute per GPU stays constant. float64 follows the same shape ≈1.5× higher (2.5 → 6.7 s).
 
 ![Weak scaling memory](assets/fig04-weak-memory.svg)
 
-**Weak scaling, peak per-device temporary memory.** The same runs; each device holds its fixed local volume regardless of the total.
-
-Memory weak-scales essentially perfectly: peak scratch is flat at **≈3.26 GB (float32)** and **≈7.34 GB (float64)** across all seven GPU counts — each device holds exactly its fixed 256³ working set regardless of the total problem size. float64 is again 2× float32. Per-device memory is fully predictable from the local volume alone.
-
-### Note on the 2048³ panel
-
-The 2048³ strong panel is a two-point cross-precision comparison, not a full scaling curve: only `M2048_g256_f32` and `M2048_g512_f64` completed (the intermediate 2048³ runs, and the `g512_f32` / `g256_f64` counterparts, were not run or did not finish). `build.py` loads the CSV from HuggingFace and the strong query already spans both 1024³ and 2048³, so appending any further 2048³ rows to `perf_pm.csv` on HuggingFace and re-running `build.py` extends the panel with no code change.
+**Weak scaling, peak per-device temporary memory.** The scratch is flat at **≈3.26 GB (float32)** and **≈7.34 GB (float64)** across all seven GPU counts, since each device holds its fixed 256³ working set whatever the total size, and float64 is again 2× float32. The memory per device follows from the local volume alone.
 
 ## How to run
 
 ```bash
-# (a) produce perf_pm.csv on the cluster (both precisions; --perf → wall-time + per-device memory)
-MODE=dryrun bash run.sh    # print the resolved fli-launcher commands + skipped runs (submit nothing)
-bash run.sh                # submit to SLURM → writes perf_pm.csv rows under results/exp11/
-
-# (b) render the four SVGs locally from the HuggingFace copy of perf_pm.csv (CPU-only, no GPU)
-/home/wassim/Projects/NBody/jax-fli/.venv/bin/python build.py
+MODE=dryrun bash run.sh    # print the resolved fli-launcher commands and the skipped runs
+bash run.sh                # submit; writes perf_pm.csv rows under results/exp11/
+JAX_PLATFORMS=cpu uv run --no-sync python build.py   # the four SVGs from the HuggingFace copy of perf_pm.csv
 ```
 
-`build.py` pulls only `11-scaling/perf/perf_pm.csv` from the `ASKabalan/jax-fli-experiments` dataset, rewrites the per-run `function` label to a single `pm-forward` series (the two lines are float32/float64), splits the rows into weak/strong, and calls `jax-hpc-profiler` to write `assets/fig0{1..4}-*.svg`.
+`build.py` downloads only `11-scaling/perf/perf_pm.csv` from the [`ASKabalan/jax-fli-scaling`](https://huggingface.co/datasets/ASKabalan/jax-fli-scaling) dataset, relabels every run as one `pm-forward` series (the two lines are float32 and float64), splits the rows into weak and strong, and calls `jax-hpc-profiler` to write `assets/fig0{1..4}-*.svg`. The strong query already spans 1024³ and 2048³, so further 2048³ rows appended to `perf_pm.csv` extend the panel without a code change.
