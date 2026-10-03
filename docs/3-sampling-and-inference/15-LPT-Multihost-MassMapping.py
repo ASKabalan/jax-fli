@@ -19,7 +19,7 @@ harmonic transform, because a sharded SHT hangs. Rank 0 writes the notebook's pa
 - ``*_evolution/`` frames;
 - ``metrics.json``, ``loss_history.npz`` and ``summary.json``.
 
-So the notebook's ``load_run`` / ``plot_*`` functions and ``animation/animate_map_prep.py`` read it unchanged.
+So the notebook's ``load_run`` / ``plot_*`` functions and experiment 13's ``build.py`` and ``animation/map_data.py`` read it unchanged.
 
 The 3-D IC (truth and frames) is stored, and its coherence/transfer computed, at ``--paint-density`` in
 ``--density-precision`` (the runs: 1024^3 float32 at mesh 1600 and 2048). ``DensityField.ud_sample`` is a sharded
