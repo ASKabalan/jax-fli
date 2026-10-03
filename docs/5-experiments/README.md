@@ -102,9 +102,9 @@ The accuracy runs are stored in the [`jax-fli-experiments`](https://huggingface.
 
 ## Field-level inference (13)
 
-- **13 — [MAP mass mapping with 2LPT](13-map-lpt2-mass-mapping/README.md)** ⚠️ *(416³ runs of notebook 14; the 2048³ multi-GPU runs are pending)* — MAP reconstruction of the IC from two tomographic κ maps, at DES Y3 and Euclid noise. Both MAPs reach the joint Wiener bound, with a κ coherence of 0.71–0.73 for DES Y3 and 0.92–0.93 for Euclid.
+- **13 — [MAP mass mapping with 2LPT](13-map-lpt2-mass-mapping/README.md)** ✅ *(1200³ DES Y3 run on 32 GPUs; 416³ DES Y3 and Euclid runs of notebook 14)* — MAP reconstruction of the IC from two tomographic κ maps. At 1200³ the reconstructed κ follows the cross-correlation coefficient of the joint Wiener filter up to the scale cut at ℓ = 700 (0.39–0.40 averaged over 2 ≤ ℓ ≤ 636, 0.75–0.76 over 2 ≤ ℓ ≤ 164). At 416³ both surveys reach their Wiener values, 0.71–0.73 for DES Y3 and 0.92–0.93 for Euclid.
 
-  [![κ and projected-IC coherence, DES Y3 against Euclid](13-map-lpt2-mass-mapping/assets/fig13-des-vs-euclid-coherence.svg)](13-map-lpt2-mass-mapping/README.md)
+  [![κ cross-spectra of the final MAP at 1200³](13-map-lpt2-mass-mapping/assets/mesh_1200_DES/fig11-kappa-spectra.svg)](13-map-lpt2-mass-mapping/README.md)
 
 ```{toctree}
 :hidden:
